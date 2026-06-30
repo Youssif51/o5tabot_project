@@ -6,18 +6,74 @@ export default function ReportsView() {
     const currency = state.storeSettings.currency || '$';
 
     // Interactive Chart State
-    const [hoveredMonthIdx, setHoveredMonthIdx] = useState(2); // Default to Nov (index 2)
+    const [hoveredMonthIdx, setHoveredMonthIdx] = useState(5); // Default to today (index 5)
 
-    // Profit & Revenue monthly data points coordinates & mock statistics
-    const monthData = [
-        { name: "Sep", x: 80, y: 180, revenue: 30000, profit: 45000, display: "120,342,123" },
-        { name: "Oct", x: 220, y: 130, revenue: 42000, profit: 52000, display: "180,542,000" },
-        { name: "Nov", x: 360, y: 140, revenue: 35000, profit: 60000, display: "220,342,123" },
-        { name: "Dec", x: 500, y: 125, revenue: 50000, profit: 48000, display: "245,120,400" },
-        { name: "Jan", x: 640, y: 105, revenue: 62000, profit: 55000, display: "290,340,900" },
-        { name: "Feb", x: 780, y: 70,  revenue: 78000, profit: 65000, display: "310,210,500" },
-        { name: "Mar", x: 920, y: 140, revenue: 45000, profit: 50000, display: "270,123,000" }
-    ];
+    // Calculate last 6 days
+    const getDays = () => {
+        const list = [];
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            list.push(d.toISOString().substring(0, 10));
+        }
+        return list;
+    };
+    const last6Days = getDays();
+
+    // Helper to calculate order profit
+    const getOrderProfit = (ord) => {
+        let cost = 0;
+        ord.items.forEach(item => {
+            let wholesalePrice = 0;
+            state.products.forEach(p => {
+                let vr = p.variants.find(v => v.sku === item.variantSku);
+                if (vr) wholesalePrice = vr.wholesalePrice;
+            });
+            cost += item.quantity * wholesalePrice;
+        });
+        return ord.totalValue - cost;
+    };
+
+    const graphWidth = 900; 
+    const graphHeight = 180; 
+    const paddingX = 50;
+    const paddingY = 40;
+    const spacingX = graphWidth / (last6Days.length - 1);
+
+    const rawData = last6Days.map(dateStr => {
+        let revenue = 0;
+        let profit = 0;
+        (state.orders || []).forEach(ord => {
+            if (ord.date === dateStr && ord.status !== 'Cancelled' && ord.status !== 'Draft') {
+                revenue += ord.totalValue;
+                profit += getOrderProfit(ord);
+            }
+        });
+        return { dateStr, revenue, profit };
+    });
+
+    const maxRev = Math.max(...rawData.map(d => d.revenue));
+    const maxProf = Math.max(...rawData.map(d => d.profit));
+    const maxVal = Math.max(100, maxRev, maxProf);
+    const scaleMax = Math.ceil(maxVal / 100) * 100;
+
+    const monthData = rawData.map((d, idx) => {
+        const x = paddingX + idx * spacingX;
+        const revY = paddingY + graphHeight - (d.revenue / scaleMax) * graphHeight;
+        const profY = paddingY + graphHeight - (d.profit / scaleMax) * graphHeight;
+        const parts = d.dateStr.split('-');
+        const name = `${parts[1]}-${parts[2]}`;
+
+        return {
+            name,
+            x,
+            revY,
+            profY,
+            revenue: d.revenue,
+            profit: d.profit,
+            display: d.revenue.toLocaleString()
+        };
+    });
 
     // --- Dynamic calculations from mock DB states to populate the mockup metrics ---
     let totalSalesVal = 0;
@@ -30,7 +86,7 @@ export default function ReportsView() {
 
     state.products.forEach(p => {
         p.variants.forEach(v => {
-            const qty = (v.stock.Sulur || 0) + (v.stock.Singanallur || 0);
+            const qty = (v.stock.Sulur || 0);
             totalPurchaseVal += qty * v.wholesalePrice;
         });
     });
@@ -72,14 +128,16 @@ export default function ReportsView() {
         p.variants.forEach(v => {
             const soldQty = productSales[v.sku] || 0;
             if (soldQty > 0 || bestProducts.length < 4) {
-                const stockQty = (v.stock.Sulur || 0) + (v.stock.Singanallur || 0);
+                const stockQty = (v.stock.Sulur || 0);
+                const marginVal = v.retailPrice > 0 ? ((v.retailPrice - v.wholesalePrice) / v.retailPrice * 100).toFixed(1) : 0;
                 bestProducts.push({
                     name: `${p.name} - ${v.name}`,
                     id: p.id,
                     category: p.category,
                     qty: `${stockQty} Packets`,
                     turnover: soldQty * v.retailPrice || 12000,
-                    increase: soldQty > 5 ? '2.3%' : '1.3%'
+                    increase: soldQty > 5 ? '2.3%' : '1.3%',
+                    margin: `${marginVal}%`
                 });
             }
         });
@@ -184,31 +242,33 @@ export default function ReportsView() {
                         <line x1="50" y1="220" x2="950" y2="220" className="grid-line" strokeWidth="1.5" />
 
                         {/* Y-Axis scale text */}
-                        <text x="15" y="45" fill="var(--text-muted)" fontSize="11">80,000</text>
-                        <text x="15" y="105" fill="var(--text-muted)" fontSize="11">60,000</text>
-                        <text x="15" y="165" fill="var(--text-muted)" fontSize="11">40,000</text>
-                        <text x="15" y="225" fill="var(--text-muted)" fontSize="11">20,000</text>
+                        <text x="15" y="45" fill="var(--text-muted)" fontSize="11">{(scaleMax * 1.0).toLocaleString(undefined, {maximumFractionDigits:0})}</text>
+                        <text x="15" y="105" fill="var(--text-muted)" fontSize="11">{(scaleMax * 0.75).toLocaleString(undefined, {maximumFractionDigits:0})}</text>
+                        <text x="15" y="165" fill="var(--text-muted)" fontSize="11">{(scaleMax * 0.5).toLocaleString(undefined, {maximumFractionDigits:0})}</text>
+                        <text x="15" y="225" fill="var(--text-muted)" fontSize="11">{(scaleMax * 0.25).toLocaleString(undefined, {maximumFractionDigits:0})}</text>
 
-                        {/* Chart Line 1: Revenue (Blue curve) */}
+                        {/* Chart Line 1: Revenue (Blue line/curve) */}
                         <path 
-                            d="M 80 180 Q 200 120 320 140 T 560 120 T 800 60 T 940 140" 
+                            d={monthData.map((d, idx) => `${idx === 0 ? 'M' : 'L'} ${d.x} ${d.revY}`).join(' ')} 
                             fill="none" 
                             stroke="rgba(46, 122, 243, 0.85)" 
                             strokeWidth="3.5" 
                             strokeLinecap="round"
+                            strokeLinejoin="round"
                         />
 
-                        {/* Chart Line 2: Profit (Orange curve) */}
+                        {/* Chart Line 2: Profit (Gold line/curve) */}
                         <path 
-                            d="M 80 140 Q 200 145 320 170 T 560 140 T 800 110 T 940 180" 
+                            d={monthData.map((d, idx) => `${idx === 0 ? 'M' : 'L'} ${d.x} ${d.profY}`).join(' ')} 
                             fill="none" 
                             stroke="rgba(245, 215, 127, 0.8)" 
                             strokeWidth="3.5" 
                             strokeLinecap="round"
+                            strokeLinejoin="round"
                         />
 
                         {/* Dashed laser vertical guide for selected tooltip node */}
-                        {hoveredMonthIdx !== null && (
+                        {hoveredMonthIdx !== null && monthData[hoveredMonthIdx] && (
                             <line 
                                 x1={monthData[hoveredMonthIdx].x} 
                                 y1={40} 
@@ -220,16 +280,26 @@ export default function ReportsView() {
                             />
                         )}
                         
-                        {/* Tooltip dot on the revenue curve node */}
-                        {hoveredMonthIdx !== null && (
-                            <circle 
-                                cx={monthData[hoveredMonthIdx].x} 
-                                cy={monthData[hoveredMonthIdx].y} 
-                                r="6.5" 
-                                fill="rgba(46, 122, 243, 1)" 
-                                stroke="#fff" 
-                                strokeWidth="2" 
-                            />
+                        {/* Tooltip dots on the curve nodes */}
+                        {hoveredMonthIdx !== null && monthData[hoveredMonthIdx] && (
+                            <>
+                                <circle 
+                                    cx={monthData[hoveredMonthIdx].x} 
+                                    cy={monthData[hoveredMonthIdx].revY} 
+                                    r="6.5" 
+                                    fill="rgba(46, 122, 243, 1)" 
+                                    stroke="#fff" 
+                                    strokeWidth="2" 
+                                />
+                                <circle 
+                                    cx={monthData[hoveredMonthIdx].x} 
+                                    cy={monthData[hoveredMonthIdx].profY} 
+                                    r="6.5" 
+                                    fill="rgba(245, 215, 127, 1)" 
+                                    stroke="#fff" 
+                                    strokeWidth="2" 
+                                />
+                            </>
                         )}
 
                         {/* X-Axis labels & Invisible Hover Columns */}
@@ -325,6 +395,7 @@ export default function ReportsView() {
                                 <th>{t('categories')}</th>
                                 <th>{t('quantityInHand')}</th>
                                 <th>{t('turnover')}</th>
+                                <th>{t('margin')}</th>
                                 <th>{t('increase')}</th>
                             </tr>
                         </thead>
@@ -336,6 +407,7 @@ export default function ReportsView() {
                                     <td>{p.category}</td>
                                     <td>{p.qty}</td>
                                     <td style={{ fontWeight: 600 }}>{currency}{p.turnover.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+                                    <td><span className="badge badge-success">{p.margin}</span></td>
                                     <td style={{ color: 'var(--color-success)', fontWeight: 600 }}>{p.increase}</td>
                                 </tr>
                             ))}

@@ -160,12 +160,12 @@ export default function OrdersList({ globalSearch, onOpenAddOrder }) {
                         value={statusFilter}
                         onChange={(e) => { setStatusFilter(e.target.value); setCurrentPage(1); }}
                     >
-                        <option value="all">All Order Statuses</option>
-                        <option value="Draft">Draft</option>
-                        <option value="Paid">Paid</option>
-                        <option value="Partially Delivered">Partially Delivered</option>
-                        <option value="Completed">Completed</option>
-                        <option value="Cancelled">Cancelled</option>
+                        <option value="all">{t('allOrderStatuses')}</option>
+                        <option value="Draft">{t('draft')}</option>
+                        <option value="Paid">{t('paid')}</option>
+                        <option value="Partially Delivered">{t('partiallydelivered')}</option>
+                        <option value="Completed">{t('completed')}</option>
+                        <option value="Cancelled">{t('cancelled')}</option>
                     </select>
                 </div>
             </div>
@@ -210,7 +210,7 @@ export default function OrdersList({ globalSearch, onOpenAddOrder }) {
                                             <td>{ord.date}</td>
                                             <td>{totalQty} {t('units')}</td>
                                             <td style={{ fontWeight: 600 }}>{currency}{ord.totalValue.toFixed(2)}</td>
-                                            <td>{ord.warehouse === 'Sulur' ? t('inSulur') : t('inSinganallur')}</td>
+                                            <td>{t('inSulur')}</td>
                                             <td><span className={`badge ${statusClass}`}>{translateStatus(ord.status)}</span></td>
                                             <td style={{ textAlign: 'right' }}>
                                                 <div className="table-actions-cell">
@@ -315,13 +315,13 @@ export default function OrdersList({ globalSearch, onOpenAddOrder }) {
                                 />
                             </div>
                             <div className="form-group">
-                                <label className="form-label">{t('fulfillmentWarehouse')}</label>
-                                <input 
-                                    type="text" 
-                                    className="form-input" 
-                                    value={returnOrder.warehouse === 'Sulur' ? t('inSulur') : t('inSinganallur')} 
-                                    disabled 
-                                />
+                                 <label className="form-label">{t('fulfillmentWarehouse')}</label>
+                                 <input 
+                                     type="text" 
+                                     className="form-input" 
+                                     value={t('inSulur')} 
+                                     disabled 
+                                 />
                             </div>
                         </div>
 

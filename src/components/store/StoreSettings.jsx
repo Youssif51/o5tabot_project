@@ -40,7 +40,7 @@ export default function StoreSettings() {
 
     const handleExportCSV = () => {
         let csvContent = "data:text/csv;charset=utf-8,";
-        csvContent += "Product Name,Category,Variant SKU,Barcode,Wholesale Price,Retail Price,Sulur Stock,Singanallur Stock,Total Stock\r\n";
+        csvContent += "Product Name,Category,Variant SKU,Barcode,Wholesale Price,Retail Price,Stock\r\n";
         
         state.products.forEach(p => {
             p.variants.forEach(vr => {
@@ -51,9 +51,7 @@ export default function StoreSettings() {
                     `"${vr.barcode || ""}"`,
                     vr.wholesalePrice,
                     vr.retailPrice,
-                    vr.stock.Sulur,
-                    vr.stock.Singanallur,
-                    (vr.stock.Sulur + vr.stock.Singanallur)
+                    vr.stock.Sulur
                 ].join(",");
                 csvContent += row + "\r\n";
             });

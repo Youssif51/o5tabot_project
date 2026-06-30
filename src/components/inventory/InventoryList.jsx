@@ -14,6 +14,9 @@ export default function InventoryList({
     const [viewMode, setViewMode] = useState('list');
     const [inspectId, setInspectId] = useState(null);
 
+    // Segment tab control for inventory view: 'catalog' or 'ledger'
+    const [activeInventoryTab, setActiveInventoryTab] = useState('catalog');
+
     // Filters visibility toggle
     const [showFilters, setShowFilters] = useState(false);
     const [categoryFilter, setCategoryFilter] = useState('all');
@@ -44,8 +47,7 @@ export default function InventoryList({
             const barcodeMatches = vr.barcode && vr.barcode.includes(query);
             const varNameMatches = vr.name.toLowerCase().includes(query);
 
-            if (warehouseFilter === 'Sulur' && (vr.stock.Sulur || 0) <= 0) return false;
-            if (warehouseFilter === 'Singanallur' && (vr.stock.Singanallur || 0) <= 0) return false;
+
 
             return skuMatches || barcodeMatches || varNameMatches || nameMatches || descMatches;
         });
@@ -58,7 +60,7 @@ export default function InventoryList({
         }
     });
 
-    // Pagination calculations
+    // Pagination calculations for Catalog
     const totalEntries = filteredList.length;
     const totalPages = Math.ceil(totalEntries / pageSize) || 1;
     const activePage = currentPage > totalPages ? totalPages : currentPage;
@@ -74,7 +76,7 @@ export default function InventoryList({
     let totalInvValue = 0;
     state.products.forEach(p => {
         p.variants.forEach(v => {
-            const qty = (v.stock.Sulur || 0) + (v.stock.Singanallur || 0);
+            const qty = (v.stock.Sulur || 0);
             totalInvValue += qty * v.retailPrice;
         });
     });
@@ -100,7 +102,7 @@ export default function InventoryList({
     let outOfStockCount = 0;
     state.products.forEach(p => {
         p.variants.forEach(v => {
-            const qty = (v.stock.Sulur || 0) + (v.stock.Singanallur || 0);
+            const qty = (v.stock.Sulur || 0);
             if (qty === 0) {
                 outOfStockCount++;
             } else if (qty <= v.reorderLimit) {
@@ -111,7 +113,7 @@ export default function InventoryList({
 
     const handleExportCSV = () => {
         let csvContent = "data:text/csv;charset=utf-8,";
-        csvContent += "Product Name,Category,Variant SKU,Barcode,Wholesale Price,Retail Price,Sulur Stock,Singanallur Stock,Total Stock\r\n";
+        csvContent += "Product Name,Category,Variant SKU,Barcode,Wholesale Price,Retail Price,Stock\r\n";
         
         state.products.forEach(p => {
             p.variants.forEach(vr => {
@@ -122,9 +124,7 @@ export default function InventoryList({
                     `"${vr.barcode || ""}"`,
                     vr.wholesalePrice,
                     vr.retailPrice,
-                    vr.stock.Sulur,
-                    vr.stock.Singanallur,
-                    (vr.stock.Sulur + vr.stock.Singanallur)
+                    vr.stock.Sulur
                 ].join(",");
                 csvContent += row + "\r\n";
             });
@@ -220,187 +220,286 @@ export default function InventoryList({
                 </div>
             </div>
 
-            {/* 2. Products table section card header */}
-            <div className="glass-card" style={{ padding: '24px', overflow: 'hidden' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
-                    <h3>{t('products')}</h3>
-                    
-                    <div style={{ display: 'flex', gap: '10px' }}>
-                        <button className="btn btn-primary" onClick={onOpenAddProduct}>
-                            {t('addProduct')}
-                        </button>
-                        <button className="btn btn-secondary" onClick={() => setShowFilters(!showFilters)}>
-                            <i className="fa-solid fa-sliders"></i> {t('filters')}
-                        </button>
-                        <button className="btn btn-secondary" onClick={handleExportCSV}>
-                            {t('downloadAll')}
-                        </button>
-                    </div>
-                </div>
+            {/* Catalog vs Stock Ledger segments */}
+            <div className="glass-card" style={{ display: 'flex', gap: '8px', padding: '10px 16px', marginBottom: '24px' }}>
+                <button 
+                    className={`btn ${activeInventoryTab === 'catalog' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setActiveInventoryTab('catalog')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
+                >
+                    <i className="fa-solid fa-boxes-stacked"></i> {t('products')}
+                </button>
+                <button 
+                    className={`btn ${activeInventoryTab === 'ledger' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setActiveInventoryTab('ledger')}
+                    style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}
+                >
+                    <i className="fa-solid fa-list-check"></i> {t('stockLedger')}
+                </button>
+            </div>
 
-                {/* Collapsible Filter Controls */}
-                {showFilters && (
-                    <div className="glass-card filter-bar" style={{ padding: '16px', marginBottom: '20px', background: 'rgba(0,0,0,0.1)' }}>
-                        <div className="filter-controls">
-                            <div className="search-input-wrapper">
-                                <i className="fa-solid fa-magnifying-glass search-icon"></i>
-                                <input 
-                                    type="text" 
-                                    placeholder={t('searchPlaceholder')}
-                                    value={searchVal}
-                                    onChange={(e) => { setSearchVal(e.target.value); setCurrentPage(1); }}
-                                />
-                            </div>
-                            
-                            <select 
-                                className="form-select" 
-                                style={{ width: '150px', padding: '8px 12px' }}
-                                value={categoryFilter}
-                                onChange={(e) => { setCategoryFilter(e.target.value); setCurrentPage(1); }}
-                            >
-                                <option value="all">All Categories</option>
-                                {categoriesList.filter(c => c !== 'all').map(c => (
-                                    <option key={c} value={c}>{c}</option>
-                                ))}
-                            </select>
-
-                            <select 
-                                className="form-select" 
-                                style={{ width: '160px', padding: '8px 12px' }}
-                                value={warehouseFilter}
-                                onChange={(e) => { setWarehouseFilter(e.target.value); setCurrentPage(1); }}
-                            >
-                                <option value="all">All Warehouses</option>
-                                <option value="Sulur">In Sulur</option>
-                                <option value="Singanallur">In Singanallur</option>
-                            </select>
+            {activeInventoryTab === 'catalog' ? (
+                /* 2. Products table section card header */
+                <div className="glass-card" style={{ padding: '24px', overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '16px' }}>
+                        <h3>{t('products')}</h3>
+                        
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                            <button className="btn btn-primary" onClick={onOpenAddProduct}>
+                                {t('addProduct')}
+                            </button>
+                            <button className="btn btn-secondary" onClick={() => setShowFilters(!showFilters)}>
+                                <i className="fa-solid fa-sliders"></i> {t('filters')}
+                            </button>
+                            <button className="btn btn-secondary" onClick={handleExportCSV}>
+                                {t('downloadAll')}
+                            </button>
                         </div>
                     </div>
-                )}
 
-                {/* Table */}
-                <div className="table-wrapper">
-                    <table className="custom-table">
-                        <thead>
-                            <tr>
-                                <th>{t('products')}</th>
-                                <th>{t('buyingPrice')}</th>
-                                <th>{t('quantity')}</th>
-                                <th>{t('thresholdValue')}</th>
-                                <th>{t('expiryDate')}</th>
-                                <th>{t('availability')}</th>
-                                <th style={{ textAlign: 'right' }}>{t('actions')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {paginatedList.length === 0 ? (
+                    {/* Collapsible Filter Controls */}
+                    {showFilters && (
+                        <div className="glass-card filter-bar" style={{ padding: '16px', marginBottom: '20px', background: 'rgba(0,0,0,0.1)' }}>
+                            <div className="filter-controls">
+                                <div className="search-input-wrapper">
+                                    <i className="fa-solid fa-magnifying-glass search-icon"></i>
+                                    <input 
+                                        type="text" 
+                                        placeholder={t('searchPlaceholder')}
+                                        value={searchVal}
+                                        onChange={(e) => { setSearchVal(e.target.value); setCurrentPage(1); }}
+                                    />
+                                </div>
+                                
+                                <select 
+                                    className="form-select" 
+                                    style={{ width: '150px', padding: '8px 12px' }}
+                                    value={categoryFilter}
+                                    onChange={(e) => { setCategoryFilter(e.target.value); setCurrentPage(1); }}
+                                >
+                                    <option value="all">All Categories</option>
+                                    {categoriesList.filter(c => c !== 'all').map(c => (
+                                        <option key={c} value={c}>{c}</option>
+                                    ))}
+                                </select>
+
+
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Catalog Table */}
+                    <div className="table-wrapper">
+                        <table className="custom-table">
+                            <thead>
                                 <tr>
-                                    <td colSpan="7" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
-                                        No products found.
-                                    </td>
+                                    <th>{t('products')}</th>
+                                    <th>{t('buyingPrice')}</th>
+                                    <th>{t('quantity')}</th>
+                                    <th>{t('thresholdValue')}</th>
+                                    <th>{t('createdDate')}</th>
+                                    <th>{t('runway')}</th>
+                                    <th>{t('availability')}</th>
+                                    <th style={{ textAlign: 'right' }}>{t('actions')}</th>
                                 </tr>
-                            ) : (
-                                paginatedList.map(prod => {
-                                    // Average Wholesale / Buying price
-                                    let totalQty = 0;
-                                    let totalWholesale = 0;
-                                    prod.variants.forEach(vr => {
-                                        const qty = (vr.stock.Sulur || 0) + (vr.stock.Singanallur || 0);
-                                        totalQty += qty;
-                                        totalWholesale += qty * vr.wholesalePrice;
-                                    });
-                                    const buyingPrice = totalQty > 0 ? (totalWholesale / totalQty) : (prod.variants[0]?.wholesalePrice || 0);
+                            </thead>
+                            <tbody>
+                                {paginatedList.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="8" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
+                                            {t('noProducts')}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    paginatedList.map(prod => {
+                                        // Average Wholesale / Buying price
+                                        let totalQty = 0;
+                                        let totalWholesale = 0;
+                                        prod.variants.forEach(vr => {
+                                            const qty = (vr.stock.Sulur || 0);
+                                            totalQty += qty;
+                                            totalWholesale += qty * vr.wholesalePrice;
+                                        });
+                                        const buyingPrice = totalQty > 0 ? (totalWholesale / totalQty) : (prod.variants[0]?.wholesalePrice || 0);
 
-                                    // Threshold / Reorder limit average
-                                    const threshold = prod.variants[0]?.reorderLimit || 10;
+                                        // Threshold / Reorder limit average
+                                        const threshold = prod.variants[0]?.reorderLimit || 1;
 
-                                    // Earliest Expiry batch
-                                    let earliestExpiry = '-';
-                                    if (prod.batches && prod.batches.length > 0) {
-                                        const sortedBatches = [...prod.batches].sort((a,b) => new Date(a.expiryDate) - new Date(b.expiryDate));
-                                        earliestExpiry = sortedBatches[0].expiryDate;
-                                    }
+                                        // Earliest Expiry batch
+                                        let earliestExpiry = '-';
+                                        if (prod.batches && prod.batches.length > 0) {
+                                            const sortedBatches = [...prod.batches].sort((a,b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+                                            earliestExpiry = sortedBatches[0].expiryDate;
+                                        }
 
-                                    // Availability status
-                                    let statusText = t('inStock');
-                                    let badgeClass = "badge-success";
-                                    if (totalQty === 0) {
-                                        statusText = t('outOfStock');
-                                        badgeClass = "badge-danger";
-                                    } else if (totalQty <= threshold) {
-                                        statusText = t('lowStock');
-                                        badgeClass = "badge-warning";
-                                    }
+                                        // Calculate Stock Runway based on average consumption rate
+                                        const dailyBurnRate = (prod.totalConsumed || 0) / 30;
+                                        let runwayDays = "Stable";
+                                        let runwayBadgeClass = "badge-success";
+                                        if (dailyBurnRate > 0) {
+                                            runwayDays = Math.ceil(totalQty / dailyBurnRate);
+                                            if (runwayDays <= 5) {
+                                                runwayBadgeClass = "badge-danger";
+                                            } else if (runwayDays <= 15) {
+                                                runwayBadgeClass = "badge-warning";
+                                            }
+                                        }
 
-                                    return (
-                                        <tr key={prod.id}>
-                                            <td>
-                                                <div 
-                                                    style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--gold-primary)' }}
-                                                    onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
-                                                >
-                                                    {prod.name}
-                                                </div>
-                                                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                                    {prod.category}
-                                                </div>
-                                            </td>
-                                            <td style={{ fontWeight: 600 }}>{currency}{buyingPrice.toFixed(2)}</td>
-                                            <td>{totalQty} {t('packets')}</td>
-                                            <td>{threshold} {t('packets')}</td>
-                                            <td>{earliestExpiry}</td>
-                                            <td>
-                                                <span className={`badge ${badgeClass}`}>{statusText}</span>
-                                            </td>
-                                            <td style={{ textAlign: 'right' }}>
-                                                <div className="table-actions-cell" style={{ justifyContent: 'flex-end' }}>
-                                                    <button 
-                                                        className="action-btn-circle" 
-                                                        title="Inspect Catalog"
+                                        // Availability status
+                                        let statusText = t('inStock');
+                                        let badgeClass = "badge-success";
+                                        if (totalQty === 0) {
+                                            statusText = t('outOfStock');
+                                            badgeClass = "badge-danger";
+                                        } else if (totalQty <= threshold) {
+                                            statusText = t('lowStock');
+                                            badgeClass = "badge-warning";
+                                        }
+
+                                        return (
+                                            <tr key={prod.id}>
+                                                <td>
+                                                    <div 
+                                                        style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--gold-primary)' }}
                                                         onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
                                                     >
-                                                        <i className="fa-solid fa-magnifying-glass"></i>
-                                                    </button>
-                                                    <button 
-                                                        className="action-btn-circle" 
-                                                        title="Edit Catalog"
-                                                        onClick={() => onOpenEditProduct(prod.id)}
-                                                    >
-                                                        <i className="fa-solid fa-pencil"></i>
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                })
-                            )}
-                        </tbody>
-                    </table>
-                </div>
+                                                        {prod.name}
+                                                    </div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                                        {prod.category}
+                                                    </div>
+                                                </td>
+                                                 <td style={{ fontWeight: 600 }}>{currency}{buyingPrice.toFixed(2)}</td>
+                                                 <td>{totalQty} {t('packets')}</td>
+                                                 <td>{threshold} {t('packets')}</td>
+                                                 <td>{prod.createdDate || "2026-06-30"}</td>
+                                                <td>
+                                                    {runwayDays === "Stable" ? (
+                                                        <span className="badge badge-success" style={{ fontSize: '11px' }}>{t('stockHealthy')}</span>
+                                                    ) : (
+                                                        <span className={`badge ${runwayBadgeClass}`} style={{ fontSize: '11px' }}>
+                                                            {runwayDays} {t('left')}
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                <td>
+                                                    <span className={`badge ${badgeClass}`}>{statusText}</span>
+                                                </td>
+                                                <td style={{ textAlign: 'right' }}>
+                                                    <div className="table-actions-cell" style={{ justifyContent: 'flex-end' }}>
+                                                        <button 
+                                                            className="action-btn-circle" 
+                                                            title="Inspect Catalog"
+                                                            onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
+                                                        >
+                                                            <i className="fa-solid fa-magnifying-glass"></i>
+                                                        </button>
+                                                        <button 
+                                                            className="action-btn-circle" 
+                                                            title="Edit Catalog"
+                                                            onClick={() => onOpenEditProduct(prod.id)}
+                                                        >
+                                                            <i className="fa-solid fa-pencil"></i>
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
 
-                {/* Restructured Pagination Footer */}
-                <div style={{ padding: '24px 0 12px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--glass-border)', marginTop: '16px' }}>
-                    <button 
-                        className="btn btn-secondary" 
-                        disabled={activePage === 1}
-                        onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                        style={{ padding: '8px 16px', fontSize: '13px' }}
-                    >
-                        {t('previous')}
-                    </button>
-                    <span style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
-                        {t('page')} <strong style={{ color: 'var(--text-primary)' }}>{activePage}</strong> {t('of')} <strong style={{ color: 'var(--text-primary)' }}>{totalPages}</strong>
-                    </span>
-                    <button 
-                        className="btn btn-secondary" 
-                        disabled={activePage === totalPages}
-                        onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                        style={{ padding: '8px 16px', fontSize: '13px' }}
-                    >
-                        {t('next')}
-                    </button>
+                    {/* Pagination Footer */}
+                    <div style={{ padding: '24px 0 12px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--glass-border)', marginTop: '16px' }}>
+                        <button 
+                            className="btn btn-secondary" 
+                            disabled={activePage === 1}
+                            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                            style={{ padding: '8px 16px', fontSize: '13px' }}
+                        >
+                            {t('previous')}
+                        </button>
+                        <span style={{ fontSize: '14px', color: 'var(--text-primary)' }}>
+                            {t('page')} <strong style={{ color: 'var(--text-primary)' }}>{activePage}</strong> {t('of')} <strong style={{ color: 'var(--text-primary)' }}>{totalPages}</strong>
+                        </span>
+                        <button 
+                            className="btn btn-secondary" 
+                            disabled={activePage === totalPages}
+                            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                            style={{ padding: '8px 16px', fontSize: '13px' }}
+                        >
+                            {t('next')}
+                        </button>
+                    </div>
                 </div>
-            </div>
+            ) : (
+                /* Central Stock Ledger view log list */
+                <div className="glass-card" style={{ padding: '24px', overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+                        <h3>{t('stockLedger')}</h3>
+                    </div>
+
+                    <div className="table-wrapper">
+                        <table className="custom-table">
+                            <thead>
+                                <tr>
+                                    <th>{t('date')}</th>
+                                    <th>{t('products')}</th>
+                                    <th>{t('stockLocations')}</th>
+                                    <th>{t('status')}</th>
+                                    <th>{t('quantity')}</th>
+                                    <th>{t('remainingQuantity')}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {!state.stockLedger || state.stockLedger.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="6" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                                            {t('noRecords')}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    state.stockLedger.map((entry, idx) => {
+                                        const prod = state.products.find(p => p.id === entry.productId);
+                                        const prodName = prod ? prod.name : entry.productId;
+
+                                        let typeBadge = null;
+                                        if (entry.type === "Sale") {
+                                            typeBadge = <span className="badge badge-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-arrow-trend-down"></i> {t('sales')}</span>;
+                                        } else if (entry.type === "Purchase") {
+                                            typeBadge = <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-arrow-trend-up"></i> {t('purchase')}</span>;
+                                        } else if (entry.type === "Correction") {
+                                            typeBadge = <span className="badge badge-warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-wrench"></i> {t('adjustments')}</span>;
+                                        } else if (entry.type === "Waste") {
+                                            typeBadge = <span className="badge badge-danger" style={{ background: '#721c24', display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-trash-can"></i> {t('damagedWaste')}</span>;
+                                        } else {
+                                            typeBadge = <span className="badge badge-info" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-rotate-left"></i> {t('return')}</span>;
+                                        }
+
+                                        return (
+                                            <tr key={idx}>
+                                                <td>{entry.date}</td>
+                                                <td>
+                                                    <div style={{ fontWeight: 600 }}>{prodName}</div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{entry.variantSku}</div>
+                                                </td>
+                                                <td><span className="badge badge-info">{entry.warehouse === 'Sulur' ? t('inSulur') : t('inSinganallur')}</span></td>
+                                                <td>{typeBadge}</td>
+                                                <td style={{ fontWeight: 700, color: entry.quantity > 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                                                    {entry.quantity > 0 ? `+${entry.quantity}` : entry.quantity}
+                                                </td>
+                                                <td style={{ fontWeight: 600 }}>{entry.balanceAfter}</td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

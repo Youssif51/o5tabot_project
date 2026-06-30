@@ -22,7 +22,7 @@ export default function TopSelling() {
                 topSelling.push({
                     name: `${prod.name} (${vr.name})`,
                     soldQty: sold,
-                    remainingQty: (vr.stock.Sulur || 0) + (vr.stock.Singanallur || 0),
+                    remainingQty: (vr.stock.Sulur || 0),
                     price: vr.retailPrice
                 });
             }

@@ -10,11 +10,11 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
     const [productId, setProductId] = useState('');
     const [category, setCategory] = useState('Electronics');
     const [unit, setUnit] = useState('Piece');
-    const [expiryDate, setExpiryDate] = useState(new Date(Date.now() + 365*24*60*60*1000).toISOString().substring(0,10));
+    const [image, setImage] = useState('');
     
-    // Multiple variants state
+    // Multiple variants state (without SKU and Barcode input properties in UI)
     const [variants, setVariants] = useState([
-        { name: 'Standard Option', sku: '', barcode: '', wholesalePrice: 50.00, retailPrice: 90.00, reorderLimit: 1, stockSulur: 10, stockSinganallur: 5 }
+        { name: 'Standard Option', sku: '', barcode: '', wholesalePrice: 50.00, retailPrice: 90.00, reorderLimit: 1, stockSulur: 10 }
     ]);
 
     useEffect(() => {
@@ -25,10 +25,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 setProductId(prod.id);
                 setCategory(prod.category);
                 setUnit(prod.unit || 'Piece');
-                
-                if (prod.batches && prod.batches.length > 0) {
-                    setExpiryDate(prod.batches[0].expiryDate);
-                }
+                setImage(prod.image || '');
                 
                 if (prod.variants && prod.variants.length > 0) {
                     setVariants(prod.variants.map(v => ({
@@ -38,8 +35,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                         wholesalePrice: v.wholesalePrice,
                         retailPrice: v.retailPrice,
                         reorderLimit: v.reorderLimit,
-                        stockSulur: v.stock.Sulur || 0,
-                        stockSinganallur: v.stock.Singanallur || 0
+                        stockSulur: v.stock.Sulur || 0
                     })));
                 }
             }
@@ -49,8 +45,8 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
             setName('');
             setProductId(`PROD-${randomId}`);
             setCategory('Electronics');
-            setUnit('Piece');
-            setExpiryDate(new Date(Date.now() + 365*24*60*60*1000).toISOString().substring(0,10));
+            setUnit(t('piece'));
+            setImage('');
             setVariants([
                 { 
                     name: 'Standard Option', 
@@ -59,12 +55,11 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                     wholesalePrice: 50.00, 
                     retailPrice: 90.00, 
                     reorderLimit: 1, 
-                    stockSulur: 10, 
-                    stockSinganallur: 5 
+                    stockSulur: 10 
                 }
             ]);
         }
-    }, [editProductId, isOpen]);
+    }, [editProductId, isOpen, t]);
 
     const handleAddVariantRow = () => {
         const index = variants.length + 1;
@@ -77,8 +72,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 wholesalePrice: 50.00, 
                 retailPrice: 90.00, 
                 reorderLimit: 1, 
-                stockSulur: 0, 
-                stockSinganallur: 0 
+                stockSulur: 0 
             }
         ]);
     };
@@ -97,6 +91,21 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
         }));
     };
 
+    const handleFileChange = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                setImage(event.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handlePlaceholderClick = () => {
+        document.getElementById('product-image-uploader-input').click();
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
         if (!name || !productId) {
@@ -104,38 +113,48 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
             return;
         }
 
-        const mappedVariants = variants.map(v => ({
-            sku: v.sku || `SKU-${Math.random().toString(36).substring(7).toUpperCase()}`,
-            name: v.name || 'Standard Option',
-            barcode: v.barcode || `${Math.floor(100000000000 + Math.random() * 900000000000)}`,
-            wholesalePrice: parseFloat(v.wholesalePrice) || 0,
-            retailPrice: parseFloat(v.retailPrice) || 0,
-            reorderLimit: parseInt(v.reorderLimit) || 0,
-            stock: {
-                Sulur: parseInt(v.stockSulur) || 0,
-                Singanallur: parseInt(v.stockSinganallur) || 0
-            }
-        }));
+        // Auto-generate SKUs and Barcodes internally
+        const mappedVariants = variants.map((v, idx) => {
+            const cleanId = productId.replace('PROD-', '').replace(/[^a-zA-Z0-9]/g, '');
+            const generatedSku = v.sku || `SKU-${cleanId}-${idx + 1}`;
+            const generatedBarcode = v.barcode || `${Math.floor(100000000000 + Math.random() * 900000000000)}`;
+            return {
+                sku: generatedSku,
+                name: v.name || 'Standard Option',
+                barcode: generatedBarcode,
+                wholesalePrice: parseFloat(v.wholesalePrice) || 0,
+                retailPrice: parseFloat(v.retailPrice) || 0,
+                reorderLimit: parseInt(v.reorderLimit) || 0,
+                stock: {
+                    Sulur: parseInt(v.stockSulur) || 0,
+                    Singanallur: 0
+                }
+            };
+        });
 
+        // Expiry Date is set to far future so it never triggers alerts
         const mappedBatches = [];
         mappedVariants.forEach((v, idx) => {
-            const totalQty = v.stock.Sulur + v.stock.Singanallur;
+            const totalQty = v.stock.Sulur;
             if (totalQty > 0) {
                 mappedBatches.push({
                     batchId: `B-${v.sku.substring(0, 8).replace(/[^a-zA-Z0-9]/g, '')}-${idx}`,
                     variantSku: v.sku,
-                    expiryDate: expiryDate,
+                    expiryDate: '2099-12-31',
                     quantity: totalQty,
-                    warehouse: v.stock.Sulur >= v.stock.Singanallur ? 'Sulur' : 'Singanallur'
+                    warehouse: 'Sulur'
                 });
             }
         });
 
+        const originalProduct = editProductId ? state.products.find(p => p.id === editProductId) : null;
         const productObj = {
             id: productId,
             name,
             category,
             unit,
+            image,
+            createdDate: originalProduct ? (originalProduct.createdDate || new Date().toISOString().substring(0, 10)) : new Date().toISOString().substring(0, 10),
             description: `${name} catalog entry, unit size ${unit}.`,
             variants: mappedVariants,
             batches: mappedBatches,
@@ -155,29 +174,62 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
             isOpen={isOpen} 
             onClose={onClose} 
             title={editProductId ? t('editProduct') : t('newProduct')}
-            width="800px"
+            width="1150px"
         >
             <form onSubmit={handleSubmit}>
                 
-                {/* Image Placeholder Box */}
-                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', margin: '10px 0 20px 0' }}>
-                    <div style={{
-                        width: '80px',
-                        height: '80px',
-                        border: '2px dashed rgba(255, 255, 255, 0.15)',
-                        borderRadius: '8px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        background: 'rgba(255, 255, 255, 0.01)',
-                        cursor: 'pointer'
-                    }} className="image-upload-dashed">
-                        <i className="fa-regular fa-image" style={{ fontSize: '20px', color: 'var(--text-muted)' }}></i>
+                {/* Image Uploader Input & Place Holder */}
+                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', margin: '10px 0 24px 0' }}>
+                    <input 
+                        type="file" 
+                        id="product-image-uploader-input" 
+                        accept="image/*" 
+                        onChange={handleFileChange} 
+                        style={{ display: 'none' }} 
+                    />
+                    <div 
+                        onClick={handlePlaceholderClick}
+                        style={{
+                            width: '90px',
+                            height: '90px',
+                            border: image ? 'none' : '2px dashed rgba(255, 255, 255, 0.15)',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: 'rgba(255, 255, 255, 0.01)',
+                            cursor: 'pointer',
+                            overflow: 'hidden',
+                            position: 'relative'
+                        }} 
+                        className="image-upload-dashed"
+                        title="Upload Product Photo"
+                    >
+                        {image ? (
+                            <img src={image} alt="Upload preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        ) : (
+                            <i className="fa-regular fa-image" style={{ fontSize: '24px', color: 'var(--text-muted)' }}></i>
+                        )}
+                        <div style={{
+                            position: 'absolute',
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            background: 'rgba(0,0,0,0.5)',
+                            color: '#fff',
+                            fontSize: '9px',
+                            padding: '2px 0',
+                            textAlign: 'center',
+                            opacity: 0,
+                            transition: 'opacity 0.2s'
+                        }} className="image-upload-hover-label">
+                            {t('edit')}
+                        </div>
                     </div>
                 </div>
 
                 {/* Primary details grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '20px' }}>
                     <div className="form-group">
                         <label className="form-label">{t('productName')}</label>
                         <input 
@@ -207,41 +259,32 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                             onChange={(e) => setCategory(e.target.value)}
                             required
                         >
-                            <option value="Electronics">Electronics</option>
-                            <option value="Mobile Accessories">Mobile Accessories</option>
-                            <option value="Accessories">Accessories</option>
+                            <option value="Electronics">{t('electronics')}</option>
+                            <option value="Mobile Accessories">{t('mobileAccessories')}</option>
+                            <option value="Accessories">{t('accessories')}</option>
                         </select>
                     </div>
-                    <div className="form-group" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '10px' }}>
-                        <div>
-                            <label className="form-label">{t('unit')}</label>
-                            <input 
-                                type="text" 
-                                className="form-input" 
-                                value={unit}
-                                onChange={(e) => setUnit(e.target.value)}
-                                required 
-                            />
-                        </div>
-                        <div>
-                            <label className="form-label">{t('expiryDate')}</label>
-                            <input 
-                                type="date" 
-                                className="form-input" 
-                                value={expiryDate}
-                                onChange={(e) => setExpiryDate(e.target.value)}
-                                required 
-                            />
-                        </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', marginBottom: '20px' }}>
+                    <div className="form-group">
+                        <label className="form-label">{t('unit')}</label>
+                        <input 
+                            type="text" 
+                            className="form-input" 
+                            value={unit}
+                            onChange={(e) => setUnit(e.target.value)}
+                            required 
+                        />
                     </div>
                 </div>
 
                 {/* Multiple Variants Builder Table */}
                 <div style={{ marginBottom: '20px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                        <h4 style={{ margin: 0, color: '#fff', fontSize: '14px' }}>Product Option Variants</h4>
+                        <h4 style={{ margin: 0, color: '#fff', fontSize: '14px' }}>{t('productVariants')}</h4>
                         <button type="button" className="btn btn-secondary" onClick={handleAddVariantRow} style={{ padding: '4px 10px', fontSize: '12px' }}>
-                            <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> Add Variant Option
+                            <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> {t('addVariantOption')}
                         </button>
                     </div>
 
@@ -249,15 +292,12 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
                             <thead>
                                 <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--glass-border)' }}>
-                                    <th style={{ padding: '8px' }}>Option Name</th>
-                                    <th style={{ padding: '8px' }}>SKU</th>
-                                    <th style={{ padding: '8px' }}>Barcode</th>
-                                    <th style={{ padding: '8px' }}>Wholesale Price</th>
-                                    <th style={{ padding: '8px' }}>Retail Price</th>
-                                    <th style={{ padding: '8px' }}>Limit</th>
-                                    <th style={{ padding: '8px' }}>Sulur</th>
-                                    <th style={{ padding: '8px' }}>Singa</th>
-                                    <th style={{ padding: '8px', textAlign: 'center' }}>Actions</th>
+                                    <th style={{ padding: '8px' }}>{t('optionName')}</th>
+                                    <th style={{ padding: '8px' }}>{t('wholesalePrice')}</th>
+                                    <th style={{ padding: '8px' }}>{t('retailPrice')}</th>
+                                    <th style={{ padding: '8px' }}>{t('limit')}</th>
+                                    <th style={{ padding: '8px' }}>{t('stock')}</th>
+                                    <th style={{ padding: '8px', textAlign: 'center' }}>{t('actions')}</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -266,28 +306,19 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                                         <td style={{ padding: '6px' }}>
                                             <input type="text" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.name} onChange={(e) => handleVariantChange(idx, 'name', e.target.value)} required />
                                         </td>
-                                        <td style={{ padding: '6px' }}>
-                                            <input type="text" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.sku} onChange={(e) => handleVariantChange(idx, 'sku', e.target.value)} required />
-                                        </td>
-                                        <td style={{ padding: '6px' }}>
-                                            <input type="text" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.barcode} onChange={(e) => handleVariantChange(idx, 'barcode', e.target.value)} required />
-                                        </td>
-                                        <td style={{ padding: '6px', width: '75px' }}>
+                                        <td style={{ padding: '6px', width: '120px' }}>
                                             <input type="number" step="0.01" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.wholesalePrice} onChange={(e) => handleVariantChange(idx, 'wholesalePrice', parseFloat(e.target.value) || 0)} required />
                                         </td>
-                                        <td style={{ padding: '6px', width: '75px' }}>
+                                        <td style={{ padding: '6px', width: '120px' }}>
                                             <input type="number" step="0.01" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.retailPrice} onChange={(e) => handleVariantChange(idx, 'retailPrice', parseFloat(e.target.value) || 0)} required />
                                         </td>
-                                        <td style={{ padding: '6px', width: '50px' }}>
+                                        <td style={{ padding: '6px', width: '100px' }}>
                                             <input type="number" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.reorderLimit} onChange={(e) => handleVariantChange(idx, 'reorderLimit', parseInt(e.target.value) || 0)} required />
                                         </td>
-                                        <td style={{ padding: '6px', width: '50px' }}>
+                                        <td style={{ padding: '6px', width: '120px' }}>
                                             <input type="number" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.stockSulur} onChange={(e) => handleVariantChange(idx, 'stockSulur', parseInt(e.target.value) || 0)} required />
                                         </td>
-                                        <td style={{ padding: '6px', width: '50px' }}>
-                                            <input type="number" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.stockSinganallur} onChange={(e) => handleVariantChange(idx, 'stockSinganallur', parseInt(e.target.value) || 0)} required />
-                                        </td>
-                                        <td style={{ padding: '6px', textAlign: 'center' }}>
+                                        <td style={{ padding: '6px', textAlign: 'center', width: '80px' }}>
                                             <button 
                                                 type="button" 
                                                 className="action-btn-circle" 

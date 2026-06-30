@@ -12,7 +12,7 @@ export default function Sidebar() {
         { id: 'reports', name: t('reports'), icon: 'Report.png' },
         { id: 'suppliers', name: t('suppliers'), icon: 'Suppliers.png' },
         { id: 'orders', name: t('orders'), icon: 'Order.png' },
-        { id: 'store', name: t('manageStore'), icon: 'Manage Store.png' }
+        { id: 'supabaseTasks', name: t('supabaseTasks'), icon: 'Calendar.png' }
     ];
 
     return (

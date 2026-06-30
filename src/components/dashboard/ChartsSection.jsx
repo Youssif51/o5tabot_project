@@ -2,12 +2,46 @@ import React, { useState, useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
 
 export default function ChartsSection() {
-    const { t } = useContext(AppContext);
+    const { state, t } = useContext(AppContext);
 
-    // 1. Sales & Purchase Chart Data
-    const salesData = [4200, 5100, 4800, 6200, 7100, 8500];
-    const purchaseData = [3100, 4200, 3900, 5000, 4500, 6100];
-    const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    // Calculate last 6 days including today
+    const getDays = () => {
+        const list = [];
+        for (let i = 5; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            list.push(d.toISOString().substring(0, 10));
+        }
+        return list;
+    };
+    const last6Days = getDays();
+    
+    // Labels for display format (MM-DD)
+    const labels = last6Days.map(dStr => {
+        const parts = dStr.split('-');
+        return `${parts[1]}-${parts[2]}`;
+    });
+
+    // 1. Dynamic Sales & Purchase Chart Data
+    const salesData = last6Days.map(dateStr => {
+        let sum = 0;
+        (state.orders || []).forEach(ord => {
+            if (ord.date === dateStr && ord.status !== 'Cancelled' && ord.status !== 'Draft') {
+                sum += ord.totalValue;
+            }
+        });
+        return sum;
+    });
+
+    const purchaseData = last6Days.map(dateStr => {
+        let sum = 0;
+        (state.purchaseOrders || []).forEach(po => {
+            if (po.date === dateStr) {
+                sum += po.totalCost;
+            }
+        });
+        return sum;
+    });
     
     const svgWidth = 500;
     const svgHeight = 220;
@@ -18,7 +52,11 @@ export default function ChartsSection() {
     const graphHeight = svgHeight - paddingY * 2;
     
     // Sales & Purchase Bar calculations
-    const maxValBar = 10000;
+    const maxSales = Math.max(...salesData);
+    const maxPurchases = Math.max(...purchaseData);
+    const maxBar = Math.max(100, maxSales, maxPurchases);
+    const maxValBar = Math.ceil(maxBar / 100) * 100;
+
     const barWidth = 12;
     const gap = 4;
     const groupWidth = barWidth * 2 + gap;
@@ -27,10 +65,19 @@ export default function ChartsSection() {
     const [hoveredBarIdx, setHoveredBarIdx] = useState(null);
 
     // 2. Order Summary Line Chart Data
-    const orderedData = [12, 19, 15, 25, 22, 30];
-    const deliveredData = [8, 14, 11, 20, 18, 26];
+    const orderedData = last6Days.map(dateStr => {
+        return (state.orders || []).filter(ord => ord.date === dateStr && ord.status !== 'Cancelled').length;
+    });
+
+    const deliveredData = last6Days.map(dateStr => {
+        return (state.orders || []).filter(ord => ord.date === dateStr && (ord.status === 'Completed' || ord.status === 'Partially Delivered')).length;
+    });
     
-    const maxValLine = 40;
+    const maxOrdered = Math.max(...orderedData);
+    const maxDelivered = Math.max(...deliveredData);
+    const maxLine = Math.max(5, maxOrdered, maxDelivered);
+    const maxValLine = Math.ceil(maxLine / 5) * 5;
+
     const spacingX = graphWidth / (labels.length - 1);
 
     // Coordinate conversion

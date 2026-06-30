@@ -1,9 +1,13 @@
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../../context/AppContext';
+import Modal from '../common/Modal';
 
 export default function ProductInfo({ productId, onBack, onEditProduct }) {
     const { state, recordStockAdjustment, showToast, t } = useContext(AppContext);
     const [activeTab, setActiveTab] = useState('Overview');
+
+    // Barcode Printing State
+    const [printVariant, setPrintVariant] = useState(null);
 
     const product = state.products.find(p => p.id === productId);
     const currency = state.storeSettings.currency || '$';
@@ -83,6 +87,10 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
         showToast("Product sheet downloaded.");
     };
 
+    const handleTriggerPrint = () => {
+        window.print();
+    };
+
     return (
         <div>
             {/* Header section with actions */}
@@ -160,13 +168,48 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                     <span style={{ color: '#fff' }}>{product.category}</span>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr' }}>
-                                    <span style={{ color: 'var(--text-secondary)' }}>{t('expiryDate')}</span>
-                                    <span style={{ color: '#fff', fontWeight: 600 }}>{expiryDateStr}</span>
+                                    <span style={{ color: 'var(--text-secondary)' }}>{t('createdDate')}</span>
+                                    <span style={{ color: '#fff', fontWeight: 600 }}>{product.createdDate || "2026-06-30"}</span>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr' }}>
                                     <span style={{ color: 'var(--text-secondary)' }}>{t('thresholdValue')}</span>
                                     <span style={{ color: '#fff' }}>{thresholdValue} {t('packets')}</span>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* Variants Specifications Card */}
+                        <div className="glass-card" style={{ padding: '24px', overflow: 'hidden' }}>
+                            <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '18px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
+                                {t('variants')}
+                            </h3>
+                            <div className="table-wrapper">
+                                <table className="custom-table" style={{ fontSize: '12px' }}>
+                                    <thead>
+                                        <tr>
+                                            <th>{t('optionName')}</th>
+                                            <th>{t('buyingPrice')}</th>
+                                            <th>{t('price')}</th>
+                                            <th>{t('margin')}</th>
+                                            <th>{t('stock')}</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {product.variants.map(v => {
+                                            const vQty = (v.stock?.Sulur || 0);
+                                            const profitMargin = v.retailPrice > 0 ? ((v.retailPrice - v.wholesalePrice) / v.retailPrice * 100).toFixed(1) : 0;
+                                            return (
+                                                <tr key={v.sku}>
+                                                    <td style={{ fontWeight: 600 }}>{v.name || 'Standard Option'}</td>
+                                                    <td>{currency}{v.wholesalePrice.toFixed(2)}</td>
+                                                    <td style={{ color: 'var(--gold-primary)', fontWeight: 600 }}>{currency}{v.retailPrice.toFixed(2)}</td>
+                                                    <td><span className="badge badge-success">{profitMargin}%</span></td>
+                                                    <td>{vQty} {t('packets')}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
 
@@ -187,50 +230,30 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                             </div>
                         </div>
 
-                        {/* Stock Locations Table */}
-                        <div className="glass-card" style={{ padding: '24px', overflow: 'hidden' }}>
-                            <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '18px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
-                                {t('stockLocations')}
-                            </h3>
-                            <div className="table-wrapper">
-                                <table className="custom-table" style={{ fontSize: '12px' }}>
-                                    <thead>
-                                        <tr>
-                                            <th>{t('storeName')}</th>
-                                            <th style={{ textAlign: 'right' }}>{t('quantityInHand')}</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <tr>
-                                            <td>{t('inSulur')}</td>
-                                            <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--gold-primary)' }}>{sulurStock} {t('packets')}</td>
-                                        </tr>
-                                        <tr>
-                                            <td>{t('inSinganallur')}</td>
-                                            <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--gold-primary)' }}>{singanallurStock} {t('packets')}</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+
 
                     </div>
 
                     {/* Right Panel */}
                     <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                         
-                        {/* Dotted Border Product Thumbnail placeholder */}
+                        {/* Product Thumbnail image or placeholder */}
                         <div style={{ 
                             width: '100%', 
                             height: '140px', 
-                            border: '2px dashed rgba(255, 255, 255, 0.12)', 
+                            border: product.image ? 'none' : '2px dashed rgba(255, 255, 255, 0.12)', 
                             borderRadius: '8px',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            background: 'rgba(255,255,255,0.01)'
+                            background: 'rgba(255,255,255,0.01)',
+                            overflow: 'hidden'
                         }}>
-                            <i className="fa-regular fa-image" style={{ fontSize: '40px', color: 'var(--text-muted)' }}></i>
+                            {product.image ? (
+                                <img src={product.image} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                                <i className="fa-regular fa-image" style={{ fontSize: '40px', color: 'var(--text-muted)' }}></i>
+                            )}
                         </div>
 
                         {/* Right Summary metrics */}
@@ -255,6 +278,18 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                 <span style={{ color: 'var(--text-secondary)' }}>Burn Rate</span>
                                 <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{((product.totalConsumed || 0) / 30).toFixed(1)} / day</span>
                             </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                                <span style={{ color: 'var(--text-secondary)' }}>{t('markup')}</span>
+                                <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>
+                                    {mainRetailPrice > 0 ? ((mainRetailPrice - mainWholesalePrice) / mainWholesalePrice * 100).toFixed(0) : 0}%
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                                <span style={{ color: 'var(--text-secondary)' }}>{t('profitMargin')}</span>
+                                <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>
+                                    {mainRetailPrice > 0 ? ((mainRetailPrice - mainWholesalePrice) / mainRetailPrice * 100).toFixed(1) : 0}%
+                                </span>
+                            </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px' }}>
                                 <span style={{ color: 'var(--text-secondary)' }}>{t('thresholdValue')}</span>
                                 <span style={{ fontWeight: 600, color: 'var(--color-danger)' }}>{thresholdValue}</span>
@@ -267,21 +302,19 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
             ) : activeTab === 'Purchases' ? (
                 <div className="glass-card" style={{ padding: '24px' }}>
                     <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '20px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
-                        FIFO Batch Expiry queue
+                        FIFO Inventory Queue
                     </h3>
                     {(!product.batches || product.batches.length === 0) ? (
                         <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>No active FIFO batches logged.</p>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            {[...(product.batches || [])].sort((a,b) => new Date(a.expiryDate) - new Date(b.expiryDate)).map((batch, index) => {
-                                const daysLeft = Math.ceil((new Date(batch.expiryDate) - new Date("2026-06-30")) / (1000 * 60 * 60 * 24));
-                                const isUrgent = daysLeft <= 90;
+                            {[...(product.batches || [])].map((batch, index) => {
                                 return (
                                     <div key={batch.batchId} style={{ 
                                         padding: '16px', 
                                         background: 'rgba(255,255,255,0.02)', 
                                         borderRadius: '8px', 
-                                        border: isUrgent ? '1px solid rgba(255, 75, 75, 0.3)' : '1px solid var(--glass-border)',
+                                        border: '1px solid var(--glass-border)',
                                         display: 'flex', 
                                         justifyContent: 'space-between', 
                                         alignItems: 'center' 
@@ -289,19 +322,16 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                         <div>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                 <strong style={{ color: '#fff', fontSize: '14px' }}>{batch.batchId}</strong>
-                                                <span className={`badge ${index === 0 ? 'badge-low' : 'badge-in'}`} style={{ fontSize: '10px', padding: '2px 8px' }}>
+                                                <span className="badge badge-in" style={{ fontSize: '10px', padding: '2px 8px' }}>
                                                     {index === 0 ? '🚨 Next to Dispatch (FIFO #1)' : `📦 Batch FIFO #${index + 1}`}
                                                 </span>
                                             </div>
                                             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px' }}>
-                                                Warehouse: <span style={{ color: '#fff' }}>{batch.warehouse}</span> | SKU: <span style={{ color: '#fff' }}>{batch.variantSku}</span>
+                                                Warehouse: <span style={{ color: '#fff' }}>{t('inSulur')}</span>
                                             </div>
                                         </div>
                                         <div style={{ textAlign: 'right' }}>
-                                            <div style={{ color: isUrgent ? 'var(--color-danger)' : 'var(--color-success)', fontWeight: 600, fontSize: '13px' }}>
-                                                Expires: {batch.expiryDate} {daysLeft > 0 ? `(${daysLeft} days left)` : '(Expired)'}
-                                            </div>
-                                            <div style={{ fontSize: '14px', color: 'var(--gold-primary)', fontWeight: 700, marginTop: '4px' }}>
+                                            <div style={{ fontSize: '14px', color: 'var(--gold-primary)', fontWeight: 700 }}>
                                                 {batch.quantity} {t('packets')} remaining
                                             </div>
                                         </div>
@@ -338,17 +368,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                     ))}
                                 </select>
                             </div>
-                            <div className="form-group" style={{ marginTop: '12px' }}>
-                                <label className="form-label">Warehouse location</label>
-                                <select 
-                                    className="form-select"
-                                    value={adjWarehouse}
-                                    onChange={(e) => setAdjWarehouse(e.target.value)}
-                                >
-                                    <option value="Sulur">Sulur Branch</option>
-                                    <option value="Singanallur">Singanallur Branch</option>
-                                </select>
-                            </div>
+
                             <div className="form-group" style={{ marginTop: '12px' }}>
                                 <label className="form-label">Adjustment Type</label>
                                 <div style={{ display: 'flex', gap: '16px', marginTop: '6px' }}>
@@ -413,7 +433,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                         {product.adjustments.map((adj, i) => (
                                             <tr key={i}>
                                                 <td>{adj.date}</td>
-                                                <td>{adj.warehouse}</td>
+                                                <td>{t('inSulur')}</td>
                                                 <td style={{ color: adj.type === 'increase' ? 'var(--color-success)' : 'var(--color-danger)', fontWeight: 600 }}>
                                                     {adj.type === 'increase' ? '+ Increase' : '- Decrease'}
                                                 </td>
@@ -460,7 +480,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                     <td style={{ fontWeight: 600, color: '#fff' }}>{order.id}</td>
                                                     <td>{order.client}</td>
                                                     <td>{order.date}</td>
-                                                    <td>{order.warehouse}</td>
+                                                    <td>{t('inSulur')}</td>
                                                     <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--gold-primary)' }}>
                                                         {itemSold ? itemSold.quantity : 0}
                                                     </td>
@@ -484,6 +504,110 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                 </div>
             )}
 
+            {/* Printable Barcode Label Modal */}
+            {printVariant && (
+                <Modal 
+                    isOpen={printVariant !== null} 
+                    onClose={() => setPrintVariant(null)} 
+                    title={t('printLabel')}
+                >
+                    <div style={{ padding: '8px' }}>
+                        {/* CSS Hack to inject print stylesheet dynamically */}
+                        <style dangerouslySetInnerHTML={{__html: `
+                            @media print {
+                                body * {
+                                    visibility: hidden !important;
+                                }
+                                #printable-barcode-sticker, #printable-barcode-sticker * {
+                                    visibility: visible !important;
+                                }
+                                #printable-barcode-sticker {
+                                    position: absolute !important;
+                                    left: 0 !important;
+                                    top: 0 !important;
+                                    width: 100% !important;
+                                    height: 100% !important;
+                                    background: white !important;
+                                    color: black !important;
+                                    padding: 24px !important;
+                                    box-shadow: none !important;
+                                    border: none !important;
+                                    border-radius: 0 !important;
+                                    display: flex !important;
+                                    flex-direction: column !important;
+                                    align-items: center !important;
+                                    justify-content: center !important;
+                                }
+                            }
+                        `}} />
+
+                        {/* Visual Sticker Container */}
+                        <div 
+                            id="printable-barcode-sticker" 
+                            style={{ 
+                                background: 'rgba(255,255,255,0.02)', 
+                                border: '1px solid var(--glass-border)', 
+                                borderRadius: '8px', 
+                                padding: '24px', 
+                                textAlign: 'center', 
+                                maxWidth: '280px', 
+                                margin: '0 auto', 
+                                boxShadow: '0 8px 32px rgba(0,0,0,0.2)' 
+                            }}
+                        >
+                            <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--gold-primary)', letterSpacing: '0.5px', marginBottom: '2px' }}>
+                                {state.storeSettings.name || 'o5taboad store'}
+                            </div>
+                            <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {product.name}
+                            </div>
+                            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '14px', fontFamily: 'monospace' }}>
+                                SKU: {printVariant.sku}
+                            </div>
+
+                            {/* CSS Barcode Lines Simulator */}
+                            <div style={{ 
+                                display: 'flex', 
+                                justifyContent: 'center', 
+                                alignItems: 'stretch', 
+                                height: '55px', 
+                                margin: '12px 0', 
+                                background: '#ffffff', 
+                                padding: '8px 14px', 
+                                borderRadius: '4px' 
+                            }}>
+                                {[3,1,2,1,4,1,2,3,1,3,1,2,4,2,1,3,1,2,1,3,2,1,4].map((width, index) => (
+                                    <div 
+                                        key={index} 
+                                        style={{ 
+                                            width: `${width}px`, 
+                                            background: index % 2 === 0 ? '#000000' : 'transparent',
+                                            marginRight: '1px' 
+                                        }} 
+                                    />
+                                ))}
+                            </div>
+
+                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)', fontFamily: 'monospace', letterSpacing: '2px', marginBottom: '16px' }}>
+                                {printVariant.barcode || '100001'}
+                            </div>
+
+                            <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--gold-primary)' }}>
+                                {currency}{printVariant.retailPrice.toLocaleString(undefined, {minimumFractionDigits:2})}
+                            </div>
+                        </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px' }}>
+                            <button type="button" className="btn btn-secondary" onClick={() => setPrintVariant(null)}>
+                                {t('discard')}
+                            </button>
+                            <button type="button" className="btn btn-primary" onClick={handleTriggerPrint}>
+                                <i className="fa-solid fa-print"></i> Print
+                            </button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </div>
     );
 }

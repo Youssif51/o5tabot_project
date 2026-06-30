@@ -150,33 +150,19 @@ export default function RecordOrderModal({ isOpen, onClose }) {
                         required 
                     />
                 </div>
-                <div className="form-row">
-                    <div className="form-group">
-                        <label className="form-label">{t('fulfillmentWarehouse')}</label>
-                        <select 
-                            className="form-select" 
-                            value={warehouse}
-                            onChange={(e) => setWarehouse(e.target.value)}
-                            required
-                        >
-                            <option value="Sulur">{t('inSulur')}</option>
-                            <option value="Singanallur">{t('inSinganallur')}</option>
-                        </select>
-                    </div>
-                    <div className="form-group">
-                        <label className="form-label">{t('orderStatus')}</label>
-                        <select 
-                            className="form-select" 
-                            value={status}
-                            onChange={(e) => setStatus(e.target.value)}
-                            required
-                        >
-                            <option value="Draft">{t('draft')}</option>
-                            <option value="Paid">{t('paid')}</option>
-                            <option value="Partially Delivered">{t('partiallydelivered')}</option>
-                            <option value="Completed">{t('completed')}</option>
-                        </select>
-                    </div>
+                <div className="form-group">
+                    <label className="form-label">{t('orderStatus')}</label>
+                    <select 
+                        className="form-select" 
+                        value={status}
+                        onChange={(e) => setStatus(e.target.value)}
+                        required
+                    >
+                        <option value="Draft">{t('draft')}</option>
+                        <option value="Paid">{t('paid')}</option>
+                        <option value="Partially Delivered">{t('partiallydelivered')}</option>
+                        <option value="Completed">{t('completed')}</option>
+                    </select>
                 </div>
 
                 {/* Items rows list */}

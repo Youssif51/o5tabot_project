@@ -2,1460 +2,27 @@ import React, { createContext, useState, useEffect } from 'react';
 
 export const AppContext = createContext();
 
-const defaultSuppliers = [
-    {
-        id: "SUP-01",
-        name: "Golden Thread Apparel Co.",
-        email: "supply@goldenthread.com",
-        phone: "+91 94421 87654",
-        paid: 4500,
-        debt: 1200,
-        suppliedVariants: ["MJ-CTC-35", "MJ-CTC-DISP-1M", "MJ-CTC-2M"]
-    },
-    {
-        id: "SUP-02",
-        name: "NovaTech Global Components",
-        email: "logistics@novatech.com",
-        phone: "+1 (555) 321-9870",
-        paid: 12000,
-        debt: 0,
-        suppliedVariants: ["ESG-2X1", "BS-5PRO"]
-    },
-    {
-        id: "SUP-03",
-        name: "Highlands Coffee Plantation",
-        email: "orders@highlandscoffee.co",
-        phone: "+84 24 3974 4283",
-        paid: 850,
-        debt: 350,
-        suppliedVariants: ["L80-PRO", "BS-6PRO"]
-    }
-];
+const defaultSuppliers = [];
 
-const defaultProducts = [
-    {
-        "id": "PROD-001",
-        "name": "Majentik Type C to 3.5",
-        "category": "Cables & Adapters",
-        "description": "Premium Type C to 3.5mm audio jack adapter",
-        "unit": "Piece",
-        "initialStock": 17,
-        "totalAdded": 0,
-        "totalConsumed": 7,
-        "variants": [
-            {
-                "sku": "MJ-CTC-35",
-                "name": "Standard Option",
-                "barcode": "100001",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 5,
-                    "Singanallur": 5
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-001-S",
-                "variantSku": "MJ-CTC-35",
-                "expiryDate": "2027-12-31",
-                "quantity": 5,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-001-SN",
-                "variantSku": "MJ-CTC-35",
-                "expiryDate": "2027-12-31",
-                "quantity": 5,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-002",
-        "name": "Majentik Type C display 1m",
-        "category": "Cables & Adapters",
-        "description": "Type C charging and data cable with display status 1 meter",
-        "unit": "Piece",
-        "initialStock": 23,
-        "totalAdded": 1,
-        "totalConsumed": 5,
-        "variants": [
-            {
-                "sku": "MJ-CTC-DISP-1M",
-                "name": "Standard Option",
-                "barcode": "100002",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 10,
-                    "Singanallur": 9
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-002-S",
-                "variantSku": "MJ-CTC-DISP-1M",
-                "expiryDate": "2027-12-31",
-                "quantity": 10,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-002-SN",
-                "variantSku": "MJ-CTC-DISP-1M",
-                "expiryDate": "2027-12-31",
-                "quantity": 9,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-003",
-        "name": "Majentik Type C 2m",
-        "category": "Cables & Adapters",
-        "description": "Long Type C charging and data cable 2 meters",
-        "unit": "Piece",
-        "initialStock": 7,
-        "totalAdded": 0,
-        "totalConsumed": 4,
-        "variants": [
-            {
-                "sku": "MJ-CTC-2M",
-                "name": "Standard Option",
-                "barcode": "100003",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 2,
-                    "Singanallur": 1
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-003-S",
-                "variantSku": "MJ-CTC-2M",
-                "expiryDate": "2027-12-31",
-                "quantity": 2,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-003-SN",
-                "variantSku": "MJ-CTC-2M",
-                "expiryDate": "2027-12-31",
-                "quantity": 1,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-004",
-        "name": "Essager 2x1",
-        "category": "Chargers",
-        "description": "Essager multi-port charger adapter",
-        "unit": "Piece",
-        "initialStock": 11,
-        "totalAdded": 102,
-        "totalConsumed": 18,
-        "variants": [
-            {
-                "sku": "ESG-2X1",
-                "name": "Standard Option",
-                "barcode": "100004",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 50,
-                    "Singanallur": 45
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-004-S",
-                "variantSku": "ESG-2X1",
-                "expiryDate": "2027-12-31",
-                "quantity": 50,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-004-SN",
-                "variantSku": "ESG-2X1",
-                "expiryDate": "2027-12-31",
-                "quantity": 45,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-005",
-        "name": "Black Shark 5 Pro",
-        "category": "Gaming Phones",
-        "description": "High-end gaming smartphone by Black Shark",
-        "unit": "Piece",
-        "initialStock": 46,
-        "totalAdded": 0,
-        "totalConsumed": 18,
-        "variants": [
-            {
-                "sku": "BS-5PRO",
-                "name": "Standard Option",
-                "barcode": "100005",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 14,
-                    "Singanallur": 14
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-005-S",
-                "variantSku": "BS-5PRO",
-                "expiryDate": "2027-12-31",
-                "quantity": 14,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-005-SN",
-                "variantSku": "BS-5PRO",
-                "expiryDate": "2027-12-31",
-                "quantity": 14,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-006",
-        "name": "L80 Pro",
-        "category": "Gaming Accessories",
-        "description": "Gaming peripheral or accessory Pro edition",
-        "unit": "Piece",
-        "initialStock": 8,
-        "totalAdded": 1,
-        "totalConsumed": 9,
-        "variants": [
-            {
-                "sku": "L80-PRO",
-                "name": "Standard Option",
-                "barcode": "100006",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 0,
-                "stock": {
-                    "Sulur": 0,
-                    "Singanallur": 0
-                }
-            }
-        ],
-        "batches": [],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-007",
-        "name": "Black Shark 6 Pro",
-        "category": "Gaming Phones",
-        "description": "Next-gen premium gaming smartphone",
-        "unit": "Piece",
-        "initialStock": 12,
-        "totalAdded": 2,
-        "totalConsumed": 14,
-        "variants": [
-            {
-                "sku": "BS-6PRO",
-                "name": "Standard Option",
-                "barcode": "100007",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 0,
-                "stock": {
-                    "Sulur": 0,
-                    "Singanallur": 0
-                }
-            }
-        ],
-        "batches": [],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-008",
-        "name": "PIVA B3",
-        "category": "Gaming Audio",
-        "description": "PIVA gaming audio headset or speaker B3",
-        "unit": "Piece",
-        "initialStock": 35,
-        "totalAdded": 60,
-        "totalConsumed": 75,
-        "variants": [
-            {
-                "sku": "PIVA-B3",
-                "name": "Standard Option",
-                "barcode": "100008",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 30,
-                    "Singanallur": 25
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-008-S",
-                "variantSku": "PIVA-B3",
-                "expiryDate": "2027-12-31",
-                "quantity": 30,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-008-SN",
-                "variantSku": "PIVA-B3",
-                "expiryDate": "2027-12-31",
-                "quantity": 25,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-009",
-        "name": "Silicone ipad",
-        "category": "Cases & Protection",
-        "description": "Protective silicone case for iPad",
-        "unit": "Piece",
-        "initialStock": 21,
-        "totalAdded": 0,
-        "totalConsumed": 20,
-        "variants": [
-            {
-                "sku": "SIL-IPAD",
-                "name": "Standard Option",
-                "barcode": "100009",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 1,
-                    "Singanallur": 0
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-009-S",
-                "variantSku": "SIL-IPAD",
-                "expiryDate": "2027-12-31",
-                "quantity": 1,
-                "warehouse": "Sulur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-010",
-        "name": "Sarafox V10",
-        "category": "Gaming Sleeves",
-        "description": "Sarafox mobile gaming finger sleeves V10",
-        "unit": "Piece",
-        "initialStock": 240,
-        "totalAdded": 0,
-        "totalConsumed": 121,
-        "variants": [
-            {
-                "sku": "SFX-V10",
-                "name": "Standard Option",
-                "barcode": "100010",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 60,
-                    "Singanallur": 59
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-010-S",
-                "variantSku": "SFX-V10",
-                "expiryDate": "2027-12-31",
-                "quantity": 60,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-010-SN",
-                "variantSku": "SFX-V10",
-                "expiryDate": "2027-12-31",
-                "quantity": 59,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-011",
-        "name": "Sarafox V9",
-        "category": "Gaming Sleeves",
-        "description": "Sarafox mobile gaming finger sleeves V9",
-        "unit": "Piece",
-        "initialStock": 671,
-        "totalAdded": 3,
-        "totalConsumed": 223,
-        "variants": [
-            {
-                "sku": "SFX-V9",
-                "name": "Standard Option",
-                "barcode": "100011",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 226,
-                    "Singanallur": 225
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-011-S",
-                "variantSku": "SFX-V9",
-                "expiryDate": "2027-12-31",
-                "quantity": 226,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-011-SN",
-                "variantSku": "SFX-V9",
-                "expiryDate": "2027-12-31",
-                "quantity": 225,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-012",
-        "name": "Memo C1",
-        "category": "Phone Coolers",
-        "description": "Memo mobile phone cooling fan C1",
-        "unit": "Piece",
-        "initialStock": 315,
-        "totalAdded": 0,
-        "totalConsumed": 282,
-        "variants": [
-            {
-                "sku": "MEMO-C1",
-                "name": "Standard Option",
-                "barcode": "100012",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 17,
-                    "Singanallur": 16
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-012-S",
-                "variantSku": "MEMO-C1",
-                "expiryDate": "2027-12-31",
-                "quantity": 17,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-012-SN",
-                "variantSku": "MEMO-C1",
-                "expiryDate": "2027-12-31",
-                "quantity": 16,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-013",
-        "name": "Covo 30w",
-        "category": "Chargers",
-        "description": "Covo 30W fast charging wall adapter",
-        "unit": "Piece",
-        "initialStock": 60,
-        "totalAdded": 1,
-        "totalConsumed": 47,
-        "variants": [
-            {
-                "sku": "COVO-30W",
-                "name": "Standard Option",
-                "barcode": "100013",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 7,
-                    "Singanallur": 7
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-013-S",
-                "variantSku": "COVO-30W",
-                "expiryDate": "2027-12-31",
-                "quantity": 7,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-013-SN",
-                "variantSku": "COVO-30W",
-                "expiryDate": "2027-12-31",
-                "quantity": 7,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-014",
-        "name": "Heater Magnetic",
-        "category": "Gaming Accessories",
-        "description": "Magnetic heater or cooler component for gaming devices",
-        "unit": "Piece",
-        "initialStock": 26,
-        "totalAdded": 60,
-        "totalConsumed": 75,
-        "variants": [
-            {
-                "sku": "HTR-MAG",
-                "name": "Standard Option",
-                "barcode": "100014",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 6,
-                    "Singanallur": 5
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-014-S",
-                "variantSku": "HTR-MAG",
-                "expiryDate": "2027-12-31",
-                "quantity": 6,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-014-SN",
-                "variantSku": "HTR-MAG",
-                "expiryDate": "2027-12-31",
-                "quantity": 5,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-015",
-        "name": "Heater Sticker",
-        "category": "Gaming Accessories",
-        "description": "Thermal conductive sticker component",
-        "unit": "Piece",
-        "initialStock": 3,
-        "totalAdded": 0,
-        "totalConsumed": 3,
-        "variants": [
-            {
-                "sku": "HTR-STK",
-                "name": "Standard Option",
-                "barcode": "100015",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 0,
-                "stock": {
-                    "Sulur": 0,
-                    "Singanallur": 0
-                }
-            }
-        ],
-        "batches": [],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-016",
-        "name": "PIVA GS3 Pro",
-        "category": "Gaming Audio",
-        "description": "PIVA sound card or gaming audio interface GS3 Pro",
-        "unit": "Piece",
-        "initialStock": 41,
-        "totalAdded": 2,
-        "totalConsumed": 37,
-        "variants": [
-            {
-                "sku": "PIVA-GS3P",
-                "name": "Standard Option",
-                "barcode": "100016",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 3,
-                    "Singanallur": 3
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-016-S",
-                "variantSku": "PIVA-GS3P",
-                "expiryDate": "2027-12-31",
-                "quantity": 3,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-016-SN",
-                "variantSku": "PIVA-GS3P",
-                "expiryDate": "2027-12-31",
-                "quantity": 3,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-017",
-        "name": "Covo 45w",
-        "category": "Chargers",
-        "description": "Covo 45W super fast charging wall adapter",
-        "unit": "Piece",
-        "initialStock": 16,
-        "totalAdded": 1,
-        "totalConsumed": 7,
-        "variants": [
-            {
-                "sku": "COVO-45W",
-                "name": "Standard Option",
-                "barcode": "100017",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 5,
-                    "Singanallur": 5
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-017-S",
-                "variantSku": "COVO-45W",
-                "expiryDate": "2027-12-31",
-                "quantity": 5,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-017-SN",
-                "variantSku": "COVO-45W",
-                "expiryDate": "2027-12-31",
-                "quantity": 5,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-018",
-        "name": "Extension normal",
-        "category": "Cables & Adapters",
-        "description": "Standard power or data extension cable",
-        "unit": "Piece",
-        "initialStock": 21,
-        "totalAdded": 0,
-        "totalConsumed": 5,
-        "variants": [
-            {
-                "sku": "EXT-NORM",
-                "name": "Standard Option",
-                "barcode": "100018",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 8,
-                    "Singanallur": 8
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-018-S",
-                "variantSku": "EXT-NORM",
-                "expiryDate": "2027-12-31",
-                "quantity": 8,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-018-SN",
-                "variantSku": "EXT-NORM",
-                "expiryDate": "2027-12-31",
-                "quantity": 8,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-019",
-        "name": "Extension L",
-        "category": "Cables & Adapters",
-        "description": "Right-angle L-shaped extension cable",
-        "unit": "Piece",
-        "initialStock": 39,
-        "totalAdded": 2,
-        "totalConsumed": 1,
-        "variants": [
-            {
-                "sku": "EXT-L",
-                "name": "Standard Option",
-                "barcode": "100019",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 20,
-                    "Singanallur": 20
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-019-S",
-                "variantSku": "EXT-L",
-                "expiryDate": "2027-12-31",
-                "quantity": 20,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-019-SN",
-                "variantSku": "EXT-L",
-                "expiryDate": "2027-12-31",
-                "quantity": 20,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-020",
-        "name": "PIVA S6 Pro",
-        "category": "Gaming Audio",
-        "description": "Premium sound dynamic hub S6 Pro",
-        "unit": "Piece",
-        "initialStock": 50,
-        "totalAdded": 0,
-        "totalConsumed": 15,
-        "variants": [
-            {
-                "sku": "PIVA-S6P",
-                "name": "Standard Option",
-                "barcode": "100020",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 18,
-                    "Singanallur": 17
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-020-S",
-                "variantSku": "PIVA-S6P",
-                "expiryDate": "2027-12-31",
-                "quantity": 18,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-020-SN",
-                "variantSku": "PIVA-S6P",
-                "expiryDate": "2027-12-31",
-                "quantity": 17,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-021",
-        "name": "Sarafox X9 Pro",
-        "category": "Gaming Sleeves",
-        "description": "Premium cooling fibers finger sleeves X9 Pro",
-        "unit": "Piece",
-        "initialStock": 50,
-        "totalAdded": 2,
-        "totalConsumed": 22,
-        "variants": [
-            {
-                "sku": "SFX-X9P",
-                "name": "Standard Option",
-                "barcode": "100021",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 15,
-                    "Singanallur": 15
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-021-S",
-                "variantSku": "SFX-X9P",
-                "expiryDate": "2027-12-31",
-                "quantity": 15,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-021-SN",
-                "variantSku": "SFX-X9P",
-                "expiryDate": "2027-12-31",
-                "quantity": 15,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-022",
-        "name": "Smonama TH19 Pro",
-        "category": "Gaming Accessories",
-        "description": "Smonama ergonomic controller grip/cooler TH19 Pro",
-        "unit": "Piece",
-        "initialStock": 30,
-        "totalAdded": 70,
-        "totalConsumed": 62,
-        "variants": [
-            {
-                "sku": "SMN-TH19P",
-                "name": "Standard Option",
-                "barcode": "100022",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 19,
-                    "Singanallur": 19
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-022-S",
-                "variantSku": "SMN-TH19P",
-                "expiryDate": "2027-12-31",
-                "quantity": 19,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-022-SN",
-                "variantSku": "SMN-TH19P",
-                "expiryDate": "2027-12-31",
-                "quantity": 19,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-023",
-        "name": "لزقه ايباد",
-        "category": "Cases & Protection",
-        "description": "شاشة حماية زجاجية مخصصة لأجهزة الآيباد",
-        "unit": "Piece",
-        "initialStock": 25,
-        "totalAdded": 0,
-        "totalConsumed": 7,
-        "variants": [
-            {
-                "sku": "SCRN-IPAD",
-                "name": "Standard Option",
-                "barcode": "100023",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 9,
-                    "Singanallur": 9
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-023-S",
-                "variantSku": "SCRN-IPAD",
-                "expiryDate": "2027-12-31",
-                "quantity": 9,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-023-SN",
-                "variantSku": "SCRN-IPAD",
-                "expiryDate": "2027-12-31",
-                "quantity": 9,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-024",
-        "name": "لزقه موبيل",
-        "category": "Cases & Protection",
-        "description": "شاشة حماية نانو متكاملة للهواتف الذكية",
-        "unit": "Piece",
-        "initialStock": 87,
-        "totalAdded": 0,
-        "totalConsumed": 12,
-        "variants": [
-            {
-                "sku": "SCRN-MOB",
-                "name": "Standard Option",
-                "barcode": "100024",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 38,
-                    "Singanallur": 37
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-024-S",
-                "variantSku": "SCRN-MOB",
-                "expiryDate": "2027-12-31",
-                "quantity": 38,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-024-SN",
-                "variantSku": "SCRN-MOB",
-                "expiryDate": "2027-12-31",
-                "quantity": 37,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-025",
-        "name": "HyperX Cloud Alpha",
-        "category": "Gaming Audio",
-        "description": "HyperX Cloud Alpha pro gaming headset",
-        "unit": "Piece",
-        "initialStock": 1,
-        "totalAdded": 0,
-        "totalConsumed": 1,
-        "variants": [
-            {
-                "sku": "HX-CLD-ALPHA",
-                "name": "Standard Option",
-                "barcode": "100025",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 0,
-                "stock": {
-                    "Sulur": 0,
-                    "Singanallur": 0
-                }
-            }
-        ],
-        "batches": [],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-026",
-        "name": "HyperX Cloud 2",
-        "category": "Gaming Audio",
-        "description": "Legendary HyperX Cloud II 7.1 surround gaming headset",
-        "unit": "Piece",
-        "initialStock": 1,
-        "totalAdded": 0,
-        "totalConsumed": 1,
-        "variants": [
-            {
-                "sku": "HX-CLD-2",
-                "name": "Standard Option",
-                "barcode": "100026",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 0,
-                "stock": {
-                    "Sulur": 0,
-                    "Singanallur": 0
-                }
-            }
-        ],
-        "batches": [],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-027",
-        "name": "Memo cx08 pro",
-        "category": "Phone Coolers",
-        "description": "Magnetic semiconductor mobile phone radiator CX08 Pro",
-        "unit": "Piece",
-        "initialStock": 50,
-        "totalAdded": 48,
-        "totalConsumed": 80,
-        "variants": [
-            {
-                "sku": "MEMO-CX08P",
-                "name": "Standard Option",
-                "barcode": "100027",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 9,
-                    "Singanallur": 9
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-027-S",
-                "variantSku": "MEMO-CX08P",
-                "expiryDate": "2027-12-31",
-                "quantity": 9,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-027-SN",
-                "variantSku": "MEMO-CX08P",
-                "expiryDate": "2027-12-31",
-                "quantity": 9,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-028",
-        "name": "Dl22 pack",
-        "category": "Gaming Accessories",
-        "description": "Specialized triggers gaming value pack bundle",
-        "unit": "Pack",
-        "initialStock": 1,
-        "totalAdded": 0,
-        "totalConsumed": 1,
-        "variants": [
-            {
-                "sku": "DL22-PACK",
-                "name": "Standard Option",
-                "barcode": "100028",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 0,
-                "stock": {
-                    "Sulur": 0,
-                    "Singanallur": 0
-                }
-            }
-        ],
-        "batches": [],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-029",
-        "name": "trigger sarafox",
-        "category": "Gaming Accessories",
-        "description": "Mechanical physical triggers by Sarafox for mobile",
-        "unit": "Piece",
-        "initialStock": 1,
-        "totalAdded": 0,
-        "totalConsumed": 1,
-        "variants": [
-            {
-                "sku": "SFX-TRIG",
-                "name": "Standard Option",
-                "barcode": "100029",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 0,
-                "stock": {
-                    "Sulur": 0,
-                    "Singanallur": 0
-                }
-            }
-        ],
-        "batches": [],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-030",
-        "name": "مشبك اسود",
-        "category": "Gaming Accessories",
-        "description": "مشبك تثبيت أسود اللون لحامل الهواتف",
-        "unit": "Piece",
-        "initialStock": 10,
-        "totalAdded": 0,
-        "totalConsumed": 0,
-        "variants": [
-            {
-                "sku": "CLIP-BLK",
-                "name": "Standard Option",
-                "barcode": "100030",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 5,
-                    "Singanallur": 5
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-030-S",
-                "variantSku": "CLIP-BLK",
-                "expiryDate": "2027-12-31",
-                "quantity": 5,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-030-SN",
-                "variantSku": "CLIP-BLK",
-                "expiryDate": "2027-12-31",
-                "quantity": 5,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-031",
-        "name": "مشبك ابيض",
-        "category": "Gaming Accessories",
-        "description": "مشبك تثبيت أبيض اللون لحامل الهواتف والأجهزة",
-        "unit": "Piece",
-        "initialStock": 12,
-        "totalAdded": 0,
-        "totalConsumed": 2,
-        "variants": [
-            {
-                "sku": "CLIP-WHT",
-                "name": "Standard Option",
-                "barcode": "100031",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 5,
-                    "Singanallur": 5
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-031-S",
-                "variantSku": "CLIP-WHT",
-                "expiryDate": "2027-12-31",
-                "quantity": 5,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-031-SN",
-                "variantSku": "CLIP-WHT",
-                "expiryDate": "2027-12-31",
-                "quantity": 5,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-032",
-        "name": "GK Kuenten",
-        "category": "Gaming Accessories",
-        "description": "GK Kuenten premium device accessories",
-        "unit": "Piece",
-        "initialStock": 24,
-        "totalAdded": 0,
-        "totalConsumed": 13,
-        "variants": [
-            {
-                "sku": "GK-KTN",
-                "name": "Standard Option",
-                "barcode": "100032",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 1,
-                "stock": {
-                    "Sulur": 6,
-                    "Singanallur": 5
-                }
-            }
-        ],
-        "batches": [
-            {
-                "batchId": "B-PROD-032-S",
-                "variantSku": "GK-KTN",
-                "expiryDate": "2027-12-31",
-                "quantity": 6,
-                "warehouse": "Sulur"
-            },
-            {
-                "batchId": "B-PROD-032-SN",
-                "variantSku": "GK-KTN",
-                "expiryDate": "2027-12-31",
-                "quantity": 5,
-                "warehouse": "Singanallur"
-            }
-        ],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-033",
-        "name": "PIVA GS10",
-        "category": "Gaming Audio",
-        "description": "PIVA professional sound enhancement system GS10",
-        "unit": "Piece",
-        "initialStock": 1,
-        "totalAdded": 0,
-        "totalConsumed": 1,
-        "variants": [
-            {
-                "sku": "PIVA-GS10",
-                "name": "Standard Option",
-                "barcode": "100033",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 0,
-                "stock": {
-                    "Sulur": 0,
-                    "Singanallur": 0
-                }
-            }
-        ],
-        "batches": [],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    },
-    {
-        "id": "PROD-034",
-        "name": "PIVA GS20",
-        "category": "Gaming Audio",
-        "description": "PIVA high-end professional sound card interface GS20",
-        "unit": "Piece",
-        "initialStock": 1,
-        "totalAdded": 0,
-        "totalConsumed": 1,
-        "variants": [
-            {
-                "sku": "PIVA-GS20",
-                "name": "Standard Option",
-                "barcode": "100034",
-                "wholesalePrice": 50,
-                "retailPrice": 90,
-                "reorderLimit": 0,
-                "stock": {
-                    "Sulur": 0,
-                    "Singanallur": 0
-                }
-            }
-        ],
-        "batches": [],
-        "suppliers": [
-            "SUP-01"
-        ],
-        "adjustments": []
-    }
-];
+const defaultProducts = [];
 
-const defaultOrders = [
-    {
-        id: "ORD-9831",
-        client: "Acme Departmental Store",
-        date: "2026-06-25",
-        items: [
-            { variantSku: "MJ-CTC-35", quantity: 2, price: 90.00 },
-            { variantSku: "MJ-CTC-DISP-1M", quantity: 3, price: 90.00 }
-        ],
-        totalValue: 450.00,
-        warehouse: "Sulur",
-        status: "Completed"
-    },
-    {
-        id: "ORD-9832",
-        client: "Orion Systems Coimbatore",
-        date: "2026-06-27",
-        items: [
-            { variantSku: "ESG-2X1", quantity: 2, price: 90.00 },
-            { variantSku: "BS-5PRO", quantity: 2, price: 90.00 }
-        ],
-        totalValue: 360.00,
-        warehouse: "Singanallur",
-        status: "Partially Delivered"
-    },
-    {
-        id: "ORD-9833",
-        client: "Apex Coffee Merchants",
-        date: "2026-06-28",
-        items: [
-            { variantSku: "PIVA-B3", quantity: 5, price: 90.00 }
-        ],
-        totalValue: 450.00,
-        warehouse: "Sulur",
-        status: "Draft"
-    },
-    {
-        id: "ORD-9834",
-        client: "TechStyles Hub LLC",
-        date: "2026-06-20",
-        items: [
-            { variantSku: "SFX-V10", quantity: 4, price: 90.00 }
-        ],
-        totalValue: 360.00,
-        warehouse: "Singanallur",
-        status: "Cancelled"
-    }
-];
+const defaultOrders = [];
 
-const defaultActivities = [
-    { type: "auth", description: "sfsf logged in to the dashboard.", time: "2026-06-29 17:40" },
-    { type: "order", description: "Order ORD-9833 was generated as a Draft by Admin.", time: "2026-06-28 14:15" },
-    { type: "stock", description: "FIFO Restocked: 50 units of Majentik added to Sulur branch.", time: "2026-06-27 11:32" },
-    { type: "supplier", description: "Golden Thread outstanding liability paid in full.", time: "2026-06-26 09:44" }
-];
+const defaultStockLedger = [];
+
+const defaultActivities = [];
 
 const initialState = {
-    products: defaultProducts,
-    suppliers: defaultSuppliers,
-    orders: defaultOrders,
-    wastes: [
-        { id: "WST-001", date: "2026-06-24", variantSku: "PIVA-B3", quantity: 1, warehouse: "Sulur", cost: 50.00, reporter: "sfsf" }
-    ],
-    activities: defaultActivities,
+    products: [],
+    suppliers: [],
+    orders: [],
+    purchaseOrders: [],
+    wastes: [],
+    stockLedger: [],
+    activities: [],
     storeSettings: {
         name: "o5taboad store",
-        address: "Coimbatore, Tamil Nadu",
+        address: "Egypt",
         currency: "EGP"
     },
     currentUser: null
@@ -1464,6 +31,12 @@ const initialState = {
 export const AppProvider = ({ children }) => {
     const [state, setState] = useState(() => {
         try {
+            const resetFlag = localStorage.getItem("octabot_reset_v3");
+            if (!resetFlag) {
+                localStorage.removeItem("octabot_state");
+                localStorage.setItem("octabot_reset_v3", "true");
+                return initialState;
+            }
             const saved = localStorage.getItem("octabot_state");
             if (saved) {
                 const parsed = JSON.parse(saved);
@@ -1473,6 +46,8 @@ export const AppProvider = ({ children }) => {
                     Array.isArray(parsed.suppliers) &&
                     Array.isArray(parsed.orders) &&
                     Array.isArray(parsed.wastes) &&
+                    Array.isArray(parsed.purchaseOrders) &&
+                    Array.isArray(parsed.stockLedger) &&
                     Array.isArray(parsed.activities) &&
                     parsed.storeSettings) {
                     return parsed;
@@ -1633,9 +208,31 @@ export const AppProvider = ({ children }) => {
                     });
                 });
             }
+
+            let newLedger = prev.stockLedger || [];
+            if (order.status === "Completed" || order.status === "Partially Delivered") {
+                order.items.forEach(item => {
+                    const prod = products.find(p => p.variants.some(v => v.sku === item.variantSku));
+                    if (prod) {
+                        const vr = prod.variants.find(v => v.sku === item.variantSku);
+                        const currentBal = vr ? (vr.stock[order.warehouse] || 0) : 0;
+                        newLedger = [{
+                            date: order.date,
+                            productId: prod.id,
+                            variantSku: item.variantSku,
+                            warehouse: order.warehouse,
+                            type: "Sale",
+                            quantity: -item.quantity,
+                            balanceAfter: currentBal
+                        }, ...newLedger];
+                    }
+                });
+            }
+
             return {
                 ...prev,
                 products,
+                stockLedger: newLedger,
                 orders: [order, ...prev.orders]
             };
         });
@@ -1698,9 +295,47 @@ export const AppProvider = ({ children }) => {
                 });
             }
 
+            let newLedger = prev.stockLedger || [];
+            if (!wasDeducted && isDeducted) {
+                order.items.forEach(item => {
+                    const prod = products.find(p => p.variants.some(v => v.sku === item.variantSku));
+                    if (prod) {
+                        const vr = prod.variants.find(v => v.sku === item.variantSku);
+                        const currentBal = vr ? (vr.stock[order.warehouse || "Sulur"] || 0) : 0;
+                        newLedger = [{
+                            date: new Date().toISOString().substring(0, 10),
+                            productId: prod.id,
+                            variantSku: item.variantSku,
+                            warehouse: order.warehouse || "Sulur",
+                            type: "Sale",
+                            quantity: -item.quantity,
+                            balanceAfter: currentBal
+                        }, ...newLedger];
+                    }
+                });
+            } else if (wasDeducted && !isDeducted) {
+                order.items.forEach(item => {
+                    const prod = products.find(p => p.variants.some(v => v.sku === item.variantSku));
+                    if (prod) {
+                        const vr = prod.variants.find(v => v.sku === item.variantSku);
+                        const currentBal = vr ? (vr.stock[order.warehouse || "Sulur"] || 0) : 0;
+                        newLedger = [{
+                            date: new Date().toISOString().substring(0, 10),
+                            productId: prod.id,
+                            variantSku: item.variantSku,
+                            warehouse: order.warehouse || "Sulur",
+                            type: "Return",
+                            quantity: item.quantity,
+                            balanceAfter: currentBal
+                        }, ...newLedger];
+                    }
+                });
+            }
+
             return {
                 ...prev,
                 products,
+                stockLedger: newLedger,
                 orders: prev.orders.map(o => o.id === orderId ? { ...o, status: newStatus } : o)
             };
         });
@@ -1770,10 +405,27 @@ export const AppProvider = ({ children }) => {
                 return p;
             });
 
+            const prod = products.find(p => p.variants.some(v => v.sku === waste.variantSku));
+            let newLedger = prev.stockLedger || [];
+            if (prod) {
+                const vr = prod.variants.find(v => v.sku === waste.variantSku);
+                const currentBal = vr ? (vr.stock[waste.warehouse] || 0) : 0;
+                newLedger = [{
+                    date: waste.date,
+                    productId: prod.id,
+                    variantSku: waste.variantSku,
+                    warehouse: waste.warehouse,
+                    type: "Waste",
+                    quantity: -waste.quantity,
+                    balanceAfter: currentBal
+                }, ...newLedger];
+            }
+
             return {
                 ...prev,
                 products,
-                wastes: [waste, ...prev.wastes]
+                wastes: [waste, ...prev.wastes],
+                stockLedger: newLedger
             };
         });
         logActivity("stock", `Waste Log: ${waste.quantity} units of ${waste.variantSku} flagged as waste (${waste.warehouse}).`);
@@ -1827,12 +479,105 @@ export const AppProvider = ({ children }) => {
                 }
                 return p;
             });
-            return { ...prev, products };
+
+            const prod = products.find(p => p.id === productId);
+            let newLedger = prev.stockLedger || [];
+            if (prod) {
+                const vr = prod.variants.find(v => v.sku === variantSku);
+                const currentBal = vr ? (vr.stock[warehouse] || 0) : 0;
+                newLedger = [{
+                    date: new Date().toISOString().substring(0, 10),
+                    productId: prod.id,
+                    variantSku: variantSku,
+                    warehouse: warehouse,
+                    type: "Correction",
+                    quantity: type === 'increase' ? parseInt(quantity) : -parseInt(quantity),
+                    balanceAfter: currentBal
+                }, ...newLedger];
+            }
+
+            return { ...prev, products, stockLedger: newLedger };
         });
         const prod = state.products.find(p => p.id === productId);
         const name = prod ? prod.name : productId;
         logActivity("stock", `Manual Stock Adjustment for ${name} (${variantSku}): ${type === 'increase' ? '+' : '-'}${quantity} units at ${warehouse} branch. Reason: ${reason}`);
         showToast(`Stock adjusted successfully.`);
+    };
+
+    const recordPurchaseOrder = (purchaseOrder) => {
+        setState(prev => {
+            let products = [...prev.products];
+            purchaseOrder.items.forEach(item => {
+                products = products.map(p => {
+                    const hasVar = p.variants.some(v => v.sku === item.variantSku);
+                    if (hasVar) {
+                        const updatedBatches = [...(p.batches || [])];
+                        updatedBatches.push({
+                            batchId: `B-PUR-${purchaseOrder.id}-${Math.floor(10 + Math.random()*90)}`,
+                            variantSku: item.variantSku,
+                            expiryDate: item.expiryDate || "2027-12-31",
+                            quantity: item.quantity,
+                            warehouse: purchaseOrder.warehouse
+                        });
+                        return {
+                            ...p,
+                            variants: p.variants.map(v => {
+                                if (v.sku === item.variantSku) {
+                                    const stock = { ...v.stock };
+                                    stock[purchaseOrder.warehouse] = (stock[purchaseOrder.warehouse] || 0) + item.quantity;
+                                    return { ...v, stock };
+                                }
+                                return v;
+                            }),
+                            batches: updatedBatches
+                        };
+                    }
+                    return p;
+                });
+            });
+
+            const suppliers = prev.suppliers.map(s => {
+                if (s.id === purchaseOrder.supplierId) {
+                    return {
+                        ...s,
+                        debt: s.debt + purchaseOrder.totalCost
+                    };
+                }
+                return s;
+            });
+
+            let newLedger = prev.stockLedger || [];
+            purchaseOrder.items.forEach(item => {
+                const prod = products.find(p => p.variants.some(v => v.sku === item.variantSku));
+                if (prod) {
+                    const vr = prod.variants.find(v => v.sku === item.variantSku);
+                    const currentBal = vr ? (vr.stock[purchaseOrder.warehouse] || 0) : 0;
+                    newLedger = [{
+                        date: purchaseOrder.date,
+                        productId: prod.id,
+                        variantSku: item.variantSku,
+                        warehouse: purchaseOrder.warehouse,
+                        type: "Purchase",
+                        quantity: item.quantity,
+                        balanceAfter: currentBal
+                    }, ...newLedger];
+                }
+            });
+
+            const purchaseOrders = [purchaseOrder, ...(prev.purchaseOrders || [])];
+
+            return {
+                ...prev,
+                products,
+                suppliers,
+                purchaseOrders,
+                stockLedger: newLedger
+            };
+        });
+
+        const supplier = state.suppliers.find(s => s.id === purchaseOrder.supplierId);
+        logActivity("stock", `Purchase Order ${purchaseOrder.id} logged from ${supplier ? supplier.name : purchaseOrder.supplierId} - Total: EGP ${purchaseOrder.totalCost}`);
+        showToast(`Purchase Order recorded.`);
     };
 
     return (
@@ -1854,6 +599,7 @@ export const AppProvider = ({ children }) => {
             deleteOrder,
             addSupplier,
             recordSupplierPayment,
+            recordPurchaseOrder,
             recordWaste,
             recordStockAdjustment,
             saveStoreConfig,
@@ -2024,9 +770,17 @@ const translations = {
         description: "Description",
         allCategories: "All Categories",
         allWarehouses: "All Warehouses",
-        inSulur: "In Sulur",
-        inSinganallur: "In Singanallur",
+        inSulur: "Bosta",
+        inSinganallur: "Singanallur",
         addVariant: "Add Variant",
+        addVariantOption: "Add Variant Option",
+        productVariants: "Product Option Variants",
+        optionName: "Option Name",
+        limit: "Limit",
+        electronics: "Electronics",
+        mobileAccessories: "Mobile Accessories",
+        accessories: "Accessories",
+        piece: "Piece",
         variants: "Variants",
         stock: "Stock",
         processStockReturn: "Process Stock Return",
@@ -2041,7 +795,13 @@ const translations = {
         completed: "Completed",
         pending: "Pending",
         draft: "Draft",
+        paid: "Paid",
+        cancelled: "Cancelled",
+        partiallydelivered: "Partially Delivered",
+        allOrderStatuses: "All Order Statuses",
         inspect: "Inspect",
+        createdDate: "Creation Date",
+        supabaseTasks: "Supabase Tasks",
         remaining: "Remaining",
         stockHealthy: "All stock levels healthy!",
         outOfStock: "Out of Stock",
@@ -2051,7 +811,16 @@ const translations = {
         name: "Name",
         price: "Price",
         soldQuantity: "Sold Quantity",
-        remainingQuantity: "Remaining Quantity"
+        remainingQuantity: "Remaining Quantity",
+        stockLedger: "Stock Ledger",
+        purchaseOrders: "Purchase Orders",
+        runway: "Runway (Days)",
+        printLabel: "Print Barcode Label",
+        recordPurchaseOrder: "Record Purchase Order",
+        markup: "Markup",
+        margin: "Margin",
+        profitMargin: "Profit Margin",
+        expiry: "Expiry"
     },
     ar: {
         dashboard: "لوحة التحكم",
@@ -2206,9 +975,17 @@ const translations = {
         description: "الوصف",
         allCategories: "كل الأقسام",
         allWarehouses: "كل المستودعات",
-        inSulur: "في السلور",
-        inSinganallur: "في سينجانالور",
+        inSulur: "بوسطة",
+        inSinganallur: "سينجانالور",
         addVariant: "إضافة نوع",
+        addVariantOption: "إضافة خيار بديل",
+        productVariants: "خيارات بدائل المنتج",
+        optionName: "اسم الخيار",
+        limit: "الحد",
+        electronics: "إلكترونيات",
+        mobileAccessories: "إكسسوارات موبايل",
+        accessories: "إكسسوارات",
+        piece: "قطعة",
         variants: "الأنواع",
         stock: "المخزون",
         processStockReturn: "معالجة مرتجع المخزون",
@@ -2223,7 +1000,13 @@ const translations = {
         completed: "مكتمل",
         pending: "قيد الانتظار",
         draft: "مسودة",
+        paid: "مدفوع",
+        cancelled: "ملغي",
+        partiallydelivered: "تسليم جزئي",
+        allOrderStatuses: "كل حالات الطلبات",
         inspect: "معاينة",
+        createdDate: "تاريخ الإنشاء",
+        supabaseTasks: "المهام السحابية",
         remaining: "المتبقي",
         stockHealthy: "كل مستويات المخزون سليمة!",
         outOfStock: "نفد من المخزن",
@@ -2233,6 +1016,15 @@ const translations = {
         name: "الاسم",
         price: "السعر",
         soldQuantity: "الكمية المباعة",
-        remainingQuantity: "الكمية المتبقية"
+        remainingQuantity: "الكمية المتبقية",
+        stockLedger: "سجل حركة المخزون",
+        purchaseOrders: "أوامر الشراء والتوريد",
+        runway: "أيام بقاء المخزون",
+        printLabel: "طباعة ملصق الباركود",
+        recordPurchaseOrder: "تسجيل فاتورة توريد",
+        markup: "الربح المضاف",
+        margin: "الهامش",
+        profitMargin: "هامش الربح",
+        expiry: "تاريخ الصلاحية"
     }
 };

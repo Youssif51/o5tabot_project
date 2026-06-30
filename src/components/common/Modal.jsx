@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function Modal({ isOpen, onClose, title, children, width = '600px' }) {
+export default function Modal({ isOpen, onClose, title, children, width = '760px' }) {
     if (!isOpen) return null;
 
     return (

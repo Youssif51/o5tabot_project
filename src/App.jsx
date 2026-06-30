@@ -18,6 +18,7 @@ import OrdersList from './components/orders/OrdersList';
 import SuppliersList from './components/suppliers/SuppliersList';
 import ReportsView from './components/reports/ReportsView';
 import StoreSettings from './components/store/StoreSettings';
+import SupabaseTodos from './components/supabase/SupabaseTodos';
 
 // Modal Forms
 import AddProductModal from './components/inventory/AddProductModal';
@@ -258,6 +259,10 @@ export default function App() {
 
                 {currentView === 'reports' && (
                     <ReportsView />
+                )}
+
+                {currentView === 'supabaseTasks' && (
+                    <SupabaseTodos />
                 )}
 
                 {currentView === 'store' && (

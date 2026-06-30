@@ -32,7 +32,7 @@ export default function MetricsRow() {
     let invReceived = 0;
     state.products.forEach(prod => {
         prod.variants.forEach(vr => {
-            const totalQty = (vr.stock.Sulur || 0) + (vr.stock.Singanallur || 0);
+            const totalQty = (vr.stock.Sulur || 0);
             invQty += totalQty;
             if (totalQty <= vr.reorderLimit) {
                 invReceived += (vr.reorderLimit - totalQty + 10);

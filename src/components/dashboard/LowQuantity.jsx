@@ -7,7 +7,7 @@ export default function LowQuantity() {
     let lowStock = [];
     state.products.forEach(prod => {
         prod.variants.forEach(vr => {
-            const totalQty = (vr.stock.Sulur || 0) + (vr.stock.Singanallur || 0);
+            const totalQty = (vr.stock.Sulur || 0);
             if (totalQty <= vr.reorderLimit) {
                 lowStock.push({
                     name: `${prod.name} - ${vr.name}`,
