@@ -1,0 +1,336 @@
+import React, { useState, useContext } from 'react';
+import { AppContext } from '../../context/AppContext';
+
+export default function ChartsSection() {
+    const { t } = useContext(AppContext);
+
+    // 1. Sales & Purchase Chart Data
+    const salesData = [4200, 5100, 4800, 6200, 7100, 8500];
+    const purchaseData = [3100, 4200, 3900, 5000, 4500, 6100];
+    const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    
+    const svgWidth = 500;
+    const svgHeight = 220;
+    const paddingX = 40;
+    const paddingY = 20;
+    
+    const graphWidth = svgWidth - paddingX * 2;
+    const graphHeight = svgHeight - paddingY * 2;
+    
+    // Sales & Purchase Bar calculations
+    const maxValBar = 10000;
+    const barWidth = 12;
+    const gap = 4;
+    const groupWidth = barWidth * 2 + gap;
+    const groupGap = (graphWidth - groupWidth * labels.length) / (labels.length - 1);
+
+    const [hoveredBarIdx, setHoveredBarIdx] = useState(null);
+
+    // 2. Order Summary Line Chart Data
+    const orderedData = [12, 19, 15, 25, 22, 30];
+    const deliveredData = [8, 14, 11, 20, 18, 26];
+    
+    const maxValLine = 40;
+    const spacingX = graphWidth / (labels.length - 1);
+
+    // Coordinate conversion
+    const orderedCoords = labels.map((_, idx) => ({
+        x: paddingX + idx * spacingX,
+        y: paddingY + graphHeight - (orderedData[idx] / maxValLine) * graphHeight
+    }));
+
+    const deliveredCoords = labels.map((_, idx) => ({
+        x: paddingX + idx * spacingX,
+        y: paddingY + graphHeight - (deliveredData[idx] / maxValLine) * graphHeight
+    }));
+
+    const [hoveredLineIdx, setHoveredLineIdx] = useState(null);
+
+    return (
+        <div className="dashboard-row-grid grid-2-1" style={{ marginTop: '24px' }}>
+            
+            {/* Sales & Purchase Bar Chart */}
+            <div className="glass-card dashboard-widget" style={{ position: 'relative' }}>
+                <div className="widget-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <h3>{t('salesAndPurchase')}</h3>
+                    <span className="badge badge-info" style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '11px' }}>
+                        <i className="fa-regular fa-calendar"></i> {t('weekly')}
+                    </span>
+                </div>
+                <div className="chart-container" style={{ minHeight: '240px', marginTop: '16px' }}>
+                    <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} width="100%" height="100%">
+                        <defs>
+                            <linearGradient id="gold-gradient-svg" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#f5d77f" />
+                                <stop offset="100%" stopColor="#d4af37" />
+                            </linearGradient>
+                        </defs>
+                        
+                        {/* Grid lines */}
+                        {[0, 1, 2, 3, 4].map((i) => {
+                            const y = paddingY + (graphHeight / 4) * i;
+                            const val = maxValBar - (maxValBar / 4) * i;
+                            return (
+                                <g key={`grid-bar-${i}`}>
+                                    <line x1={paddingX} y1={y} x2={svgWidth - paddingX} y2={y} className="grid-line" strokeDasharray="3" />
+                                    <text x={paddingX - 8} y={y + 4} fill="var(--text-muted)" fontSize="9" textAnchor="end">{val.toLocaleString()}</text>
+                                </g>
+                            );
+                        })}
+                        
+                        {/* Bars & Labels */}
+                        {labels.map((lbl, idx) => {
+                            const groupX = paddingX + idx * (groupWidth + groupGap);
+                            const sHeight = (salesData[idx] / maxValBar) * graphHeight;
+                            const sY = paddingY + graphHeight - sHeight;
+                            const pHeight = (purchaseData[idx] / maxValBar) * graphHeight;
+                            const pY = paddingY + graphHeight - pHeight;
+
+                            const isHovered = hoveredBarIdx === idx;
+                            const hasActiveHover = hoveredBarIdx !== null;
+
+                            return (
+                                <g key={`bars-lbl-${idx}`}>
+                                    {/* Sales Bar */}
+                                    <rect 
+                                        x={groupX} 
+                                        y={sY} 
+                                        width={barWidth} 
+                                        height={sHeight} 
+                                        fill="url(#gold-gradient-svg)" 
+                                        rx="3" 
+                                        opacity={hasActiveHover ? (isHovered ? 1 : 0.4) : 1}
+                                        style={{ transition: 'opacity 0.2s ease, fill 0.2s ease' }}
+                                    />
+                                    {/* Purchase Bar */}
+                                    <rect 
+                                        x={groupX + barWidth + gap} 
+                                        y={pY} 
+                                        width={barWidth} 
+                                        height={pHeight} 
+                                        fill="rgba(255,255,255,0.18)" 
+                                        rx="3" 
+                                        opacity={hasActiveHover ? (isHovered ? 1 : 0.4) : 1}
+                                        style={{ transition: 'opacity 0.2s ease' }}
+                                    />
+                                    {/* Label */}
+                                    <text 
+                                        x={groupX + groupWidth / 2} 
+                                        y={svgHeight - 4} 
+                                        fill={isHovered ? "var(--gold-primary)" : "var(--text-secondary)"} 
+                                        fontSize="10" 
+                                        fontWeight={isHovered ? "600" : "400"}
+                                        textAnchor="middle"
+                                    >
+                                        {lbl}
+                                    </text>
+
+                                    {/* Invisible Hover Rect overlay */}
+                                    <rect 
+                                        x={groupX - groupGap / 2} 
+                                        y={paddingY} 
+                                        width={groupWidth + groupGap} 
+                                        height={graphHeight} 
+                                        fill="transparent" 
+                                        style={{ cursor: 'pointer' }}
+                                        onMouseEnter={() => setHoveredBarIdx(idx)}
+                                        onMouseLeave={() => setHoveredBarIdx(null)}
+                                    />
+                                </g>
+                            );
+                        })}
+                    </svg>
+                </div>
+
+                {/* Legend keys */}
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', marginTop: '12px', paddingBottom: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'linear-gradient(180deg, #f5d77f 0%, #d4af37 100%)', display: 'inline-block' }}></span>
+                        {t('sales')}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'rgba(255,255,255,0.25)', border: '1px solid var(--glass-border)', display: 'inline-block' }}></span>
+                        {t('purchase')}
+                    </div>
+                </div>
+
+                {/* Floating Interactive Tooltip */}
+                {hoveredBarIdx !== null && (
+                    <div style={{
+                        position: 'absolute',
+                        left: `${(paddingX + hoveredBarIdx * (groupWidth + groupGap) + groupWidth/2) / svgWidth * 100}%`,
+                        top: '60px',
+                        transform: 'translateX(-50%)',
+                        background: 'var(--glass-bg)',
+                        border: '1px solid var(--glass-border)',
+                        borderRadius: '6px',
+                        padding: '10px 14px',
+                        fontSize: '12px',
+                        pointerEvents: 'none',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                        lineHeight: 1.5,
+                        zIndex: 10,
+                        backdropFilter: 'var(--blur)'
+                    }}>
+                        <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>{labels[hoveredBarIdx]} {t('details')}</div>
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--gold-primary)' }}>{t('sales')}:</span>
+                            <strong style={{ color: 'var(--text-primary)' }}>${salesData[hoveredBarIdx].toLocaleString()}</strong>
+                        </div>
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--text-secondary)' }}>{t('purchase')}:</span>
+                            <strong style={{ color: 'var(--text-primary)' }}>${purchaseData[hoveredBarIdx].toLocaleString()}</strong>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Order Summary Line Chart */}
+            <div className="glass-card dashboard-widget" style={{ position: 'relative' }}>
+                <div className="widget-header">
+                    <h3>{t('orderSummary')}</h3>
+                </div>
+                <div className="chart-container" style={{ minHeight: '240px', marginTop: '16px' }}>
+                    <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} width="100%" height="100%">
+                        {/* Grid lines */}
+                        {[0, 1, 2, 3].map((i) => {
+                            const y = paddingY + (graphHeight / 3) * i;
+                            const val = maxValLine - (maxValLine / 3) * i;
+                            return (
+                                <g key={`grid-line-${i}`}>
+                                    <line x1={paddingX} y1={y} x2={svgWidth - paddingX} y2={y} className="grid-line" strokeDasharray="3" />
+                                    <text x={paddingX - 8} y={y + 4} fill="var(--text-muted)" fontSize="9" textAnchor="end">{Math.round(val)}</text>
+                                </g>
+                            );
+                        })}
+
+                        {/* Interactive vertical guide line */}
+                        {hoveredLineIdx !== null && (
+                            <line 
+                                x1={orderedCoords[hoveredLineIdx].x} 
+                                y1={paddingY} 
+                                x2={orderedCoords[hoveredLineIdx].x} 
+                                y2={paddingY + graphHeight} 
+                                stroke="rgba(212, 175, 55, 0.4)" 
+                                strokeWidth="1.5" 
+                                strokeDasharray="4 4"
+                            />
+                        )}
+
+                        {/* Line 1: Ordered (Orange) */}
+                        <path 
+                            d={`M ${orderedCoords.map(c => `${c.x} ${c.y}`).join(' L ')}`}
+                            fill="none"
+                            stroke="var(--gold-primary)"
+                            strokeWidth="3"
+                        />
+
+                        {/* Line 2: Delivered (Green) */}
+                        <path 
+                            d={`M ${deliveredCoords.map(c => `${c.x} ${c.y}`).join(' L ')}`}
+                            fill="none"
+                            stroke="var(--color-success)"
+                            strokeWidth="3"
+                        />
+
+                        {/* Interactive nodes */}
+                        {labels.map((lbl, idx) => {
+                            const isHovered = hoveredLineIdx === idx;
+                            return (
+                                <g key={`nodes-lbl-${idx}`}>
+                                    {/* Ordered node */}
+                                    <circle 
+                                        cx={orderedCoords[idx].x} 
+                                        cy={orderedCoords[idx].y} 
+                                        r={isHovered ? 6 : 4} 
+                                        fill="var(--gold-primary)" 
+                                        stroke="#fff" 
+                                        strokeWidth={isHovered ? 2 : 1}
+                                        style={{ transition: 'r 0.15s ease' }}
+                                    />
+                                    {/* Delivered node */}
+                                    <circle 
+                                        cx={deliveredCoords[idx].x} 
+                                        cy={deliveredCoords[idx].y} 
+                                        r={isHovered ? 6 : 4} 
+                                        fill="var(--color-success)" 
+                                        stroke="#fff" 
+                                        strokeWidth={isHovered ? 2 : 1}
+                                        style={{ transition: 'r 0.15s ease' }}
+                                    />
+                                    
+                                    {/* X-Axis label */}
+                                    <text 
+                                        x={orderedCoords[idx].x} 
+                                        y={svgHeight - 4} 
+                                        fill={isHovered ? "var(--gold-primary)" : "var(--text-secondary)"} 
+                                        fontSize="10" 
+                                        fontWeight={isHovered ? "600" : "400"}
+                                        textAnchor="middle"
+                                    >
+                                        {lbl}
+                                    </text>
+
+                                    {/* Invisible Hover column rect */}
+                                    <rect 
+                                        x={orderedCoords[idx].x - spacingX / 2} 
+                                        y={paddingY} 
+                                        width={spacingX} 
+                                        height={graphHeight} 
+                                        fill="transparent" 
+                                        style={{ cursor: 'pointer' }}
+                                        onMouseEnter={() => setHoveredLineIdx(idx)}
+                                        onMouseLeave={() => setHoveredLineIdx(null)}
+                                    />
+                                </g>
+                            );
+                        })}
+                    </svg>
+                </div>
+
+                {/* Legend keys */}
+                <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', marginTop: '12px', paddingBottom: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--gold-primary)', display: 'inline-block' }}></span>
+                        {t('ordered')}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--color-success)', display: 'inline-block' }}></span>
+                        {t('completed')}
+                    </div>
+                </div>
+
+                {/* Line Tooltip box */}
+                {hoveredLineIdx !== null && (
+                    <div style={{
+                        position: 'absolute',
+                        left: `${orderedCoords[hoveredLineIdx].x / svgWidth * 100}%`,
+                        top: '60px',
+                        transform: 'translateX(-50%)',
+                        background: 'var(--glass-bg)',
+                        border: '1px solid var(--glass-border)',
+                        borderRadius: '6px',
+                        padding: '10px 14px',
+                        fontSize: '12px',
+                        pointerEvents: 'none',
+                        boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
+                        lineHeight: 1.5,
+                        zIndex: 10,
+                        backdropFilter: 'var(--blur)'
+                    }}>
+                        <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>{labels[hoveredLineIdx]} {t('details')}</div>
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--gold-primary)' }}>{t('ordered')}:</span>
+                            <strong style={{ color: 'var(--text-primary)' }}>{orderedData[hoveredLineIdx]}</strong>
+                        </div>
+                        <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
+                            <span style={{ color: 'var(--color-success)' }}>{t('completed')}:</span>
+                            <strong style={{ color: 'var(--text-primary)' }}>{deliveredData[hoveredLineIdx]}</strong>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+        </div>
+    );
+}
