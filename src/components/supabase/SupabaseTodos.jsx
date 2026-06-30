@@ -9,6 +9,21 @@ export default function SupabaseTodos() {
     const [newTodoName, setNewTodoName] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // Render warning if Supabase credentials are not configured
+    if (!supabase) {
+        return (
+            <div id="supabase-todos-view" className="view-pane active">
+                <div className="glass-card" style={{ padding: '40px', textAlign: 'center', border: '2px dashed var(--color-danger)', marginTop: '24px' }}>
+                    <i className="fa-solid fa-triangle-exclamation" style={{ fontSize: '48px', color: 'var(--color-danger)', marginBottom: '16px' }}></i>
+                    <h3 style={{ color: '#fff', marginBottom: '12px' }}>اتصال Supabase غير مهيأ / Supabase Not Configured</h3>
+                    <p style={{ color: 'var(--text-secondary)', maxWidth: '600px', margin: '0 auto 20px', lineHeight: 1.6, fontSize: '14px' }}>
+                        يرجى إضافة المتغيرات البيئية <code style={{ color: 'var(--gold-primary)' }}>VITE_SUPABASE_URL</code> و <code style={{ color: 'var(--gold-primary)' }}>VITE_SUPABASE_PUBLISHABLE_KEY</code> في لوحة تحكم Vercel (Project Settings &gt; Environment Variables) ثم قم بإعادة بناء المشروع (Redeploy).
+                    </p>
+                </div>
+            </div>
+        );
+    }
+
     // Fetch todos on load
     const fetchTodos = async () => {
         setLoading(true);
