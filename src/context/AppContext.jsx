@@ -1,3 +1,4 @@
+import { supabase } from '../utils/supabase';
 import React, { createContext, useState, useEffect } from 'react';
 
 export const AppContext = createContext();
@@ -42,7 +43,6 @@ export const AppProvider = ({ children }) => {
                 const parsed = JSON.parse(saved);
                 if (parsed &&
                     Array.isArray(parsed.products) &&
-                    parsed.products.some(p => p.variants && p.variants.some(v => v.sku === "MJ-CTC-35")) &&
                     Array.isArray(parsed.suppliers) &&
                     Array.isArray(parsed.orders) &&
                     Array.isArray(parsed.wastes) &&
@@ -58,6 +58,138 @@ export const AppProvider = ({ children }) => {
         }
         return initialState;
     });
+
+        // Fetch WMS ERP records from Supabase on load
+    useEffect(() => {
+        const loadSupabaseData = async () => {
+            if (!supabase) return;
+            try {
+                const [
+                    { data: products, error: pErr },
+                    { data: variants, error: vErr },
+                    { data: suppliers, error: sErr },
+                    { data: orders, error: oErr },
+                    { data: orderItems, error: oiErr },
+                    { data: purchaseOrders, error: poErr },
+                    { data: purchaseItems, error: poiErr },
+                    { data: ledger, error: lErr },
+                    { data: wastes, error: wErr }
+                ] = await Promise.all([
+                    supabase.from('products').select('*'),
+                    supabase.from('product_variants').select('*'),
+                    supabase.from('suppliers').select('*'),
+                    supabase.from('orders').select('*'),
+                    supabase.from('order_items').select('*'),
+                    supabase.from('purchase_orders').select('*'),
+                    supabase.from('purchase_items').select('*'),
+                    supabase.from('stock_ledger').select('*'),
+                    supabase.from('wastes').select('*')
+                ]);
+
+                if (pErr || vErr || sErr || oErr || oiErr || poErr || poiErr || lErr || wErr) {
+                    console.warn("Could not retrieve all Supabase tables, using local state instead.");
+                    return;
+                }
+
+                const mappedProducts = (products || []).map(p => {
+                    const pVars = (variants || []).filter(v => v.product_id === p.id).map(v => ({
+                        sku: v.sku,
+                        name: v.name,
+                        barcode: v.barcode,
+                        wholesalePrice: parseFloat(v.wholesale_price) || 0,
+                        retailPrice: parseFloat(v.retail_price) || 0,
+                        reorderLimit: parseInt(v.reorder_limit) || 0,
+                        stock: { Sulur: parseInt(v.stock_sulur) || 0 }
+                    }));
+                    return {
+                        id: p.id,
+                        name: p.name,
+                        category: p.category,
+                        unit: p.unit,
+                        image: p.image,
+                        createdDate: p.created_date,
+                        description: p.description,
+                        variants: pVars
+                    };
+                });
+
+                const mappedSuppliers = (suppliers || []).map(s => ({
+                    id: s.id,
+                    name: s.name,
+                    contact: s.contact,
+                    phone: s.phone,
+                    debt: parseFloat(s.debt) || 0,
+                    paid: parseFloat(s.paid) || 0
+                }));
+
+                const mappedOrders = (orders || []).map(o => {
+                    const items = (orderItems || []).filter(oi => oi.order_id === o.id).map(oi => ({
+                        variantSku: oi.variant_sku,
+                        quantity: parseInt(oi.quantity) || 0,
+                        price: parseFloat(oi.price) || 0
+                    }));
+                    return {
+                        id: o.id,
+                        client: o.client,
+                        date: o.date,
+                        warehouse: o.warehouse,
+                        status: o.status,
+                        totalValue: parseFloat(o.total_value) || 0,
+                        items
+                    };
+                });
+
+                const mappedPurchaseOrders = (purchaseOrders || []).map(po => {
+                    const items = (purchaseItems || []).filter(poi => poi.po_id === po.id).map(poi => ({
+                        variantSku: poi.variant_sku,
+                        quantity: parseInt(poi.quantity) || 0,
+                        cost: parseFloat(poi.cost) || 0
+                    }));
+                    return {
+                        id: po.id,
+                        supplierId: po.supplier_id,
+                        date: po.date,
+                        warehouse: po.warehouse,
+                        totalCost: parseFloat(po.total_cost) || 0,
+                        items
+                    };
+                });
+
+                const mappedWastes = (wastes || []).map(w => ({
+                    id: `WST-${w.id}`,
+                    date: w.date,
+                    variantSku: w.variant_sku,
+                    quantity: parseInt(w.quantity) || 0,
+                    warehouse: "Sulur",
+                    cost: 0,
+                    reporter: "sfsf"
+                }));
+
+                const mappedLedger = (ledger || []).map(l => ({
+                    date: l.date,
+                    productId: l.product_id,
+                    variantSku: l.variant_sku,
+                    warehouse: l.warehouse,
+                    type: l.type,
+                    quantity: parseInt(l.quantity) || 0,
+                    balanceAfter: parseInt(l.balance_after) || 0
+                }));
+
+                setState(prev => ({
+                    ...prev,
+                    products: mappedProducts,
+                    suppliers: mappedSuppliers,
+                    orders: mappedOrders,
+                    purchaseOrders: mappedPurchaseOrders,
+                    wastes: mappedWastes,
+                    stockLedger: mappedLedger
+                }));
+            } catch (err) {
+                console.error("Supabase load error:", err);
+            }
+        };
+        loadSupabaseData();
+    }, []);
 
     const [currentView, setCurrentView] = useState("dashboard");
     const [toast, setToast] = useState({ visible: false, message: "", type: "success" });
@@ -144,6 +276,37 @@ export const AppProvider = ({ children }) => {
         }));
         logActivity("stock", `New product '${product.name}' was registered.`);
         showToast(`Product '${product.name}' added successfully.`);
+
+        if (supabase) {
+            (async () => {
+                try {
+                    await supabase.from('products').insert([{
+                        id: product.id,
+                        name: product.name,
+                        category: product.category,
+                        unit: product.unit,
+                        image: product.image,
+                        created_date: product.createdDate,
+                        description: product.description
+                    }]);
+                    if (product.variants && product.variants.length > 0) {
+                        const vars = product.variants.map(v => ({
+                            sku: v.sku,
+                            product_id: product.id,
+                            name: v.name,
+                            barcode: v.barcode,
+                            wholesale_price: v.wholesalePrice,
+                            retail_price: v.retailPrice,
+                            reorder_limit: v.reorderLimit,
+                            stock_sulur: v.stock.Sulur || 0
+                        }));
+                        await supabase.from('product_variants').insert(vars);
+                    }
+                } catch (e) {
+                    console.error("Supabase Error:", e);
+                }
+            })();
+        }
     };
 
     const editProduct = (updatedProduct) => {
@@ -153,6 +316,37 @@ export const AppProvider = ({ children }) => {
         }));
         logActivity("stock", `Product '${updatedProduct.name}' details were updated.`);
         showToast(`Product '${updatedProduct.name}' updated.`);
+
+        if (supabase) {
+            (async () => {
+                try {
+                    await supabase.from('products').update({
+                        name: updatedProduct.name,
+                        category: updatedProduct.category,
+                        unit: updatedProduct.unit,
+                        image: updatedProduct.image,
+                        description: updatedProduct.description
+                    }).eq('id', updatedProduct.id);
+
+                    if (updatedProduct.variants) {
+                        for (const v of updatedProduct.variants) {
+                            await supabase.from('product_variants').upsert({
+                                sku: v.sku,
+                                product_id: updatedProduct.id,
+                                name: v.name,
+                                barcode: v.barcode,
+                                wholesale_price: v.wholesalePrice,
+                                retail_price: v.retailPrice,
+                                reorder_limit: v.reorderLimit,
+                                stock_sulur: v.stock.Sulur || 0
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.error("Supabase Error:", e);
+                }
+            })();
+        }
     };
 
     const deleteProduct = (productId) => {
@@ -165,6 +359,16 @@ export const AppProvider = ({ children }) => {
             logActivity("stock", `Product '${prod.name}' was deleted.`);
             showToast(`Product '${prod.name}' removed.`);
         }
+
+        if (supabase) {
+            (async () => {
+                try {
+                    await supabase.from('products').delete().eq('id', productId);
+                } catch (e) {
+                    console.error("Supabase Error:", e);
+                }
+            })();
+        }
     };
 
     const deleteMultipleProducts = (productIds) => {
@@ -174,6 +378,16 @@ export const AppProvider = ({ children }) => {
         }));
         logActivity("stock", `${productIds.length} products deleted in bulk.`);
         showToast(`${productIds.length} products deleted.`);
+
+        if (supabase) {
+            (async () => {
+                try {
+                    await supabase.from('products').delete().in('id', productIds);
+                } catch (e) {
+                    console.error("Supabase Error:", e);
+                }
+            })();
+        }
     };
 
     // Orders CRUD Actions
@@ -238,15 +452,63 @@ export const AppProvider = ({ children }) => {
         });
         logActivity("order", `New Order ${order.id} registered for ${order.client}.`);
         showToast(`Order ${order.id} recorded.`);
+
+        if (supabase) {
+            (async () => {
+                try {
+                    await supabase.from('orders').insert([{
+                        id: order.id,
+                        client: order.client,
+                        date: order.date,
+                        warehouse: order.warehouse || 'Sulur',
+                        status: order.status,
+                        total_value: order.totalValue
+                    }]);
+
+                    if (order.items && order.items.length > 0) {
+                        const items = order.items.map(item => ({
+                            order_id: order.id,
+                            variant_sku: item.variantSku,
+                            quantity: item.quantity,
+                            price: item.price
+                        }));
+                        await supabase.from('order_items').insert(items);
+                    }
+
+                    if (order.status === "Completed" || order.status === "Partially Delivered") {
+                        for (const item of order.items) {
+                            const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id').eq('sku', item.variantSku).single();
+                            if (vData) {
+                                const newStock = Math.max(0, vData.stock_sulur - item.quantity);
+                                await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', item.variantSku);
+                                
+                                await supabase.from('stock_ledger').insert([{
+                                    date: order.date,
+                                    product_id: vData.product_id,
+                                    variant_sku: item.variantSku,
+                                    warehouse: order.warehouse || 'Sulur',
+                                    type: 'Sale',
+                                    quantity: -item.quantity,
+                                    balance_after: newStock
+                                }]);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("Supabase Error:", e);
+                }
+            })();
+        }
     };
 
     const updateOrderStatus = (orderId, newStatus) => {
+        let oldStatus = "";
         setState(prev => {
             const order = prev.orders.find(o => o.id === orderId);
             if (!order) return prev;
             
             let products = [...prev.products];
-            const oldStatus = order.status;
+            oldStatus = order.status;
             
             const wasDeducted = oldStatus === "Completed" || oldStatus === "Partially Delivered";
             const isDeducted = newStatus === "Completed" || newStatus === "Partially Delivered";
@@ -341,6 +603,62 @@ export const AppProvider = ({ children }) => {
         });
         logActivity("order", `Order ${orderId} status changed to ${newStatus}.`);
         showToast(`Order status updated to ${newStatus}.`);
+
+        if (supabase) {
+            (async () => {
+                try {
+                    await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
+                    
+                    const { data: order } = await supabase.from('orders').select('*').eq('id', orderId).single();
+                    const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId);
+                    
+                    if (order && items && items.length > 0) {
+                        const wasDeducted = oldStatus === "Completed" || oldStatus === "Partially Delivered";
+                        const isDeducted = newStatus === "Completed" || newStatus === "Partially Delivered";
+                        
+                        if (!wasDeducted && isDeducted) {
+                            for (const item of items) {
+                                const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id').eq('sku', item.variant_sku).single();
+                                if (vData) {
+                                    const newStock = Math.max(0, vData.stock_sulur - item.quantity);
+                                    await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', item.variant_sku);
+                                    
+                                    await supabase.from('stock_ledger').insert([{
+                                        date: new Date().toISOString().substring(0, 10),
+                                        product_id: vData.product_id,
+                                        variant_sku: item.variant_sku,
+                                        warehouse: order.warehouse || 'Sulur',
+                                        type: 'Sale',
+                                        quantity: -item.quantity,
+                                        balance_after: newStock
+                                    }]);
+                                }
+                            }
+                        } else if (wasDeducted && !isDeducted) {
+                            for (const item of items) {
+                                const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id').eq('sku', item.variant_sku).single();
+                                if (vData) {
+                                    const newStock = vData.stock_sulur + item.quantity;
+                                    await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', item.variant_sku);
+                                    
+                                    await supabase.from('stock_ledger').insert([{
+                                        date: new Date().toISOString().substring(0, 10),
+                                        product_id: vData.product_id,
+                                        variant_sku: item.variant_sku,
+                                        warehouse: order.warehouse || 'Sulur',
+                                        type: 'Return',
+                                        quantity: item.quantity,
+                                        balance_after: newStock
+                                    }]);
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error("Supabase Error:", e);
+                }
+            })();
+        }
     };
 
     const deleteOrder = (orderId) => {
@@ -350,6 +668,16 @@ export const AppProvider = ({ children }) => {
         }));
         logActivity("order", `Order ${orderId} removed from records.`);
         showToast(`Order ${orderId} deleted.`);
+
+        if (supabase) {
+            (async () => {
+                try {
+                    await supabase.from('orders').delete().eq('id', orderId);
+                } catch (e) {
+                    console.error("Supabase Error:", e);
+                }
+            })();
+        }
     };
 
     // Suppliers CRUD Actions
@@ -360,18 +688,37 @@ export const AppProvider = ({ children }) => {
         }));
         logActivity("supplier", `Registered new supplier partner '${supplier.name}'.`);
         showToast(`Supplier '${supplier.name}' registered.`);
+
+        if (supabase) {
+            (async () => {
+                try {
+                    await supabase.from('suppliers').insert([{
+                        id: supplier.id,
+                        name: supplier.name,
+                        contact: supplier.contact,
+                        phone: supplier.phone,
+                        debt: supplier.debt || 0,
+                        paid: supplier.paid || 0
+                    }]);
+                } catch (e) {
+                    console.error("Supabase Error:", e);
+                }
+            })();
+        }
     };
 
     const recordSupplierPayment = (supplierId, amount) => {
+        let updatedSup = null;
         setState(prev => {
             const suppliers = prev.suppliers.map(s => {
                 if (s.id === supplierId) {
                     const pay = Math.min(s.debt, amount);
-                    return {
+                    updatedSup = {
                         ...s,
                         paid: s.paid + pay,
                         debt: Math.max(0, s.debt - pay)
                     };
+                    return updatedSup;
                 }
                 return s;
             });
@@ -381,6 +728,31 @@ export const AppProvider = ({ children }) => {
         if (sup) {
             logActivity("supplier", `Paid ${state.storeSettings.currency}${amount} to ${sup.name}.`);
             showToast(`Recorded payment of ${state.storeSettings.currency}${amount} to ${sup.name}.`);
+        }
+
+        if (supabase) {
+            (async () => {
+                try {
+                    if (!updatedSup) {
+                        const { data } = await supabase.from('suppliers').select('*').eq('id', supplierId).single();
+                        if (data) {
+                            const pay = Math.min(data.debt, amount);
+                            updatedSup = {
+                                paid: parseFloat(data.paid) + pay,
+                                debt: Math.max(0, parseFloat(data.debt) - pay)
+                            };
+                        }
+                    }
+                    if (updatedSup) {
+                        await supabase.from('suppliers').update({
+                            paid: updatedSup.paid,
+                            debt: updatedSup.debt
+                        }).eq('id', supplierId);
+                    }
+                } catch (e) {
+                    console.error("Supabase Error:", e);
+                }
+            })();
         }
     };
 
@@ -430,6 +802,38 @@ export const AppProvider = ({ children }) => {
         });
         logActivity("stock", `Waste Log: ${waste.quantity} units of ${waste.variantSku} flagged as waste (${waste.warehouse}).`);
         showToast(`Waste logged and deducted from stock.`);
+
+        if (supabase) {
+            (async () => {
+                try {
+                    const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id').eq('sku', waste.variantSku).single();
+                    if (vData) {
+                        const newStock = Math.max(0, vData.stock_sulur - waste.quantity);
+                        await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', waste.variantSku);
+                        
+                        await supabase.from('wastes').insert([{
+                            date: waste.date,
+                            product_id: vData.product_id,
+                            variant_sku: waste.variantSku,
+                            quantity: waste.quantity,
+                            reason: waste.reason || "Damaged/Spoiled"
+                        }]);
+
+                        await supabase.from('stock_ledger').insert([{
+                            date: waste.date,
+                            product_id: vData.product_id,
+                            variant_sku: waste.variantSku,
+                            warehouse: waste.warehouse || 'Sulur',
+                            type: 'Waste',
+                            quantity: -waste.quantity,
+                            balance_after: newStock
+                        }]);
+                    }
+                } catch (e) {
+                    console.error("Supabase Error:", e);
+                }
+            })();
+        }
     };
 
     // Store Configuration
@@ -502,6 +906,31 @@ export const AppProvider = ({ children }) => {
         const name = prod ? prod.name : productId;
         logActivity("stock", `Manual Stock Adjustment for ${name} (${variantSku}): ${type === 'increase' ? '+' : '-'}${quantity} units at ${warehouse} branch. Reason: ${reason}`);
         showToast(`Stock adjusted successfully.`);
+
+        if (supabase) {
+            (async () => {
+                try {
+                    const { data: vData } = await supabase.from('product_variants').select('stock_sulur').eq('sku', variantSku).single();
+                    if (vData) {
+                        const amt = parseInt(quantity) || 0;
+                        const newStock = Math.max(0, vData.stock_sulur + (type === 'increase' ? amt : -amt));
+                        await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', variantSku);
+                        
+                        await supabase.from('stock_ledger').insert([{
+                            date: new Date().toISOString().substring(0, 10),
+                            product_id: productId,
+                            variant_sku: variantSku,
+                            warehouse: warehouse,
+                            type: 'Correction',
+                            quantity: type === 'increase' ? amt : -amt,
+                            balance_after: newStock
+                        }]);
+                    }
+                } catch (e) {
+                    console.error("Supabase Error:", e);
+                }
+            })();
+        }
     };
 
     const recordPurchaseOrder = (purchaseOrder) => {
@@ -578,6 +1007,56 @@ export const AppProvider = ({ children }) => {
         const supplier = state.suppliers.find(s => s.id === purchaseOrder.supplierId);
         logActivity("stock", `Purchase Order ${purchaseOrder.id} logged from ${supplier ? supplier.name : purchaseOrder.supplierId} - Total: EGP ${purchaseOrder.totalCost}`);
         showToast(`Purchase Order recorded.`);
+
+        if (supabase) {
+            (async () => {
+                try {
+                    await supabase.from('purchase_orders').insert([{
+                        id: purchaseOrder.id,
+                        supplier_id: purchaseOrder.supplierId,
+                        date: purchaseOrder.date,
+                        total_cost: purchaseOrder.totalCost,
+                        warehouse: purchaseOrder.warehouse || 'Sulur'
+                    }]);
+
+                    if (purchaseOrder.items && purchaseOrder.items.length > 0) {
+                        const items = purchaseOrder.items.map(item => ({
+                            po_id: purchaseOrder.id,
+                            variant_sku: item.variantSku,
+                            quantity: item.quantity,
+                            cost: item.cost
+                        }));
+                        await supabase.from('purchase_items').insert(items);
+                    }
+
+                    for (const item of purchaseOrder.items) {
+                        const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id').eq('sku', item.variantSku).single();
+                        if (vData) {
+                            const newStock = vData.stock_sulur + item.quantity;
+                            await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', item.variantSku);
+                            
+                            await supabase.from('stock_ledger').insert([{
+                                date: purchaseOrder.date,
+                                product_id: vData.product_id,
+                                variant_sku: item.variantSku,
+                                warehouse: purchaseOrder.warehouse || 'Sulur',
+                                type: 'Purchase',
+                                quantity: item.quantity,
+                                balance_after: newStock
+                            }]);
+                        }
+                    }
+
+                    const { data: sData } = await supabase.from('suppliers').select('debt').eq('id', purchaseOrder.supplierId).single();
+                    if (sData) {
+                        const newDebt = parseFloat(sData.debt) + purchaseOrder.totalCost;
+                        await supabase.from('suppliers').update({ debt: newDebt }).eq('id', purchaseOrder.supplierId);
+                    }
+                } catch (e) {
+                    console.error("Supabase Error:", e);
+                }
+            })();
+        }
     };
 
     return (
