@@ -2,7 +2,41 @@ import React, { useState, useContext } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 
-export default function ChartsSection() {
+
+const isDateInPeriod = (dateStr, period) => {
+    if (!dateStr) return false;
+    if (period === 'all') return true;
+
+    try {
+        const orderDate = new Date(dateStr);
+        orderDate.setHours(0, 0, 0, 0);
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const diffTime = today - orderDate;
+        const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+        if (period === 'today') {
+            return diffDays === 0;
+        }
+        if (period === 'week') {
+            return diffDays >= 0 && diffDays < 7;
+        }
+        if (period === 'month') {
+            return diffDays >= 0 && diffDays < 30;
+        }
+        if (period === 'year') {
+            return diffDays >= 0 && diffDays < 365;
+        }
+    } catch (e) {
+        return false;
+    }
+    return true;
+};
+
+
+export default function ChartsSection({ timeFilter = 'all' }) {
     const { state, t } = useContext(AppContext);
     const currency = state.storeSettings.currency || '$';
 
@@ -10,17 +44,21 @@ export default function ChartsSection() {
     const getDays = () => {
         const dates = new Set();
         (state.orders || []).forEach(o => {
-            if (o.date) dates.add(o.date);
+            if (o.date && isDateInPeriod(o.date, timeFilter)) dates.add(o.date);
         });
         (state.purchaseOrders || []).forEach(po => {
-            if (po.date) dates.add(po.date);
+            if (po.date && isDateInPeriod(po.date, timeFilter)) dates.add(po.date);
         });
 
         let sortedActiveDates = Array.from(dates).sort((a, b) => new Date(a) - new Date(b));
 
-        // If we don't have enough active dates, fill them with calendar days up to today
+        if (timeFilter === 'today') {
+            return [getLocalDateString()];
+        }
+
         const today = new Date();
-        for (let i = 0; i < 30; i++) {
+        const limitDays = timeFilter === 'week' ? 7 : (timeFilter === 'month' ? 30 : 365);
+        for (let i = 0; i < limitDays; i++) {
             if (sortedActiveDates.length >= 6) break;
             const dStr = getLocalDateString(today);
             if (!sortedActiveDates.includes(dStr)) {
@@ -77,7 +115,7 @@ export default function ChartsSection() {
     const barWidth = 12;
     const gap = 4;
     const groupWidth = barWidth * 2 + gap;
-    const groupGap = (graphWidth - groupWidth * labels.length) / (labels.length - 1);
+    const groupGap = labels.length > 1 ? (graphWidth - groupWidth * labels.length) / (labels.length - 1) : 0;
 
     const [hoveredBarIdx, setHoveredBarIdx] = useState(null);
 
@@ -95,7 +133,7 @@ export default function ChartsSection() {
     const maxLine = Math.max(5, maxOrdered, maxDelivered);
     const maxValLine = Math.ceil(maxLine / 5) * 5;
 
-    const spacingX = graphWidth / (labels.length - 1);
+    const spacingX = labels.length > 1 ? graphWidth / (labels.length - 1) : graphWidth;
 
     // Coordinate conversion
     const orderedCoords = labels.map((_, idx) => ({

@@ -698,6 +698,135 @@ export const AppProvider = ({ children }) => {
         }
     };
 
+    const editOrder = (updatedOrder) => {
+        let oldOrder = null;
+        setState(prev => {
+            oldOrder = prev.orders.find(o => o.id === updatedOrder.id);
+            if (!oldOrder) return prev;
+
+            let products = [...prev.products];
+
+            // 1. Revert old stock changes if deducted
+            const oldDeducted = oldOrder.status === "Completed" || oldOrder.status === "Partially Delivered";
+            if (oldDeducted) {
+                oldOrder.items.forEach(item => {
+                    products = products.map(p => {
+                        const hasVar = p.variants.some(v => v.sku === item.variantSku);
+                        if (hasVar) {
+                            return {
+                                ...p,
+                                variants: p.variants.map(v => {
+                                    if (v.sku === item.variantSku) {
+                                        const stock = { ...v.stock };
+                                        const wh = oldOrder.warehouse || "Sulur";
+                                        stock[wh] = (stock[wh] || 0) + item.quantity;
+                                        return { ...v, stock };
+                                    }
+                                    return v;
+                                })
+                            };
+                        }
+                        return p;
+                    });
+                });
+            }
+
+            // 2. Deduct new stock changes if new status is deducted
+            const newDeducted = updatedOrder.status === "Completed" || updatedOrder.status === "Partially Delivered";
+            if (newDeducted) {
+                updatedOrder.items.forEach(item => {
+                    products = products.map(p => {
+                        const hasVar = p.variants.some(v => v.sku === item.variantSku);
+                        if (hasVar) {
+                            return {
+                                ...p,
+                                variants: p.variants.map(v => {
+                                    if (v.sku === item.variantSku) {
+                                        const stock = { ...v.stock };
+                                        const wh = updatedOrder.warehouse || "Sulur";
+                                        stock[wh] = Math.max(0, (stock[wh] || 0) - item.quantity);
+                                        return { ...v, stock };
+                                    }
+                                    return v;
+                                })
+                            };
+                        }
+                        return p;
+                    });
+                });
+            }
+
+            // 3. Update order in list
+            const newOrders = prev.orders.map(o => o.id === updatedOrder.id ? updatedOrder : o);
+
+            return {
+                ...prev,
+                products,
+                orders: newOrders
+            };
+        });
+
+        logActivity("order", `Order ${updatedOrder.id} updated for ${updatedOrder.client}.`);
+        showToast(`Order ${updatedOrder.id} updated.`);
+
+        if (supabase) {
+            (async () => {
+                try {
+                    await supabase.from('orders').update({
+                        client: updatedOrder.client,
+                        date: updatedOrder.date,
+                        warehouse: updatedOrder.warehouse || 'Sulur',
+                        status: updatedOrder.status,
+                        total_value: updatedOrder.totalValue,
+                        address: updatedOrder.address || null,
+                        governorate: updatedOrder.governorate || null,
+                        deposit: updatedOrder.deposit || 0,
+                        shipping_fee: updatedOrder.shipping_fee || 0,
+                        created_by: updatedOrder.createdBy || null
+                    }).eq('id', updatedOrder.id);
+
+                    await supabase.from('order_items').delete().eq('order_id', updatedOrder.id);
+                    if (updatedOrder.items && updatedOrder.items.length > 0) {
+                        const items = updatedOrder.items.map(item => ({
+                            order_id: updatedOrder.id,
+                            variant_sku: item.variantSku,
+                            quantity: item.quantity,
+                            price: item.price
+                        }));
+                        await supabase.from('order_items').insert(items);
+                    }
+
+                    // Sync databases stock variants
+                    setTimeout(async () => {
+                        const oldSKUs = (oldOrder ? oldOrder.items : []).map(i => i.variantSku);
+                        const newSKUs = updatedOrder.items.map(i => i.variantSku);
+                        const allSKUs = Array.from(new Set([...oldSKUs, ...newSKUs]));
+                        
+                        // We fetch new state and sync
+                        for (const sku of allSKUs) {
+                            // Find product variant
+                            let stockQty = 0;
+                            // Read current stock inside state in direct access since state isn't finished setting yet
+                            setState(currState => {
+                                const prod = currState.products.find(p => p.variants.some(v => v.sku === sku));
+                                if (prod) {
+                                    const vr = prod.variants.find(v => v.sku === sku);
+                                    if (vr) stockQty = vr.stock?.['Sulur'] || 0;
+                                }
+                                return currState;
+                            });
+                            
+                            await supabase.from('product_variants').update({ stock_sulur: stockQty }).eq('sku', sku);
+                        }
+                    }, 500);
+
+                } catch (e) {
+                    console.error("Supabase Error:", e);
+                }
+            })();
+        }
+    };
+
     // Suppliers CRUD Actions
     const addSupplier = (supplier) => {
         setState(prev => ({
@@ -1092,6 +1221,7 @@ export const AppProvider = ({ children }) => {
             deleteProduct,
             deleteMultipleProducts,
             addOrder,
+            editOrder,
             updateOrderStatus,
             deleteOrder,
             addSupplier,

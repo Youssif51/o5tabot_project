@@ -57,6 +57,8 @@ export default function App() {
     const [isAddProductOpen, setIsAddProductOpen] = useState(false);
     const [editProductId, setEditProductId] = useState(null);
     const [isAddOrderOpen, setIsAddOrderOpen] = useState(false);
+    const [editOrderId, setEditOrderId] = useState(null);
+    const [dashTimeFilter, setDashTimeFilter] = useState('all');
 
     // Barcode scanner simulation state
     const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -244,9 +246,31 @@ export default function App() {
 
                 {/* Main Views Router */}
                 {currentView === 'dashboard' && (
-                    <div id="dashboard-view" className="view-pane active">
-                        <MetricsRow />
-                        <ChartsSection />
+                    <div id="dashboard-view" className="view-pane active" dir="rtl">
+                        {/* Dashboard Time Filter Header */}
+                        <div className="page-header" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                            <div className="page-title-group">
+                                <h2 style={{ fontSize: '22px', fontWeight: 'bold' }}>لوحة التحكم والتحليلات</h2>
+                            </div>
+                            <div className="page-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>تصفية الفترة الزمنية:</span>
+                                <select 
+                                    className="form-select" 
+                                    value={dashTimeFilter} 
+                                    onChange={(e) => setDashTimeFilter(e.target.value)}
+                                    style={{ width: '180px', backgroundColor: 'rgba(255,255,255,0.02)', color: '#fff', border: '1px solid var(--glass-border)', borderRadius: '6px', padding: '8px' }}
+                                >
+                                    <option value="all" style={{ background: '#1a1a1a' }}>كل الأوقات</option>
+                                    <option value="today" style={{ background: '#1a1a1a' }}>اليوم</option>
+                                    <option value="week" style={{ background: '#1a1a1a' }}>آخر 7 أيام (أسبوع)</option>
+                                    <option value="month" style={{ background: '#1a1a1a' }}>آخر 30 يوماً (شهر)</option>
+                                    <option value="year" style={{ background: '#1a1a1a' }}>آخر 365 يوماً (سنة)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <MetricsRow timeFilter={dashTimeFilter} />
+                        <ChartsSection timeFilter={dashTimeFilter} />
                         <div className="dashboard-grid" style={{ marginTop: '24px' }}>
                             <TopSelling />
                             <LowQuantity />
@@ -268,7 +292,8 @@ export default function App() {
                     <OrdersList 
                         globalSearch={globalSearch}
                         setGlobalSearch={setGlobalSearch}
-                        onOpenAddOrder={() => setIsAddOrderOpen(true)}
+                        onOpenAddOrder={() => { setEditOrderId(null); setIsAddOrderOpen(true); }}
+                        onOpenEditOrder={(id) => { setEditOrderId(id); setIsAddOrderOpen(true); }}
                     />
                 )}
 
@@ -299,7 +324,8 @@ export default function App() {
 
             <RecordOrderModal 
                 isOpen={isAddOrderOpen}
-                onClose={() => setIsAddOrderOpen(false)}
+                onClose={() => { setIsAddOrderOpen(false); setEditOrderId(null); }}
+                editOrderId={editOrderId}
             />
 
             {/* Scanner simulation Modal */}

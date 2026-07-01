@@ -1,7 +1,41 @@
 import React, { useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
 
-export default function MetricsRow() {
+
+const isDateInPeriod = (dateStr, period) => {
+    if (!dateStr) return false;
+    if (period === 'all') return true;
+
+    try {
+        const orderDate = new Date(dateStr);
+        orderDate.setHours(0, 0, 0, 0);
+
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        const diffTime = today - orderDate;
+        const diffDays = diffTime / (1000 * 60 * 60 * 24);
+
+        if (period === 'today') {
+            return diffDays === 0;
+        }
+        if (period === 'week') {
+            return diffDays >= 0 && diffDays < 7;
+        }
+        if (period === 'month') {
+            return diffDays >= 0 && diffDays < 30;
+        }
+        if (period === 'year') {
+            return diffDays >= 0 && diffDays < 365;
+        }
+    } catch (e) {
+        return false;
+    }
+    return true;
+};
+
+
+export default function MetricsRow({ timeFilter = 'all' }) {
     const { state, t } = useContext(AppContext);
     const currency = state.storeSettings.currency || '$';
 
@@ -12,6 +46,7 @@ export default function MetricsRow() {
     
     state.orders.forEach(ord => {
         if (ord.status !== "Cancelled" && ord.status !== "Draft") {
+            if (!isDateInPeriod(ord.date, timeFilter)) return;
             salesCount++;
             salesRevenue += ord.totalValue;
             ord.items.forEach(item => {
@@ -41,9 +76,11 @@ export default function MetricsRow() {
     });
 
     // 3. Purchase Overview calculations
-    let purCount = (state.purchaseOrders || []).length;
+    let purCount = 0;
     let purCost = 0;
     (state.purchaseOrders || []).forEach(po => {
+        if (!isDateInPeriod(po.date, timeFilter)) return;
+        purCount++;
         purCost += po.totalCost || 0;
     });
     let purCancelled = state.orders.filter(o => o.status === "Cancelled").length;
