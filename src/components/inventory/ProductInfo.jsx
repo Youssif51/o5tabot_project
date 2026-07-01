@@ -3,7 +3,7 @@ import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
 
 export default function ProductInfo({ productId, onBack, onEditProduct }) {
-    const { state, recordStockAdjustment, showToast, t } = useContext(AppContext);
+    const { state, recordStockAdjustment, showToast, language, t } = useContext(AppContext);
     const [activeTab, setActiveTab] = useState('Overview');
 
     // Barcode Printing State
@@ -49,8 +49,8 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
     const totalStock = sulurStock + singanallurStock;
 
     // Supplier Lookup
-    let supplierName = 'Ronald Martin';
-    let supplierPhone = '98789 86757';
+    let supplierName = t('notSpecified') || 'غير محدد';
+    let supplierPhone = t('notSpecified') || 'غير محدد';
     if (product.suppliers && product.suppliers.length > 0) {
         const supObj = state.suppliers.find(s => s.id === product.suppliers[0]);
         if (supObj) {
@@ -170,6 +170,10 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                 <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr' }}>
                                     <span style={{ color: 'var(--text-secondary)' }}>{t('createdDate')}</span>
                                     <span style={{ color: '#fff', fontWeight: 600 }}>{product.createdDate || "2026-06-30"}</span>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr' }}>
+                                    <span style={{ color: 'var(--text-secondary)' }}>المُسجِل (المسؤول)</span>
+                                    <span style={{ color: '#fff', fontWeight: 600 }}>{product.createdBy || 'sfsf'}</span>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr' }}>
                                     <span style={{ color: 'var(--text-secondary)' }}>{t('thresholdValue')}</span>
@@ -302,10 +306,10 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
             ) : activeTab === 'Purchases' ? (
                 <div className="glass-card" style={{ padding: '24px' }}>
                     <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '20px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
-                        FIFO Inventory Queue
+                        {t('fifoQueue')}
                     </h3>
                     {(!product.batches || product.batches.length === 0) ? (
-                        <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>No active FIFO batches logged.</p>
+                        <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>{t('noFifoBatches')}</p>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             {[...(product.batches || [])].map((batch, index) => {
@@ -323,16 +327,16 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                                 <strong style={{ color: '#fff', fontSize: '14px' }}>{batch.batchId}</strong>
                                                 <span className="badge badge-in" style={{ fontSize: '10px', padding: '2px 8px' }}>
-                                                    {index === 0 ? '🚨 Next to Dispatch (FIFO #1)' : `📦 Batch FIFO #${index + 1}`}
+                                                    {index === 0 ? t('nextToDispatch') : `${t('batchFifo')}${index + 1}`}
                                                 </span>
                                             </div>
                                             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px' }}>
-                                                Warehouse: <span style={{ color: '#fff' }}>{t('inSulur')}</span>
+                                                {t('warehouse') || 'المستودع'}: <span style={{ color: '#fff' }}>{t('inSulur')}</span>
                                             </div>
                                         </div>
                                         <div style={{ textAlign: 'right' }}>
                                             <div style={{ fontSize: '14px', color: 'var(--gold-primary)', fontWeight: 700 }}>
-                                                {batch.quantity} {t('packets')} remaining
+                                                {batch.quantity} {t('packets')} {t('remainingQty') || 'متبقي'}
                                             </div>
                                         </div>
                                     </div>
@@ -346,7 +350,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                     {/* Record Stock Adjustment form */}
                     <div className="glass-card" style={{ padding: '24px' }}>
                         <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '18px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
-                            Record Stock Adjustment
+                            {t('recordStockAdjustment')}
                         </h3>
                         <form onSubmit={(e) => {
                             e.preventDefault();
@@ -356,7 +360,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                             setAdjReason('');
                         }}>
                             <div className="form-group">
-                                <label className="form-label">Select Option/Variant</label>
+                                <label className="form-label">{t('selectOptionVariant')}</label>
                                 <select 
                                     className="form-select"
                                     value={adjVariantSku}
@@ -364,26 +368,28 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                     required
                                 >
                                     {product.variants.map(v => (
-                                        <option key={v.sku} value={v.sku}>{v.name} ({v.sku})</option>
+                                        <option key={v.sku} value={v.sku}>
+                                            {v.name}
+                                        </option>
                                     ))}
                                 </select>
                             </div>
 
                             <div className="form-group" style={{ marginTop: '12px' }}>
-                                <label className="form-label">Adjustment Type</label>
+                                <label className="form-label">{t('adjustmentType')}</label>
                                 <div style={{ display: 'flex', gap: '16px', marginTop: '6px' }}>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#fff' }}>
                                         <input type="radio" name="adjType" checked={adjType === 'increase'} onChange={() => setAdjType('increase')} />
-                                        Increase (+)
+                                        {t('increase')}
                                     </label>
                                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '13px', color: '#fff' }}>
                                         <input type="radio" name="adjType" checked={adjType === 'decrease'} onChange={() => setAdjType('decrease')} />
-                                        Decrease (-)
+                                        {t('decrease')}
                                     </label>
                                 </div>
                             </div>
                             <div className="form-group" style={{ marginTop: '12px' }}>
-                                <label className="form-label">Adjustment Quantity</label>
+                                <label className="form-label">{t('adjustmentQuantity')}</label>
                                 <input 
                                     type="number" 
                                     className="form-input" 
@@ -394,18 +400,18 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                 />
                             </div>
                             <div className="form-group" style={{ marginTop: '12px' }}>
-                                <label className="form-label">Reason / Justification</label>
+                                <label className="form-label">{t('reasonJustification')}</label>
                                 <input 
                                     type="text" 
                                     className="form-input" 
-                                    placeholder="e.g. Audit correction, recount difference" 
+                                    placeholder={language === 'ar' ? "مثال: تصحيح جرد، تالف..." : "e.g. Audit correction, recount difference"} 
                                     value={adjReason}
                                     onChange={(e) => setAdjReason(e.target.value)}
                                     required 
                                 />
                             </div>
                             <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '20px' }}>
-                                Apply Stock Correction
+                                {t('applyStockCorrection')}
                             </button>
                         </form>
                     </div>
@@ -413,20 +419,20 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                     {/* Adjustments History log */}
                     <div className="glass-card" style={{ padding: '24px' }}>
                         <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '18px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
-                            Correction & Audit logs
+                            {t('correctionAuditLogs')}
                         </h3>
                         {(!product.adjustments || product.adjustments.length === 0) ? (
-                            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>No stock corrections logged yet.</p>
+                            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>{t('noStockCorrections')}</p>
                         ) : (
                             <div className="table-wrapper">
                                 <table className="custom-table" style={{ fontSize: '11px' }}>
                                     <thead>
                                         <tr>
-                                            <th>Date</th>
-                                            <th>Warehouse</th>
-                                            <th>Type</th>
-                                            <th style={{ textAlign: 'right' }}>Qty</th>
-                                            <th>Reason</th>
+                                            <th>{t('date')}</th>
+                                            <th>{t('warehouse') || 'المستودع'}</th>
+                                            <th>{t('type')}</th>
+                                            <th style={{ textAlign: 'right' }}>{t('qty') || 'الكمية'}</th>
+                                            <th>{t('reason')}</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -435,7 +441,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                 <td>{adj.date}</td>
                                                 <td>{t('inSulur')}</td>
                                                 <td style={{ color: adj.type === 'increase' ? 'var(--color-success)' : 'var(--color-danger)', fontWeight: 600 }}>
-                                                    {adj.type === 'increase' ? '+ Increase' : '- Decrease'}
+                                                    {adj.type === 'increase' ? `+ ${t('increase')}` : `- ${t('decrease')}`}
                                                 </td>
                                                 <td style={{ textAlign: 'right', fontWeight: 600 }}>{adj.quantity}</td>
                                                 <td style={{ color: 'var(--text-secondary)' }}>{adj.reason}</td>
@@ -558,11 +564,8 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                             <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--gold-primary)', letterSpacing: '0.5px', marginBottom: '2px' }}>
                                 {state.storeSettings.name || 'o5taboad store'}
                             </div>
-                            <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '8px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {product.name}
-                            </div>
-                            <div style={{ fontSize: '10px', color: 'var(--text-secondary)', marginBottom: '14px', fontFamily: 'monospace' }}>
-                                SKU: {printVariant.sku}
                             </div>
 
                             {/* CSS Barcode Lines Simulator */}

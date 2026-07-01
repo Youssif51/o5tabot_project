@@ -1,12 +1,13 @@
 import React, { useContext, useState } from 'react';
+import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
 
-export default function OrdersList({ globalSearch, onOpenAddOrder }) {
+export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrder }) {
     const { state, updateOrderStatus, deleteOrder, showToast, logActivity, t } = useContext(AppContext);
     
     // Filters & Search
-    const [searchVal, setSearchVal] = useState('');
+    // Using globalSearch instead of local searchVal
     const [statusFilter, setStatusFilter] = useState('all');
 
     // Pagination
@@ -20,13 +21,13 @@ export default function OrdersList({ globalSearch, onOpenAddOrder }) {
     const [isRestockable, setIsRestockable] = useState(true);
 
     const currency = state.storeSettings.currency || '$';
-    const activeSearch = searchVal || globalSearch || '';
+    const activeSearch = globalSearch || '';
 
     // Filter logic
-    const filteredOrders = state.orders.filter(ord => {
+    const filteredOrders = (state.orders || []).filter(ord => {
         if (statusFilter !== 'all' && ord.status !== statusFilter) return false;
-        const clientMatches = ord.client.toLowerCase().includes(activeSearch.toLowerCase());
-        const idMatches = ord.id.toLowerCase().includes(activeSearch.toLowerCase());
+        const clientMatches = (ord.client || '').toLowerCase().includes(activeSearch.toLowerCase());
+        const idMatches = (ord.id || '').toLowerCase().includes(activeSearch.toLowerCase());
         return clientMatches || idMatches;
     });
 
@@ -69,7 +70,7 @@ export default function OrdersList({ globalSearch, onOpenAddOrder }) {
         if (isRestockable) {
             // Restock to warehouse
             const newBatchId = `B-${firstItem.variantSku.substring(0, 6)}-RET-${Math.floor(10 + Math.random() * 90)}`;
-            const expiryStr = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().substring(0, 10);
+            const expiryStr = getLocalDateString(new Date(Date.now() + 180 * 24 * 60 * 60 * 1000));
             
             product.batches.push({
                 batchId: newBatchId,
@@ -88,7 +89,7 @@ export default function OrdersList({ globalSearch, onOpenAddOrder }) {
             const costLoss = returnQty * variantObj.wholesalePrice;
             state.wastes.push({
                 id: `WST-${Math.floor(100 + Math.random() * 900)}`,
-                date: new Date().toISOString().substring(0, 10),
+                date: getLocalDateString(),
                 variantSku: firstItem.variantSku,
                 quantity: returnQty,
                 warehouse: returnOrder.warehouse,
@@ -149,8 +150,8 @@ export default function OrdersList({ globalSearch, onOpenAddOrder }) {
                         <input 
                             type="text" 
                             placeholder={t('searchPlaceholder')}
-                            value={searchVal}
-                            onChange={(e) => { setSearchVal(e.target.value); setCurrentPage(1); }}
+                            value={globalSearch || ''}
+                            onChange={(e) => { setGlobalSearch(e.target.value); setCurrentPage(1); }}
                         />
                     </div>
                     
@@ -181,7 +182,8 @@ export default function OrdersList({ globalSearch, onOpenAddOrder }) {
                                 <th>{t('date')}</th>
                                 <th>{t('quantity')}</th>
                                 <th>{t('total')}</th>
-                                <th>{t('unit')}</th>
+                                <th>المُسجِل</th>
+                                <th>{t('warehouse')}</th>
                                 <th>{t('status')}</th>
                                 <th style={{ textAlign: 'right' }}>{t('actions')}</th>
                             </tr>
@@ -189,13 +191,13 @@ export default function OrdersList({ globalSearch, onOpenAddOrder }) {
                         <tbody>
                             {paginatedOrders.length === 0 ? (
                                 <tr>
-                                    <td colSpan="8" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                                    <td colSpan="9" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
                                         {t('noOrders')}
                                     </td>
                                 </tr>
                             ) : (
                                 paginatedOrders.map(ord => {
-                                    const totalQty = ord.items.reduce((acc, curr) => acc + curr.quantity, 0);
+                                    const totalQty = (ord.items || []).reduce((acc, curr) => acc + curr.quantity, 0);
                                     let statusClass = "badge-grey";
                                     if (ord.status === "Draft") statusClass = "badge-warning";
                                     else if (ord.status === "Paid") statusClass = "badge-gold";
@@ -210,6 +212,7 @@ export default function OrdersList({ globalSearch, onOpenAddOrder }) {
                                             <td>{ord.date}</td>
                                             <td>{totalQty} {t('units')}</td>
                                             <td style={{ fontWeight: 600 }}>{currency}{ord.totalValue.toFixed(2)}</td>
+                                            <td style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{ord.createdBy || 'sfsf'}</td>
                                             <td>{t('inSulur')}</td>
                                             <td><span className={`badge ${statusClass}`}>{translateStatus(ord.status)}</span></td>
                                             <td style={{ textAlign: 'right' }}>

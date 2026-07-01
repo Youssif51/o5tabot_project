@@ -1,15 +1,16 @@
 import React, { useContext, useState } from 'react';
+import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
 
-export default function SuppliersList({ globalSearch }) {
+export default function SuppliersList({ globalSearch, setGlobalSearch }) {
     const { state, addSupplier, recordSupplierPayment, recordPurchaseOrder, showToast, logActivity, t } = useContext(AppContext);
     
     // View state tab: 'suppliers' or 'purchases'
     const [activeTab, setActiveTab] = useState('suppliers');
 
     // Search
-    const [searchVal, setSearchVal] = useState('');
+    // Using globalSearch instead of local searchVal
 
     // Modal state for register/edit supplier
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -30,26 +31,26 @@ export default function SuppliersList({ globalSearch }) {
     const [isPoOpen, setIsPoOpen] = useState(false);
     const [poSupplierId, setPoSupplierId] = useState('');
     const [poWarehouse, setPoWarehouse] = useState('Sulur');
-    const [poDate, setPoDate] = useState(new Date().toISOString().substring(0, 10));
+    const [poDate, setPoDate] = useState(getLocalDateString());
     const [poItems, setPoItems] = useState([{ variantSku: '', quantity: 1, cost: 50.00, expiryDate: '2027-12-31' }]);
 
     const currency = state.storeSettings.currency || '$';
-    const activeSearch = searchVal || globalSearch || '';
+    const activeSearch = globalSearch || '';
 
     // Calculations for summary metrics
     let totalPaid = 0;
     let totalDebt = 0;
     let totalItems = 0;
-    state.suppliers.forEach(s => {
-        totalPaid += s.paid;
-        totalDebt += s.debt;
-        totalItems += s.suppliedVariants.length;
+    (state.suppliers || []).forEach(s => {
+        totalPaid += s.paid || 0;
+        totalDebt += s.debt || 0;
+        totalItems += (s.suppliedVariants || []).length;
     });
 
     // Filtered suppliers
-    const filteredSuppliers = state.suppliers.filter(s => {
-        const nameMatches = s.name.toLowerCase().includes(activeSearch.toLowerCase());
-        const emailMatches = s.email.toLowerCase().includes(activeSearch.toLowerCase());
+    const filteredSuppliers = (state.suppliers || []).filter(s => {
+        const nameMatches = (s.name || '').toLowerCase().includes(activeSearch.toLowerCase());
+        const emailMatches = (s.email || s.contact || '').toLowerCase().includes(activeSearch.toLowerCase());
         return nameMatches || emailMatches;
     });
 
@@ -104,7 +105,8 @@ export default function SuppliersList({ globalSearch }) {
             phone: formPhone,
             paid: parseFloat(formPaid) || 0,
             debt: parseFloat(formDebt) || 0,
-            suppliedVariants: isNew ? [] : (state.suppliers.find(s => s.id === formId)?.suppliedVariants || [])
+            suppliedVariants: isNew ? [] : (state.suppliers.find(s => s.id === formId)?.suppliedVariants || []),
+            createdBy: isNew ? (state.currentUser ? state.currentUser.name : 'sfsf') : (state.suppliers.find(s => s.id === formId)?.createdBy || 'sfsf')
         };
 
         if (isNew) {
@@ -143,7 +145,7 @@ export default function SuppliersList({ globalSearch }) {
     const handleOpenPo = () => {
         setPoSupplierId(state.suppliers[0]?.id || '');
         setPoWarehouse('Sulur');
-        setPoDate(new Date().toISOString().substring(0, 10));
+        setPoDate(getLocalDateString());
         setPoItems([{ variantSku: '', quantity: 1, cost: 50.00, expiryDate: '2099-12-31' }]);
         setIsPoOpen(true);
     };
@@ -199,7 +201,8 @@ export default function SuppliersList({ globalSearch }) {
                 expiryDate: item.expiryDate
             })),
             totalCost,
-            warehouse: poWarehouse
+            warehouse: poWarehouse,
+            createdBy: state.currentUser ? state.currentUser.name : 'sfsf'
         };
 
         recordPurchaseOrder(newPO);
@@ -288,8 +291,8 @@ export default function SuppliersList({ globalSearch }) {
                                 <input 
                                     type="text" 
                                     placeholder={t('searchPlaceholder')}
-                                    value={searchVal}
-                                    onChange={(e) => setSearchVal(e.target.value)}
+                                    value={globalSearch || ''}
+                                    onChange={(e) => setGlobalSearch(e.target.value)}
                                 />
                             </div>
                         </div>
@@ -307,6 +310,7 @@ export default function SuppliersList({ globalSearch }) {
                                         <th>{t('variants')}</th>
                                         <th>{t('paid')}</th>
                                         <th>{t('debt')}</th>
+                                        <th>المُسجِل</th>
                                         <th>{t('status')}</th>
                                         <th style={{ textAlign: 'right' }}>{t('actions')}</th>
                                     </tr>
@@ -314,7 +318,7 @@ export default function SuppliersList({ globalSearch }) {
                                 <tbody>
                                     {filteredSuppliers.length === 0 ? (
                                         <tr>
-                                            <td colSpan="8" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                                            <td colSpan="9" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
                                                 {t('noSuppliers')}
                                             </td>
                                         </tr>
@@ -327,13 +331,14 @@ export default function SuppliersList({ globalSearch }) {
                                             return (
                                                 <tr key={sup.id}>
                                                     <td style={{ fontWeight: 600, color: 'var(--gold-primary)' }}>{sup.name}</td>
-                                                    <td>{sup.email}</td>
+                                                    <td>{sup.email || sup.contact || 'N/A'}</td>
                                                     <td>{sup.phone || 'N/A'}</td>
                                                     <td><span className="badge badge-grey">{sup.suppliedVariants?.length || 0} {t('catalogItems')}</span></td>
                                                     <td>{currency}{(sup.paid || 0).toFixed(2)}</td>
                                                     <td style={{ fontWeight: 600, color: sup.debt > 0 ? 'var(--color-danger)' : 'inherit' }}>
                                                         {currency}{(sup.debt || 0).toFixed(2)}
                                                     </td>
+                                                    <td style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{sup.createdBy || 'sfsf'}</td>
                                                     <td>{statusBadge}</td>
                                                     <td style={{ textAlign: 'right' }}>
                                                         <div className="table-actions-cell">
@@ -383,13 +388,14 @@ export default function SuppliersList({ globalSearch }) {
                                     <th>{t('date')}</th>
                                     <th>{t('stockLocations')}</th>
                                     <th>{t('products')}</th>
+                                    <th>المُسجِل</th>
                                     <th>{t('total')}</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {(!state.purchaseOrders || state.purchaseOrders.length === 0) ? (
                                     <tr>
-                                        <td colSpan="6" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                                        <td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
                                             {t('noRecords')}
                                         </td>
                                     </tr>
@@ -411,6 +417,7 @@ export default function SuppliersList({ globalSearch }) {
                                                         ))}
                                                     </div>
                                                 </td>
+                                                <td style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{po.createdBy || 'sfsf'}</td>
                                                 <td style={{ fontWeight: 600 }}>{currency}{po.totalCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                                             </tr>
                                         );

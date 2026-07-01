@@ -1,4 +1,5 @@
 import React, { useContext, useState } from 'react';
+import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 
 export default function ReportsView() {
@@ -14,7 +15,7 @@ export default function ReportsView() {
         for (let i = 5; i >= 0; i--) {
             const d = new Date();
             d.setDate(d.getDate() - i);
-            list.push(d.toISOString().substring(0, 10));
+            list.push(getLocalDateString(d));
         }
         return list;
     };

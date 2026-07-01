@@ -1,4 +1,5 @@
 import { supabase } from '../utils/supabase';
+import { getLocalDateString } from '../utils/dateUtils';
 import React, { createContext, useState, useEffect } from 'react';
 
 export const AppContext = createContext();
@@ -26,7 +27,11 @@ const initialState = {
         address: "Egypt",
         currency: "EGP"
     },
-    currentUser: null
+    currentUser: {
+        name: "sfsf",
+        role: "Store Manager",
+        avatar: "S"
+    }
 };
 
 export const AppProvider = ({ children }) => {
@@ -108,6 +113,7 @@ export const AppProvider = ({ children }) => {
                         unit: p.unit,
                         image: p.image,
                         createdDate: p.created_date,
+                        createdBy: p.created_by,
                         description: p.description,
                         variants: pVars
                     };
@@ -119,7 +125,8 @@ export const AppProvider = ({ children }) => {
                     contact: s.contact,
                     phone: s.phone,
                     debt: parseFloat(s.debt) || 0,
-                    paid: parseFloat(s.paid) || 0
+                    paid: parseFloat(s.paid) || 0,
+                    createdBy: s.created_by
                 }));
 
                 const mappedOrders = (orders || []).map(o => {
@@ -135,6 +142,11 @@ export const AppProvider = ({ children }) => {
                         warehouse: o.warehouse,
                         status: o.status,
                         totalValue: parseFloat(o.total_value) || 0,
+                        address: o.address || '',
+                        governorate: o.governorate || '',
+                        deposit: parseFloat(o.deposit) || 0,
+                        shipping_fee: parseFloat(o.shipping_fee) || 0,
+                        createdBy: o.created_by,
                         items
                     };
                 });
@@ -151,6 +163,7 @@ export const AppProvider = ({ children }) => {
                         date: po.date,
                         warehouse: po.warehouse,
                         totalCost: parseFloat(po.total_cost) || 0,
+                        createdBy: po.created_by,
                         items
                     };
                 });
@@ -462,7 +475,12 @@ export const AppProvider = ({ children }) => {
                         date: order.date,
                         warehouse: order.warehouse || 'Sulur',
                         status: order.status,
-                        total_value: order.totalValue
+                        total_value: order.totalValue,
+                        address: order.address || null,
+                        governorate: order.governorate || null,
+                        deposit: order.deposit || 0,
+                        shipping_fee: order.shipping_fee || 0,
+                        created_by: order.createdBy || null
                     }]);
 
                     if (order.items && order.items.length > 0) {
@@ -565,7 +583,7 @@ export const AppProvider = ({ children }) => {
                         const vr = prod.variants.find(v => v.sku === item.variantSku);
                         const currentBal = vr ? (vr.stock[order.warehouse || "Sulur"] || 0) : 0;
                         newLedger = [{
-                            date: new Date().toISOString().substring(0, 10),
+                            date: getLocalDateString(),
                             productId: prod.id,
                             variantSku: item.variantSku,
                             warehouse: order.warehouse || "Sulur",
@@ -582,7 +600,7 @@ export const AppProvider = ({ children }) => {
                         const vr = prod.variants.find(v => v.sku === item.variantSku);
                         const currentBal = vr ? (vr.stock[order.warehouse || "Sulur"] || 0) : 0;
                         newLedger = [{
-                            date: new Date().toISOString().substring(0, 10),
+                            date: getLocalDateString(),
                             productId: prod.id,
                             variantSku: item.variantSku,
                             warehouse: order.warehouse || "Sulur",
@@ -624,7 +642,7 @@ export const AppProvider = ({ children }) => {
                                     await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', item.variant_sku);
                                     
                                     await supabase.from('stock_ledger').insert([{
-                                        date: new Date().toISOString().substring(0, 10),
+                                        date: getLocalDateString(),
                                         product_id: vData.product_id,
                                         variant_sku: item.variant_sku,
                                         warehouse: order.warehouse || 'Sulur',
@@ -642,7 +660,7 @@ export const AppProvider = ({ children }) => {
                                     await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', item.variant_sku);
                                     
                                     await supabase.from('stock_ledger').insert([{
-                                        date: new Date().toISOString().substring(0, 10),
+                                        date: getLocalDateString(),
                                         product_id: vData.product_id,
                                         variant_sku: item.variant_sku,
                                         warehouse: order.warehouse || 'Sulur',
@@ -871,7 +889,7 @@ export const AppProvider = ({ children }) => {
                         return v;
                     });
                     const adjLog = {
-                        date: new Date().toISOString().substring(0, 10),
+                        date: getLocalDateString(),
                         variantSku,
                         warehouse,
                         type,
@@ -890,7 +908,7 @@ export const AppProvider = ({ children }) => {
                 const vr = prod.variants.find(v => v.sku === variantSku);
                 const currentBal = vr ? (vr.stock[warehouse] || 0) : 0;
                 newLedger = [{
-                    date: new Date().toISOString().substring(0, 10),
+                    date: getLocalDateString(),
                     productId: prod.id,
                     variantSku: variantSku,
                     warehouse: warehouse,
@@ -917,7 +935,7 @@ export const AppProvider = ({ children }) => {
                         await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', variantSku);
                         
                         await supabase.from('stock_ledger').insert([{
-                            date: new Date().toISOString().substring(0, 10),
+                            date: getLocalDateString(),
                             product_id: productId,
                             variant_sku: variantSku,
                             warehouse: warehouse,
@@ -1170,6 +1188,22 @@ const translations = {
         purchases: "Purchases",
         adjustments: "Adjustments",
         history: "History",
+        fifoQueue: "FIFO Inventory Queue",
+        noFifoBatches: "No active FIFO batches logged.",
+        nextToDispatch: "Next to Dispatch (FIFO #1)",
+        batchFifo: "Batch FIFO #",
+        remainingQty: "Remaining Quantity",
+        recordStockAdjustment: "Record Stock Adjustment",
+        selectOptionVariant: "Select Option/Variant",
+        adjustmentType: "Adjustment Type",
+        adjustmentQuantity: "Adjustment Quantity",
+        reasonJustification: "Reason / Justification",
+        applyStockCorrection: "Apply Stock Correction",
+        correctionAuditLogs: "Correction & Audit logs",
+        noStockCorrections: "No stock corrections logged yet.",
+        increase: "Increase (+)",
+        decrease: "Decrease (-)",
+        notSpecified: "Not Specified",
         supplierDetails: "Supplier Details",
         stockLocations: "Stock Locations",
         openingStock: "Opening Stock",
@@ -1249,8 +1283,7 @@ const translations = {
         description: "Description",
         allCategories: "All Categories",
         allWarehouses: "All Warehouses",
-        inSulur: "Bosta",
-        inSinganallur: "Singanallur",
+        inSulur: "Main Warehouse",
         addVariant: "Add Variant",
         addVariantOption: "Add Variant Option",
         productVariants: "Product Option Variants",
@@ -1280,7 +1313,7 @@ const translations = {
         allOrderStatuses: "All Order Statuses",
         inspect: "Inspect",
         createdDate: "Creation Date",
-        supabaseTasks: "Supabase Tasks",
+        supabaseTasks: "Project Notes",
         remaining: "Remaining",
         stockHealthy: "All stock levels healthy!",
         outOfStock: "Out of Stock",
@@ -1375,6 +1408,22 @@ const translations = {
         purchases: "المشتريات",
         adjustments: "التسويات",
         history: "السجل",
+        fifoQueue: "طابور سحب الشحنات (FIFO)",
+        noFifoBatches: "لا توجد شحنات نشطة مسجلة حالياً.",
+        nextToDispatch: "الشحنة التالية للصرف (الأقدم أولاً) 🚨",
+        batchFifo: "شحنة واردة رقم #",
+        remainingQty: "الكمية المتبقية",
+        recordStockAdjustment: "تسجيل تسوية مخزنية (تعديل رصيد)",
+        selectOptionVariant: "اختر المنتج / الصنف الفرعي",
+        adjustmentType: "نوع التسوية (تعديل بالزيادة أو النقصان)",
+        adjustmentQuantity: "الكمية المراد تسويتها",
+        reasonJustification: "سبب التسوية / التبرير",
+        applyStockCorrection: "تطبيق تسوية المخزون",
+        correctionAuditLogs: "سجل عمليات تسوية المخزون والمراجعة",
+        noStockCorrections: "لم يتم تسجيل أي عمليات تسوية مخزنية بعد.",
+        increase: "زيادة رصيد (+)",
+        decrease: "عجز / نقصان رصيد (-)",
+        notSpecified: "غير محدد",
         supplierDetails: "تفاصيل المورد",
         stockLocations: "مواقع المخزون",
         openingStock: "الرصيد الافتتاحي",
@@ -1454,7 +1503,7 @@ const translations = {
         description: "الوصف",
         allCategories: "كل الأقسام",
         allWarehouses: "كل المستودعات",
-        inSulur: "بوسطة",
+        inSulur: "المستودع الرئيسي",
         inSinganallur: "سينجانالور",
         addVariant: "إضافة نوع",
         addVariantOption: "إضافة خيار بديل",
@@ -1485,7 +1534,7 @@ const translations = {
         allOrderStatuses: "كل حالات الطلبات",
         inspect: "معاينة",
         createdDate: "تاريخ الإنشاء",
-        supabaseTasks: "المهام السحابية",
+        supabaseTasks: "ملاحظات المشروع",
         remaining: "المتبقي",
         stockHealthy: "كل مستويات المخزون سليمة!",
         outOfStock: "نفد من المخزن",

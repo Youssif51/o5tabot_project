@@ -1,18 +1,35 @@
 import React, { useState, useContext } from 'react';
+import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 
 export default function ChartsSection() {
     const { state, t } = useContext(AppContext);
+    const currency = state.storeSettings.currency || '$';
 
-    // Calculate last 6 days including today
+    // Calculate last 6 days with activity, or fallback to calendar days
     const getDays = () => {
-        const list = [];
-        for (let i = 5; i >= 0; i--) {
-            const d = new Date();
-            d.setDate(d.getDate() - i);
-            list.push(d.toISOString().substring(0, 10));
+        const dates = new Set();
+        (state.orders || []).forEach(o => {
+            if (o.date) dates.add(o.date);
+        });
+        (state.purchaseOrders || []).forEach(po => {
+            if (po.date) dates.add(po.date);
+        });
+
+        let sortedActiveDates = Array.from(dates).sort((a, b) => new Date(a) - new Date(b));
+
+        // If we don't have enough active dates, fill them with calendar days up to today
+        const today = new Date();
+        for (let i = 0; i < 30; i++) {
+            if (sortedActiveDates.length >= 6) break;
+            const dStr = getLocalDateString(today);
+            if (!sortedActiveDates.includes(dStr)) {
+                sortedActiveDates.unshift(dStr);
+            }
+            today.setDate(today.getDate() - 1);
         }
-        return list;
+
+        return sortedActiveDates.sort((a, b) => new Date(a) - new Date(b)).slice(-6);
     };
     const last6Days = getDays();
     
@@ -105,11 +122,15 @@ export default function ChartsSection() {
                     </span>
                 </div>
                 <div className="chart-container" style={{ minHeight: '240px', marginTop: '16px' }}>
-                    <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} width="100%" height="100%">
+                    <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} width="100%" height="100%" style={{ direction: 'ltr' }}>
                         <defs>
-                            <linearGradient id="gold-gradient-svg" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stopColor="#f5d77f" />
-                                <stop offset="100%" stopColor="#d4af37" />
+                            <linearGradient id="sales-gradient-svg" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#6FCF97" />
+                                <stop offset="100%" stopColor="#27AE60" />
+                            </linearGradient>
+                            <linearGradient id="purchase-gradient-svg" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#56CCF2" />
+                                <stop offset="100%" stopColor="#2F80ED" />
                             </linearGradient>
                         </defs>
                         
@@ -138,24 +159,24 @@ export default function ChartsSection() {
 
                             return (
                                 <g key={`bars-lbl-${idx}`}>
-                                    {/* Sales Bar */}
+                                    {/* Sales Bar (Green) */}
                                     <rect 
                                         x={groupX} 
                                         y={sY} 
                                         width={barWidth} 
                                         height={sHeight} 
-                                        fill="url(#gold-gradient-svg)" 
+                                        fill="url(#sales-gradient-svg)" 
                                         rx="3" 
                                         opacity={hasActiveHover ? (isHovered ? 1 : 0.4) : 1}
                                         style={{ transition: 'opacity 0.2s ease, fill 0.2s ease' }}
                                     />
-                                    {/* Purchase Bar */}
+                                    {/* Purchase Bar (Blue) */}
                                     <rect 
                                         x={groupX + barWidth + gap} 
                                         y={pY} 
                                         width={barWidth} 
                                         height={pHeight} 
-                                        fill="rgba(255,255,255,0.18)" 
+                                        fill="url(#purchase-gradient-svg)" 
                                         rx="3" 
                                         opacity={hasActiveHover ? (isHovered ? 1 : 0.4) : 1}
                                         style={{ transition: 'opacity 0.2s ease' }}
@@ -192,12 +213,12 @@ export default function ChartsSection() {
                 {/* Legend keys */}
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', marginTop: '12px', paddingBottom: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'linear-gradient(180deg, #f5d77f 0%, #d4af37 100%)', display: 'inline-block' }}></span>
-                        {t('sales')}
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'linear-gradient(180deg, #56CCF2 0%, #2F80ED 100%)', display: 'inline-block' }}></span>
+                        {t('purchase')}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'rgba(255,255,255,0.25)', border: '1px solid var(--glass-border)', display: 'inline-block' }}></span>
-                        {t('purchase')}
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'linear-gradient(180deg, #6FCF97 0%, #27AE60 100%)', display: 'inline-block' }}></span>
+                        {t('sales')}
                     </div>
                 </div>
 
@@ -221,12 +242,12 @@ export default function ChartsSection() {
                     }}>
                         <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>{labels[hoveredBarIdx]} {t('details')}</div>
                         <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
-                            <span style={{ color: 'var(--gold-primary)' }}>{t('sales')}:</span>
-                            <strong style={{ color: 'var(--text-primary)' }}>${salesData[hoveredBarIdx].toLocaleString()}</strong>
+                            <span style={{ color: '#27AE60' }}>{t('sales')}:</span>
+                            <strong style={{ color: 'var(--text-primary)' }}>{currency}{salesData[hoveredBarIdx].toLocaleString()}</strong>
                         </div>
                         <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
-                            <span style={{ color: 'var(--text-secondary)' }}>{t('purchase')}:</span>
-                            <strong style={{ color: 'var(--text-primary)' }}>${purchaseData[hoveredBarIdx].toLocaleString()}</strong>
+                            <span style={{ color: '#2F80ED' }}>{t('purchase')}:</span>
+                            <strong style={{ color: 'var(--text-primary)' }}>{currency}{purchaseData[hoveredBarIdx].toLocaleString()}</strong>
                         </div>
                     </div>
                 )}
@@ -238,7 +259,7 @@ export default function ChartsSection() {
                     <h3>{t('orderSummary')}</h3>
                 </div>
                 <div className="chart-container" style={{ minHeight: '240px', marginTop: '16px' }}>
-                    <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} width="100%" height="100%">
+                    <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} width="100%" height="100%" style={{ direction: 'ltr' }}>
                         {/* Grid lines */}
                         {[0, 1, 2, 3].map((i) => {
                             const y = paddingY + (graphHeight / 3) * i;
@@ -258,25 +279,25 @@ export default function ChartsSection() {
                                 y1={paddingY} 
                                 x2={orderedCoords[hoveredLineIdx].x} 
                                 y2={paddingY + graphHeight} 
-                                stroke="rgba(212, 175, 55, 0.4)" 
+                                stroke="rgba(46, 122, 243, 0.4)" 
                                 strokeWidth="1.5" 
                                 strokeDasharray="4 4"
                             />
                         )}
 
-                        {/* Line 1: Ordered (Orange) */}
+                        {/* Line 1: Ordered (Orange/Brown) */}
                         <path 
                             d={`M ${orderedCoords.map(c => `${c.x} ${c.y}`).join(' L ')}`}
                             fill="none"
-                            stroke="var(--gold-primary)"
+                            stroke="#D48C46"
                             strokeWidth="3"
                         />
 
-                        {/* Line 2: Delivered (Green) */}
+                        {/* Line 2: Delivered (Blue) */}
                         <path 
                             d={`M ${deliveredCoords.map(c => `${c.x} ${c.y}`).join(' L ')}`}
                             fill="none"
-                            stroke="var(--color-success)"
+                            stroke="#2F80ED"
                             strokeWidth="3"
                         />
 
@@ -290,7 +311,7 @@ export default function ChartsSection() {
                                         cx={orderedCoords[idx].x} 
                                         cy={orderedCoords[idx].y} 
                                         r={isHovered ? 6 : 4} 
-                                        fill="var(--gold-primary)" 
+                                        fill="#D48C46" 
                                         stroke="#fff" 
                                         strokeWidth={isHovered ? 2 : 1}
                                         style={{ transition: 'r 0.15s ease' }}
@@ -300,7 +321,7 @@ export default function ChartsSection() {
                                         cx={deliveredCoords[idx].x} 
                                         cy={deliveredCoords[idx].y} 
                                         r={isHovered ? 6 : 4} 
-                                        fill="var(--color-success)" 
+                                        fill="#2F80ED" 
                                         stroke="#fff" 
                                         strokeWidth={isHovered ? 2 : 1}
                                         style={{ transition: 'r 0.15s ease' }}
@@ -338,11 +359,11 @@ export default function ChartsSection() {
                 {/* Legend keys */}
                 <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', marginTop: '12px', paddingBottom: '4px', fontSize: '12px', color: 'var(--text-secondary)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--gold-primary)', display: 'inline-block' }}></span>
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#D48C46', display: 'inline-block' }}></span>
                         {t('ordered')}
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--color-success)', display: 'inline-block' }}></span>
+                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#2F80ED', display: 'inline-block' }}></span>
                         {t('completed')}
                     </div>
                 </div>

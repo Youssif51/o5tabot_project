@@ -1,13 +1,22 @@
 import React, { useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
 
-export default function Topbar({ globalSearch, setGlobalSearch }) {
-    const { state, setCurrentView, showToast, language, setLanguage, theme, setTheme, t } = useContext(AppContext);
+export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar }) {
+    const { state, currentView, setCurrentView, showToast, language, setLanguage, theme, setTheme, t } = useContext(AppContext);
 
     if (!state.currentUser) return null;
 
     return (
         <div className="top-bar">
+            {/* Mobile/Tablet Hamburger Toggle Button */}
+            <button 
+                className="top-bar-hamburger-btn" 
+                onClick={toggleSidebar}
+                title="Toggle Sidebar Menu"
+            >
+                <i className="fa-solid fa-bars"></i>
+            </button>
+
             <div className="top-bar-search" style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
                 <img 
                     src="/icons/Search.png" 
@@ -18,7 +27,12 @@ export default function Topbar({ globalSearch, setGlobalSearch }) {
                     type="text" 
                     placeholder={t('searchPlaceholder')}
                     value={globalSearch || ''}
-                    onChange={(e) => setGlobalSearch(e.target.value)}
+                    onChange={(e) => {
+                        setGlobalSearch(e.target.value);
+                        if (currentView !== 'inventory' && currentView !== 'orders' && currentView !== 'suppliers') {
+                            setCurrentView('inventory');
+                        }
+                    }}
                     style={{ paddingLeft: '44px' }}
                 />
             </div>

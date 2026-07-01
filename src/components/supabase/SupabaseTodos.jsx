@@ -118,7 +118,7 @@ export default function SupabaseTodos() {
                 <div className="page-title-group">
                     <h2>{t('supabaseTasks')}</h2>
                     <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
-                        Live cloud database connection with Supabase Table: <code style={{ color: 'var(--gold-primary)', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace' }}>todos</code>
+                        بص ياعم صفصف اي ملاحظة طول ما احنا في مرحلة التحديث حطها هنا واليقرأ كلام التاني يعمل علامة صح <code style={{ color: 'var(--gold-primary)', background: 'rgba(255,255,255,0.05)', padding: '2px 6px', borderRadius: '4px', fontFamily: 'monospace' }}></code>
                     </p>
                 </div>
                 <div className="page-actions">

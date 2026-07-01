@@ -1,9 +1,15 @@
 import React, { useContext, useState, useEffect } from 'react';
+import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
 
 export default function AddProductModal({ isOpen, onClose, editProductId }) {
     const { state, addProduct, editProduct, t } = useContext(AppContext);
+
+    // Dynamic categories calculation
+    const existingCategories = [...new Set((state.products || []).map(p => p.category))].filter(Boolean);
+    const defaultCategories = ['Electronics', 'Mobile Accessories', 'Accessories'];
+    const allCategories = [...new Set([...defaultCategories, ...existingCategories])];
 
     // Form states
     const [name, setName] = useState('');
@@ -11,6 +17,10 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
     const [category, setCategory] = useState('Electronics');
     const [unit, setUnit] = useState('Piece');
     const [image, setImage] = useState('');
+    
+    // Dynamic category addition states
+    const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
     
     // Multiple variants state (without SKU and Barcode input properties in UI)
     const [variants, setVariants] = useState([
@@ -26,6 +36,8 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 setCategory(prod.category);
                 setUnit(prod.unit || 'Piece');
                 setImage(prod.image || '');
+                setShowNewCategoryInput(false);
+                setNewCategoryName('');
                 
                 if (prod.variants && prod.variants.length > 0) {
                     setVariants(prod.variants.map(v => ({
@@ -47,6 +59,8 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
             setCategory('Electronics');
             setUnit(t('piece'));
             setImage('');
+            setShowNewCategoryInput(false);
+            setNewCategoryName('');
             setVariants([
                 { 
                     name: 'Standard Option', 
@@ -154,11 +168,12 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
             category,
             unit,
             image,
-            createdDate: originalProduct ? (originalProduct.createdDate || new Date().toISOString().substring(0, 10)) : new Date().toISOString().substring(0, 10),
+            createdDate: originalProduct ? (originalProduct.createdDate || getLocalDateString()) : getLocalDateString(),
+            createdBy: originalProduct ? (originalProduct.createdBy || 'sfsf') : (state.currentUser ? state.currentUser.name : 'sfsf'),
             description: `${name} catalog entry, unit size ${unit}.`,
             variants: mappedVariants,
             batches: mappedBatches,
-            suppliers: ["SUP-01"]
+            suppliers: originalProduct ? (originalProduct.suppliers || []) : []
         };
 
         if (editProductId) {
@@ -255,14 +270,41 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                         <label className="form-label">{t('categories')}</label>
                         <select 
                             className="form-select" 
-                            value={category}
-                            onChange={(e) => setCategory(e.target.value)}
+                            value={showNewCategoryInput ? 'NEW_CATEGORY' : category}
+                            onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === 'NEW_CATEGORY') {
+                                    setShowNewCategoryInput(true);
+                                    setCategory('');
+                                } else {
+                                    setShowNewCategoryInput(false);
+                                    setCategory(val);
+                                }
+                            }}
                             required
                         >
-                            <option value="Electronics">{t('electronics')}</option>
-                            <option value="Mobile Accessories">{t('mobileAccessories')}</option>
-                            <option value="Accessories">{t('accessories')}</option>
+                            {allCategories.map(cat => (
+                                <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                            <option value="NEW_CATEGORY" style={{ color: 'var(--gold-primary)', fontWeight: 600 }}>+ إضافة قسم جديد...</option>
                         </select>
+                        
+                        {showNewCategoryInput && (
+                            <div style={{ marginTop: '10px' }}>
+                                <input 
+                                    type="text" 
+                                    className="form-input" 
+                                    value={newCategoryName} 
+                                    onChange={(e) => {
+                                        setNewCategoryName(e.target.value);
+                                        setCategory(e.target.value);
+                                    }} 
+                                    placeholder="مثال: ملابس، عطور..."
+                                    required
+                                    style={{ border: '1px solid var(--gold-border-focus)' }}
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
 

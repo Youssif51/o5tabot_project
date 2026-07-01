@@ -42,6 +42,14 @@ export default function App() {
     const [signupStore, setSignupStore] = useState('Octabot Retail Ltd');
     const [signupEmail, setSignupEmail] = useState('admin@octabot.com');
 
+    // Sidebar Mobile/Tablet Drawer Toggle state
+    const [sidebarOpen, setSidebarOpen] = useState(false);
+
+    // Auto-close sidebar on view change (mobile)
+    React.useEffect(() => {
+        setSidebarOpen(false);
+    }, [currentView]);
+
     // Global Search State
     const [globalSearch, setGlobalSearch] = useState('');
 
@@ -213,9 +221,17 @@ export default function App() {
     }
 
     return (
-        <div className="app-container">
+        <div className={`app-container ${sidebarOpen ? 'sidebar-open' : ''}`}>
             {/* Sidebar Navigation */}
-            <Sidebar />
+            <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
+
+            {/* Mobile/Tablet Drawer Backdrop Overlay */}
+            {sidebarOpen && (
+                <div 
+                    className="sidebar-backdrop" 
+                    onClick={() => setSidebarOpen(false)}
+                ></div>
+            )}
 
             {/* Main Content Pane */}
             <main className="main-content">
@@ -223,6 +239,7 @@ export default function App() {
                 <Topbar 
                     globalSearch={globalSearch} 
                     setGlobalSearch={setGlobalSearch} 
+                    toggleSidebar={() => setSidebarOpen(prev => !prev)}
                 />
 
                 {/* Main Views Router */}
@@ -240,6 +257,7 @@ export default function App() {
                 {currentView === 'inventory' && (
                     <InventoryList 
                         globalSearch={globalSearch}
+                        setGlobalSearch={setGlobalSearch}
                         onOpenAddProduct={() => { setEditProductId(null); setIsAddProductOpen(true); }}
                         onOpenEditProduct={(id) => { setEditProductId(id); setIsAddProductOpen(true); }}
                         onOpenScanner={handleOpenScanner}
@@ -249,12 +267,13 @@ export default function App() {
                 {currentView === 'orders' && (
                     <OrdersList 
                         globalSearch={globalSearch}
+                        setGlobalSearch={setGlobalSearch}
                         onOpenAddOrder={() => setIsAddOrderOpen(true)}
                     />
                 )}
 
                 {currentView === 'suppliers' && (
-                    <SuppliersList globalSearch={globalSearch} />
+                    <SuppliersList globalSearch={globalSearch} setGlobalSearch={setGlobalSearch} />
                 )}
 
                 {currentView === 'reports' && (

@@ -1,9 +1,11 @@
 import React, { useContext, useState } from 'react';
+import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 import ProductInfo from './ProductInfo';
 
 export default function InventoryList({ 
     globalSearch, 
+    setGlobalSearch,
     onOpenAddProduct, 
     onOpenEditProduct,
     onOpenScanner 
@@ -21,14 +23,14 @@ export default function InventoryList({
     const [showFilters, setShowFilters] = useState(false);
     const [categoryFilter, setCategoryFilter] = useState('all');
     const [warehouseFilter, setWarehouseFilter] = useState('all');
-    const [searchVal, setSearchVal] = useState('');
+    // Using globalSearch instead of local searchVal
 
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const pageSize = 10;
 
     const currency = state.storeSettings.currency || '$';
-    const activeSearch = searchVal || globalSearch || '';
+    const activeSearch = globalSearch || '';
 
     // Collect list of categories
     const categoriesList = ['all', ...new Set(state.products.map(p => p.category))];
@@ -39,15 +41,13 @@ export default function InventoryList({
         if (categoryFilter !== 'all' && prod.category !== categoryFilter) return;
 
         const query = activeSearch.toLowerCase();
-        const nameMatches = prod.name.toLowerCase().includes(query);
-        const descMatches = prod.description.toLowerCase().includes(query);
+        const nameMatches = (prod.name || '').toLowerCase().includes(query);
+        const descMatches = (prod.description || '').toLowerCase().includes(query);
 
-        let matchedVariants = prod.variants.filter(vr => {
-            const skuMatches = vr.sku.toLowerCase().includes(query);
+        let matchedVariants = (prod.variants || []).filter(vr => {
+            const skuMatches = (vr.sku || '').toLowerCase().includes(query);
             const barcodeMatches = vr.barcode && vr.barcode.includes(query);
-            const varNameMatches = vr.name.toLowerCase().includes(query);
-
-
+            const varNameMatches = (vr.name || '').toLowerCase().includes(query);
 
             return skuMatches || barcodeMatches || varNameMatches || nameMatches || descMatches;
         });
@@ -55,7 +55,7 @@ export default function InventoryList({
         if (matchedVariants.length > 0 || nameMatches || descMatches) {
             filteredList.push({
                 ...prod,
-                activeVariants: matchedVariants.length > 0 ? matchedVariants : prod.variants
+                activeVariants: matchedVariants.length > 0 ? matchedVariants : (prod.variants || [])
             });
         }
     });
@@ -71,13 +71,13 @@ export default function InventoryList({
 
     // --- Metrics Summaries for Inventory Dashboard Block ---
     const categoriesCount = categoriesList.filter(c => c !== 'all').length;
-    const totalProductsCount = state.products.reduce((acc, p) => acc + p.variants.length, 0);
+    const totalProductsCount = (state.products || []).reduce((acc, p) => acc + (p.variants || []).length, 0);
     
     let totalInvValue = 0;
-    state.products.forEach(p => {
-        p.variants.forEach(v => {
-            const qty = (v.stock.Sulur || 0);
-            totalInvValue += qty * v.retailPrice;
+    (state.products || []).forEach(p => {
+        (p.variants || []).forEach(v => {
+            const qty = (v.stock?.Sulur || 0);
+            totalInvValue += qty * (v.retailPrice || 0);
         });
     });
 
@@ -91,10 +91,10 @@ export default function InventoryList({
     });
     let topSellingCount = Object.keys(variantSales).length;
     let topSellingCost = 0;
-    state.products.forEach(p => {
-        p.variants.forEach(v => {
+    (state.products || []).forEach(p => {
+        (p.variants || []).forEach(v => {
             const sold = variantSales[v.sku] || 0;
-            topSellingCost += sold * v.wholesalePrice;
+            topSellingCost += sold * (v.wholesalePrice || 0);
         });
     });
 
@@ -266,8 +266,8 @@ export default function InventoryList({
                                     <input 
                                         type="text" 
                                         placeholder={t('searchPlaceholder')}
-                                        value={searchVal}
-                                        onChange={(e) => { setSearchVal(e.target.value); setCurrentPage(1); }}
+                                        value={globalSearch || ''}
+                                        onChange={(e) => { setGlobalSearch(e.target.value); setCurrentPage(1); }}
                                     />
                                 </div>
                                 
@@ -298,6 +298,7 @@ export default function InventoryList({
                                     <th>{t('quantity')}</th>
                                     <th>{t('thresholdValue')}</th>
                                     <th>{t('createdDate')}</th>
+                                    <th>المُسجِل</th>
                                     <th>{t('runway')}</th>
                                     <th>{t('availability')}</th>
                                     <th style={{ textAlign: 'right' }}>{t('actions')}</th>
@@ -306,7 +307,7 @@ export default function InventoryList({
                             <tbody>
                                 {paginatedList.length === 0 ? (
                                     <tr>
-                                        <td colSpan="8" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
+                                        <td colSpan="9" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
                                             {t('noProducts')}
                                         </td>
                                     </tr>
@@ -373,7 +374,8 @@ export default function InventoryList({
                                                  <td>{totalQty} {t('packets')}</td>
                                                  <td>{threshold} {t('packets')}</td>
                                                  <td>{prod.createdDate || "2026-06-30"}</td>
-                                                <td>
+                                                 <td style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{prod.createdBy || 'sfsf'}</td>
+                                                 <td>
                                                     {runwayDays === "Stable" ? (
                                                         <span className="badge badge-success" style={{ fontSize: '11px' }}>{t('stockHealthy')}</span>
                                                     ) : (

@@ -32,7 +32,12 @@ export default function Sidebar() {
                             <img 
                                 src={`/icons/${item.icon}`} 
                                 alt={item.name} 
-                                style={{ width: '20px', height: '20px', objectFit: 'contain' }}
+                                style={{ 
+                                    width: '20px', 
+                                    height: '20px', 
+                                    objectFit: 'contain',
+                                    ...(item.id === 'supabaseTasks' ? { filter: 'brightness(0) saturate(100%) invert(26%) sepia(85%) saturate(7403%) hue-rotate(352deg) brightness(96%) contrast(106%)' } : {})
+                                }}
                             />
                             <span>{item.name}</span>
                         </a>
