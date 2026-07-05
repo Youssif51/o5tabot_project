@@ -287,7 +287,7 @@ export const AppProvider = ({ children }) => {
         if (!supabase) return false;
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) {
-            showToast(error.message, "error");
+            showToast("امشي يلا ألعب بعيد", "error");
             return false;
         }
         logActivity("auth", `User signed in.`);

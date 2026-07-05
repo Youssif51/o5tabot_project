@@ -39,10 +39,10 @@ export default function App() {
 
     // Auth screen toggling
     const [authMode, setAuthMode] = useState('login');
-    const [loginEmail, setLoginEmail] = useState('yousif.m.d.2002@gmail.com');
-    const [loginPassword, setLoginPassword] = useState('A5-SFSF');
-    const [signupStore, setSignupStore] = useState('Octabot Retail Ltd');
-    const [signupEmail, setSignupEmail] = useState('admin@octabot.com');
+    const [loginEmail, setLoginEmail] = useState('');
+    const [loginPassword, setLoginPassword] = useState('');
+    const [signupStore, setSignupStore] = useState('');
+    const [signupEmail, setSignupEmail] = useState('');
     const [signupPassword, setSignupPassword] = useState('');
     const [signupName, setSignupName] = useState('');
 
@@ -118,6 +118,7 @@ export default function App() {
     // Render Auth split screen
     if (!state.currentUser) {
         return (
+            <>
             <div className="auth-wrapper">
                 <div className="auth-background-glow"></div>
                 <div className="auth-background-ambient"></div>
@@ -214,7 +215,52 @@ export default function App() {
                         </div>
                     )}
                 </div>
-            </div>
+                </div>
+                {/* Toast Notification dialog overlay for Auth screen */}
+                <div 
+                    id="toast-notification-auth" 
+                    style={{ 
+                        position: 'fixed', 
+                        top: '20px', 
+                        right: '20px', 
+                        transform: toast.visible ? 'translateY(0)' : 'translateY(-100px)', 
+                        background: 'var(--glass-bg)', 
+                        backdropFilter: 'var(--blur)', 
+                        border: '1px solid var(--glass-border)', 
+                        boxShadow: '0 10px 30px rgba(0,0,0,0.15), 0 0 15px var(--gold-glow)', 
+                        color: 'var(--text-primary)',
+                        padding: '16px 24px', 
+                        borderRadius: 'var(--radius-md)', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '12px', 
+                        zIndex: 2000, 
+                        opacity: toast.visible ? 1 : 0, 
+                        transition: 'transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s ease' 
+                    }}
+                >
+                    <i 
+                        className={
+                            toast.type === 'success' 
+                                ? 'fa-solid fa-circle-check' 
+                                : toast.type === 'warning' 
+                                    ? 'fa-solid fa-circle-exclamation' 
+                                    : 'fa-solid fa-triangle-exclamation'
+                        }
+                        style={{ 
+                            color: toast.type === 'success' 
+                                ? 'var(--gold-primary)' 
+                                : toast.type === 'warning' 
+                                    ? 'var(--color-warning)' 
+                                    : 'var(--color-danger)', 
+                            fontSize: '18px' 
+                        }}
+                    ></i>
+                    <div id="toast-message-auth" style={{ fontSize: '13px', fontWeight: 500 }}>
+                        {toast.message}
+                    </div>
+                </div>
+            </>
         );
     }
 
