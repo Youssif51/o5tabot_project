@@ -16,6 +16,7 @@ import LowQuantity from './components/dashboard/LowQuantity';
 import InventoryList from './components/inventory/InventoryList';
 import OrdersList from './components/orders/OrdersList';
 import SuppliersList from './components/suppliers/SuppliersList';
+import CustomersList from './components/customers/CustomersList';
 import ReportsView from './components/reports/ReportsView';
 import StoreSettings from './components/store/StoreSettings';
 import SupabaseTodos from './components/supabase/SupabaseTodos';
@@ -38,9 +39,12 @@ export default function App() {
 
     // Auth screen toggling
     const [authMode, setAuthMode] = useState('login');
-    const [loginUsername, setLoginUsername] = useState('sfsf');
+    const [loginEmail, setLoginEmail] = useState('yousif.m.d.2002@gmail.com');
+    const [loginPassword, setLoginPassword] = useState('A5-SFSF');
     const [signupStore, setSignupStore] = useState('Octabot Retail Ltd');
     const [signupEmail, setSignupEmail] = useState('admin@octabot.com');
+    const [signupPassword, setSignupPassword] = useState('');
+    const [signupName, setSignupName] = useState('');
 
     // Sidebar Mobile/Tablet Drawer Toggle state
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -139,33 +143,25 @@ export default function App() {
                                 <h2 className="auth-title">Welcome back</h2>
                                 <p className="auth-subtitle">Log in to your workspace ledger.</p>
                             </div>
-                            <form onSubmit={(e) => { e.preventDefault(); authLogin(loginUsername); }}>
+                            <form onSubmit={(e) => { e.preventDefault(); authLogin(loginEmail, loginPassword); }}>
                                 <div className="form-group">
                                     <label className="form-label">Username / Email*</label>
                                     <input 
                                         type="text" 
                                         className="form-input" 
                                         placeholder="Enter your name" 
-                                        value={loginUsername}
-                                        onChange={(e) => setLoginUsername(e.target.value)}
+                                        value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)}
                                         required 
                                     />
                                 </div>
                                 <div className="form-group">
                                     <label className="form-label">Password*</label>
                                     <input 
-                                        type="password" 
-                                        className="form-input" 
-                                        placeholder="••••••••" 
-                                        required 
-                                    />
+                                        type="password" className="form-input" placeholder="••••••••" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} required />
                                 </div>
                                 <button type="submit" className="btn btn-primary btn-auth-submit">
                                     Sign In
                                 </button>
-                                <p className="auth-switch-text">
-                                    Don't have an account? <a href="#" onClick={(e) => { e.preventDefault(); setAuthMode('signup'); }}>Sign up</a>
-                                </p>
                             </form>
                         </div>
                     ) : (
@@ -299,6 +295,10 @@ export default function App() {
 
                 {currentView === 'suppliers' && (
                     <SuppliersList globalSearch={globalSearch} setGlobalSearch={setGlobalSearch} />
+                )}
+
+                {currentView === 'customers' && (
+                    <CustomersList globalSearch={globalSearch} setGlobalSearch={setGlobalSearch} />
                 )}
 
                 {currentView === 'reports' && (

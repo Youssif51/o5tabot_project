@@ -226,7 +226,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
     };
 
     return (
-        <div id="orders-view" className="view-pane active" dir="rtl" style={{ background: '#121212', color: '#fff' }}>
+        <div id="orders-view" className="view-pane active" dir="rtl" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
             
             {/* Header */}
             <div className="page-header" style={{ marginBottom: '24px' }}>
@@ -242,26 +242,26 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
 
             {/* 5. SUMMARY BAR METRIC CARDS */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-                <div className="glass-card" style={{ padding: '16px', borderRight: '4px solid var(--gold-primary)', background: 'rgba(255,255,255,0.02)' }}>
-                    <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '4px' }}>إجمالي الطلبات</span>
-                    <strong style={{ fontSize: '20px', color: '#fff' }}>{totalOrdersCount} طلب</strong>
+                <div className="glass-card" style={{ padding: '16px', borderRight: '4px solid var(--gold-primary)', background: 'var(--glass-bg)' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>إجمالي الطلبات</span>
+                    <strong style={{ fontSize: '20px', color: 'var(--text-primary)' }}>{totalOrdersCount} طلب</strong>
                 </div>
-                <div className="glass-card" style={{ padding: '16px', borderRight: '4px solid #2ecc71', background: 'rgba(255,255,255,0.02)' }}>
-                    <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '4px' }}>قيمة المبيعات (المؤكدة)</span>
+                <div className="glass-card" style={{ padding: '16px', borderRight: '4px solid #2ecc71', background: 'var(--glass-bg)' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>قيمة المبيعات (المؤكدة)</span>
                     <strong style={{ fontSize: '20px', color: '#2ecc71' }}>{currency} {salesValue.toFixed(2)}</strong>
                 </div>
-                <div className="glass-card" style={{ padding: '16px', borderRight: '4px solid #e74c3c', background: 'rgba(255,255,255,0.02)' }}>
-                    <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '4px' }}>المتبقي للتحصيل</span>
+                <div className="glass-card" style={{ padding: '16px', borderRight: '4px solid #e74c3c', background: 'var(--glass-bg)' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>المتبقي للتحصيل</span>
                     <strong style={{ fontSize: '20px', color: '#e74c3c' }}>{currency} {remainingToCollectTotal.toFixed(2)}</strong>
                 </div>
-                <div className="glass-card" style={{ padding: '16px', borderRight: '4px solid #3498db', background: 'rgba(255,255,255,0.02)' }}>
-                    <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)', display: 'block', marginBottom: '4px' }}>طلبات اليوم</span>
+                <div className="glass-card" style={{ padding: '16px', borderRight: '4px solid #3498db', background: 'var(--glass-bg)' }}>
+                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>طلبات اليوم</span>
                     <strong style={{ fontSize: '20px', color: '#3498db' }}>{todayOrdersCount} طلب</strong>
                 </div>
             </div>
 
             {/* 6. FILTER BAR */}
-            <div className="glass-card filter-bar" style={{ padding: '16px', marginBottom: '24px', background: 'rgba(255,255,255,0.01)', border: '1px solid var(--glass-border)' }}>
+            <div className="glass-card filter-bar" style={{ padding: '16px', marginBottom: '24px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
                 <div className="filter-controls" style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', justifyContent: 'space-between' }}>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', flex: 1 }}>
                         
@@ -273,50 +273,50 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                 placeholder="ابحث برقم الطلب أو العميل..."
                                 value={globalSearch || ''}
                                 onChange={(e) => { setGlobalSearch(e.target.value); setCurrentPage(1); }}
-                                style={{ width: '100%', background: 'rgba(255,255,255,0.02)', color: '#fff', border: '1px solid var(--glass-border)', padding: '8px 12px 8px 36px', borderRadius: '6px' }}
+                                style={{ width: '100%', background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', padding: '8px 12px 8px 36px', borderRadius: '6px' }}
                             />
                         </div>
                         
                         {/* Delivery Status Filter */}
                         <select 
                             className="form-select" 
-                            style={{ width: '175px', backgroundColor: 'rgba(255,255,255,0.02)', color: '#fff', border: '1px solid var(--glass-border)', borderRadius: '6px', padding: '8px' }}
+                            style={{ width: '175px', backgroundColor: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: '6px', padding: '8px' }}
                             value={deliveryStatusFilter}
                             onChange={(e) => { setDeliveryStatusFilter(e.target.value); setCurrentPage(1); }}
                         >
-                            <option value="all" style={{ background: '#1a1a1a' }}>كل حالات التوصيل</option>
-                            <option value="Draft" style={{ background: '#1a1a1a' }}>مسودة</option>
-                            <option value="Pending" style={{ background: '#1a1a1a' }}>في الانتظار</option>
-                            <option value="Partially Delivered" style={{ background: '#1a1a1a' }}>تسليم جاري</option>
-                            <option value="Completed" style={{ background: '#1a1a1a' }}>تم التسليم</option>
-                            <option value="Cancelled" style={{ background: '#1a1a1a' }}>ملغي</option>
+                            <option value="all" style={{ background: 'var(--bg-secondary)' }}>كل حالات التوصيل</option>
+                            <option value="Draft" style={{ background: 'var(--bg-secondary)' }}>مسودة</option>
+                            <option value="Pending" style={{ background: 'var(--bg-secondary)' }}>في الانتظار</option>
+                            <option value="Partially Delivered" style={{ background: 'var(--bg-secondary)' }}>تسليم جاري</option>
+                            <option value="Completed" style={{ background: 'var(--bg-secondary)' }}>تم التسليم</option>
+                            <option value="Cancelled" style={{ background: 'var(--bg-secondary)' }}>ملغي</option>
                         </select>
 
                         {/* Payment Status Filter */}
                         <select 
                             className="form-select" 
-                            style={{ width: '155px', backgroundColor: 'rgba(255,255,255,0.02)', color: '#fff', border: '1px solid var(--glass-border)', borderRadius: '6px', padding: '8px' }}
+                            style={{ width: '155px', backgroundColor: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: '6px', padding: '8px' }}
                             value={paymentStatusFilter}
                             onChange={(e) => { setPaymentStatusFilter(e.target.value); setCurrentPage(1); }}
                         >
-                            <option value="all" style={{ background: '#1a1a1a' }}>كل حالات الدفع</option>
-                            <option value="غير مدفوع" style={{ background: '#1a1a1a' }}>غير مدفوع</option>
-                            <option value="مدفوع جزئي" style={{ background: '#1a1a1a' }}>مدفوع جزئي</option>
-                            <option value="مدفوع" style={{ background: '#1a1a1a' }}>مدفوع</option>
+                            <option value="all" style={{ background: 'var(--bg-secondary)' }}>كل حالات الدفع</option>
+                            <option value="غير مدفوع" style={{ background: 'var(--bg-secondary)' }}>غير مدفوع</option>
+                            <option value="مدفوع جزئي" style={{ background: 'var(--bg-secondary)' }}>مدفوع جزئي</option>
+                            <option value="مدفوع" style={{ background: 'var(--bg-secondary)' }}>مدفوع</option>
                         </select>
 
 
 
                         {/* Date Range Calendar Pickers */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>من:</span>
+                            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>من:</span>
                             <input 
                                 type="date" 
                                 value={startDate} 
                                 onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1); }}
                                 style={{
-                                    background: 'rgba(255,255,255,0.02)',
-                                    color: '#fff',
+                                    background: 'var(--glass-bg)',
+                                    color: 'var(--text-primary)',
                                     border: '1px solid var(--glass-border)',
                                     borderRadius: '6px',
                                     padding: '6px 10px',
@@ -326,14 +326,14 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                             />
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>إلى:</span>
+                            <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>إلى:</span>
                             <input 
                                 type="date" 
                                 value={endDate} 
                                 onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1); }}
                                 style={{
-                                    background: 'rgba(255,255,255,0.02)',
-                                    color: '#fff',
+                                    background: 'var(--glass-bg)',
+                                    color: 'var(--text-primary)',
                                     border: '1px solid var(--glass-border)',
                                     borderRadius: '6px',
                                     padding: '6px 10px',
@@ -357,7 +357,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                     <button 
                         onClick={handleExportCSV} 
                         className="btn btn-secondary" 
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', borderColor: 'rgba(255,255,255,0.1)', background: 'rgba(255,255,255,0.02)', color: '#fff', padding: '8px 16px' }}
+                        style={{ display: 'flex', alignItems: 'center', gap: '8px', borderColor: 'var(--glass-border-hover)', background: 'var(--glass-bg)', color: 'var(--text-primary)', padding: '8px 16px' }}
                     >
                         <i className="fa-solid fa-file-excel" style={{ color: '#27AE60' }}></i> تصدير Excel
                     </button>
@@ -371,7 +371,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                 <div className="table-wrapper" style={{ overflowX: 'auto', overflowY: 'visible' }}>
                     <table className="custom-table" style={{ width: '100%', borderCollapse: 'collapse', overflow: 'visible' }}>
                         <thead>
-                            <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                            <tr style={{ borderBottom: '1px solid var(--glass-border-hover)' }}>
                                 <th style={{ textAlign: 'right', padding: '12px 16px' }}>رقم الطلب</th>
                                 <th style={{ textAlign: 'right', padding: '12px 16px' }}>العميل + الهاتف</th>
                                 <th style={{ textAlign: 'center', padding: '12px 16px' }}>التاريخ</th>
@@ -405,7 +405,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                             <tr 
                                                 onClick={() => toggleRow(ord.id)} 
                                                 style={{ 
-                                                    borderBottom: '1px solid rgba(255,255,255,0.04)', 
+                                                    borderBottom: '1px solid var(--glass-border)', 
                                                     cursor: 'pointer', 
                                                     background: isExpanded ? 'rgba(212, 175, 55, 0.03)' : 'transparent',
                                                     transition: 'background 0.2s ease'
@@ -415,7 +415,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                 <td style={{ fontFamily: 'monospace', fontWeight: 600, padding: '14px 16px', color: 'var(--gold-primary)' }}>{ord.id}</td>
                                                 <td style={{ padding: '14px 16px' }}>
                                                     <div>{ord.client}</div>
-                                                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>{phone || 'بدون هاتف'}</div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{phone || 'بدون هاتف'}</div>
                                                 </td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px' }}>{ord.date}</td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px' }}>{totalQty} قطع</td>
@@ -423,7 +423,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, color: remaining > 0 ? '#e74c3c' : '#2ecc71' }}>
                                                     {remaining > 0 ? `${currency} ${remaining.toFixed(2)}` : 'خالص'}
                                                 </td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', color: 'rgba(255,255,255,0.75)' }}>{ord.createdBy || 'الآدمن'}</td>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', color: 'var(--text-primary)' }}>{ord.createdBy || 'الآدمن'}</td>
                                                 
                                                 {/* Delivery Status Badge */}
                                                 <td style={{ textAlign: 'center', padding: '14px 16px' }}>
@@ -446,7 +446,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                         {/* Details Toggle Button */}
                                                         <button 
                                                             className="btn btn-secondary" 
-                                                            style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(255,255,255,0.03)', color: '#fff', borderColor: 'rgba(255,255,255,0.08)' }}
+                                                            style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--glass-bg-hover)', color: 'var(--text-primary)', borderColor: 'var(--glass-border-hover)' }}
                                                             onClick={() => toggleRow(ord.id)}
                                                         >
                                                             <i className={`fa-solid ${isExpanded ? 'fa-eye-slash' : 'fa-eye'}`}></i>
@@ -458,7 +458,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                             <div style={{ position: 'relative', overflow: 'visible' }}>
                                                                 <button 
                                                                     className="btn btn-secondary" 
-                                                                    style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(255,255,255,0.03)', color: '#fff', borderColor: 'rgba(255,255,255,0.08)' }}
+                                                                    style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--glass-bg-hover)', color: 'var(--text-primary)', borderColor: 'var(--glass-border-hover)' }}
                                                                     onClick={() => setActiveDropdownOrderId(isDropdownOpen ? null : ord.id)}
                                                                 >
                                                                     <i className="fa-solid fa-arrow-rotate-left"></i>
@@ -471,7 +471,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                         top: '100%',
                                                                         left: 0,
                                                                         width: '140px',
-                                                                        background: 'rgba(25, 25, 30, 0.99)',
+                                                                        background: 'var(--bg-secondary)',
                                                                         border: '1px solid var(--glass-border)',
                                                                         borderRadius: '6px',
                                                                         boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
@@ -491,7 +491,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                                     padding: '8px 10px',
                                                                                     fontSize: '11px',
                                                                                     cursor: 'pointer',
-                                                                                    color: '#fff',
+                                                                                    color: 'var(--text-primary)',
                                                                                     borderRadius: '4px',
                                                                                     textAlign: 'right',
                                                                                     background: ord.status === st ? 'rgba(212,175,55,0.15)' : 'transparent'
@@ -509,7 +509,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                         {/* Edit order */}
                                                         <button 
                                                             className="btn btn-secondary" 
-                                                            style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(255,255,255,0.03)', color: '#fff', borderColor: 'rgba(255,255,255,0.08)' }}
+                                                            style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--glass-bg-hover)', color: 'var(--text-primary)', borderColor: 'var(--glass-border-hover)' }}
                                                             onClick={() => onOpenEditOrder(ord.id)}
                                                         >
                                                             <i className="fa-solid fa-pen-to-square"></i>
@@ -531,12 +531,12 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
 
                                             {/* 1. EXPANDABLE ROW DRAWER */}
                                             {isExpanded && (
-                                                <tr style={{ background: 'rgba(0, 0, 0, 0.2)' }}>
-                                                    <td colSpan="10" style={{ padding: '20px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                                                <tr style={{ background: 'var(--glass-bg)' }}>
+                                                    <td colSpan="10" style={{ padding: '20px', borderBottom: '1px solid var(--glass-border)' }}>
                                                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr 1fr', gap: '24px' }}>
                                                             
                                                             {/* Customer details */}
-                                                            <div className="glass-card" style={{ padding: '16px', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                                                            <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
                                                                 <h4 style={{ fontSize: '13px', color: 'var(--gold-primary)', marginBottom: '12px', fontWeight: 600 }}>
                                                                     <i className="fa-solid fa-user-tag" style={{ marginLeft: '6px' }}></i> تفاصيل العميل والشحن
                                                                 </h4>
@@ -551,13 +551,13 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                             </div>
 
                                                             {/* Products Table */}
-                                                            <div className="glass-card" style={{ padding: '16px', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                                                            <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
                                                                 <h4 style={{ fontSize: '13px', color: 'var(--gold-primary)', marginBottom: '12px', fontWeight: 600 }}>
                                                                     <i className="fa-solid fa-box-open" style={{ marginLeft: '6px' }}></i> المنتجات المطلوبة ({ord.items?.length || 0} أصناف)
                                                                 </h4>
                                                                 <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
                                                                     <thead>
-                                                                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                                                                        <tr style={{ borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }}>
                                                                             <th style={{ textAlign: 'right', padding: '6px 4px' }}>اسم الصنف / SKU</th>
                                                                             <th style={{ textAlign: 'center', padding: '6px 4px' }}>الكمية</th>
                                                                             <th style={{ textAlign: 'center', padding: '6px 4px' }}>سعر الوحدة</th>
@@ -566,7 +566,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                     </thead>
                                                                     <tbody>
                                                                         {(ord.items || []).map((item, idx) => (
-                                                                            <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
+                                                                            <tr key={idx} style={{ borderBottom: '1px solid var(--glass-bg)' }}>
                                                                                 <td style={{ padding: '8px 4px' }}>{getProductNameBySku(item.variantSku)}</td>
                                                                                 <td style={{ textAlign: 'center', padding: '8px 4px' }}>{item.quantity}</td>
                                                                                 <td style={{ textAlign: 'center', padding: '8px 4px' }}>{currency} {item.price.toFixed(2)}</td>
@@ -578,7 +578,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                             </div>
 
                                                             {/* Financial breakdown */}
-                                                            <div className="glass-card" style={{ padding: '16px', background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.04)' }}>
+                                                            <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
                                                                 <h4 style={{ fontSize: '13px', color: 'var(--gold-primary)', marginBottom: '12px', fontWeight: 600 }}>
                                                                     <i className="fa-solid fa-file-invoice-dollar" style={{ marginLeft: '6px' }}></i> تفصيل التكلفة
                                                                 </h4>
@@ -595,7 +595,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                         <span>العربون المدفوع (Deposit):</span>
                                                                         <span>-{currency} {(ord.deposit || 0).toFixed(2)}</span>
                                                                     </div>
-                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: 'var(--gold-primary)', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '8px', marginTop: '4px', fontSize: '13px' }}>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: 'var(--gold-primary)', borderTop: '1px dashed var(--glass-border-hover)', paddingTop: '8px', marginTop: '4px', fontSize: '13px' }}>
                                                                         <span>المتبقي للتحصيل:</span>
                                                                         <span>{currency} {remaining > 0 ? remaining.toFixed(2) : '0.00'}</span>
                                                                     </div>
@@ -604,9 +604,9 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                         </div>
 
                                                         {/* Horizontal order pipeline timeline */}
-                                                        <div style={{ marginTop: '24px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '20px' }}>
+                                                        <div style={{ marginTop: '24px', borderTop: '1px solid var(--glass-border)', paddingTop: '20px' }}>
                                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: '700px', margin: '0 auto', position: 'relative' }}>
-                                                                <div style={{ position: 'absolute', top: '15px', right: '40px', left: '40px', height: '2px', background: 'rgba(255,255,255,0.08)', zIndex: 1 }} />
+                                                                <div style={{ position: 'absolute', top: '15px', right: '40px', left: '40px', height: '2px', background: 'var(--glass-border-hover)', zIndex: 1 }} />
                                                                 
                                                                 {/* Timeline fill matching status */}
                                                                 <div style={{
@@ -639,7 +639,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                             fontWeight: 'bold',
                                                                             fontSize: '11px',
                                                                             border: '2px solid',
-                                                                            borderColor: step.active ? 'var(--gold-primary)' : 'rgba(255,255,255,0.08)'
+                                                                            borderColor: step.active ? 'var(--gold-primary)' : 'var(--glass-border-hover)'
                                                                         }}>
                                                                             {step.active ? <i className="fa-solid fa-check" style={{ fontSize: '10px' }}></i> : idx + 1}
                                                                         </div>

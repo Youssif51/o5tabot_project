@@ -1,6 +1,7 @@
 import React, { useContext, useState } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
+import UserManagement from './UserManagement';
 
 export default function StoreSettings() {
     const { state, saveStoreConfig, restoreStoreData, showToast, t } = useContext(AppContext);
@@ -158,6 +159,7 @@ export default function StoreSettings() {
                     </div>
                 </div>
             </div>
+            <UserManagement />
         </div>
     );
 }

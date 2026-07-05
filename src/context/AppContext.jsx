@@ -21,17 +21,12 @@ const initialState = {
     purchaseOrders: [],
     wastes: [],
     stockLedger: [],
+    customers: [],
+    coupons: [],
+    users: [],
     activities: [],
-    storeSettings: {
-        name: "o5taboad store",
-        address: "Egypt",
-        currency: "EGP"
-    },
-    currentUser: {
-        name: "sfsf",
-        role: "Store Manager",
-        avatar: "S"
-    }
+    storeSettings: { name: "o5taboad store", address: "Egypt", currency: "EGP", vipThresholdPurchases: 5000, vipThresholdOrders: 10 },
+    currentUser: null
 };
 
 export const AppProvider = ({ children }) => {
@@ -78,7 +73,10 @@ export const AppProvider = ({ children }) => {
                     { data: purchaseOrders, error: poErr },
                     { data: purchaseItems, error: poiErr },
                     { data: ledger, error: lErr },
-                    { data: wastes, error: wErr }
+                    { data: wastes, error: wErr },
+                    { data: customers, error: cErr },
+                    { data: coupons, error: couErr },
+                    { data: users, error: uErr }
                 ] = await Promise.all([
                     supabase.from('products').select('*'),
                     supabase.from('product_variants').select('*'),
@@ -88,10 +86,13 @@ export const AppProvider = ({ children }) => {
                     supabase.from('purchase_orders').select('*'),
                     supabase.from('purchase_items').select('*'),
                     supabase.from('stock_ledger').select('*'),
-                    supabase.from('wastes').select('*')
+                    supabase.from('wastes').select('*'),
+                    supabase.from('customers').select('*'),
+                    supabase.from('coupons').select('*'),
+                    supabase.from('user_profiles').select('*')
                 ]);
 
-                if (pErr || vErr || sErr || oErr || oiErr || poErr || poiErr || lErr || wErr) {
+                if (pErr || vErr || sErr || oErr || oiErr || poErr || poiErr || lErr || wErr || cErr || couErr || uErr) {
                     console.warn("Could not retrieve all Supabase tables, using local state instead.");
                     return;
                 }
@@ -195,6 +196,9 @@ export const AppProvider = ({ children }) => {
                     orders: mappedOrders,
                     purchaseOrders: mappedPurchaseOrders,
                     wastes: mappedWastes,
+                    customers: customers || [],
+                    coupons: coupons || [],
+                    users: users || [],
                     stockLedger: mappedLedger
                 }));
             } catch (err) {
@@ -204,10 +208,14 @@ export const AppProvider = ({ children }) => {
         loadSupabaseData();
     }, []);
 
-    const [currentView, setCurrentView] = useState("dashboard");
+    const [currentView, setCurrentView] = useState(() => localStorage.getItem("octabot_view") || "dashboard");
     const [toast, setToast] = useState({ visible: false, message: "", type: "success" });
     const [language, setLanguage] = useState(() => localStorage.getItem("octabot_lang") || "en");
     const [theme, setTheme] = useState(() => localStorage.getItem("octabot_theme") || "dark");
+
+    useEffect(() => {
+        localStorage.setItem("octabot_view", currentView);
+    }, [currentView]);
 
     useEffect(() => {
         localStorage.setItem("octabot_lang", language);
@@ -246,42 +254,293 @@ export const AppProvider = ({ children }) => {
         });
     };
 
-    const authLogin = (username) => {
-        const namePart = username.includes("@") ? username.split("@")[0] : username;
-        const user = {
-            name: namePart || "sfsf",
-            role: "Store Manager",
-            avatar: (namePart ? namePart.substring(0, 1).toUpperCase() : "A")
-        };
-        setState(prev => ({ ...prev, currentUser: user }));
-        logActivity("auth", `User '${user.name}' signed in.`);
-        showToast(`Welcome back, ${user.name}!`);
+        useEffect(() => {
+        if (!supabase) return;
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            if (session?.user) {
+                const { data: profile } = await supabase.from('user_profiles').select('*').eq('id', session.user.id).single();
+                if (profile && !profile.is_active) {
+                    await supabase.auth.signOut();
+                    setState(prev => ({ ...prev, currentUser: null }));
+                    showToast("Your account is deactivated.", "error");
+                    return;
+                }
+                setState(prev => ({
+                    ...prev,
+                    currentUser: {
+                        id: session.user.id,
+                        email: session.user.email,
+                        name: profile ? profile.name : session.user.email.split('@')[0],
+                        role: profile ? profile.role : 'Staff',
+                        permissions: profile ? (profile.permissions || []) : [],
+                        avatar: (profile ? profile.name : session.user.email).substring(0, 1).toUpperCase()
+                    }
+                }));
+            } else {
+                setState(prev => ({ ...prev, currentUser: null }));
+            }
+        });
+        return () => subscription?.unsubscribe();
+    }, []);
+
+    const authLogin = async (email, password) => {
+        if (!supabase) return false;
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) {
+            showToast(error.message, "error");
+            return false;
+        }
+        logActivity("auth", `User signed in.`);
+        showToast(`Welcome back!`);
         setCurrentView("dashboard");
+        return true;
     };
 
-    const authSignup = (storeName, email) => {
-        const namePart = email.split("@")[0] || "Manager";
-        const user = {
-            name: namePart,
-            role: "Octabot Admin",
-            avatar: (storeName ? storeName.substring(0, 1).toUpperCase() : "O")
-        };
+    
+    const toggleUserStatus = async (userId, isActive) => {
+        if (!supabase) return false;
+        const { data, error } = await supabase.rpc('toggle_user_active', {
+            p_user_id: userId,
+            p_active: isActive
+        });
+        if (error || (data && data.error)) {
+            showToast(error ? error.message : data.error, "error");
+            return false;
+        }
+        
         setState(prev => ({
             ...prev,
-            currentUser: user,
-            storeSettings: { ...prev.storeSettings, name: storeName }
+            users: (prev.users || []).map(u => u.id === userId ? { ...u, is_active: isActive } : u)
         }));
-        logActivity("auth", `Registered store and workspace for ${storeName}.`);
-        showToast(`Store '${storeName}' Registered Successfully!`);
-        setCurrentView("dashboard");
+        showToast("User status updated");
+        return true;
     };
 
-    const authLogout = () => {
+    const deleteUser = async (userId) => {
+        if (!supabase) return false;
+        const { data, error } = await supabase.rpc('delete_user_account', {
+            p_user_id: userId
+        });
+        if (error || (data && data.error)) {
+            showToast(error ? error.message : data.error, "error");
+            return false;
+        }
+        
+        setState(prev => ({
+            ...prev,
+            users: (prev.users || []).filter(u => u.id !== userId)
+        }));
+        showToast("User deleted successfully");
+        return true;
+    };
+
+    
+    const updateUserPermissions = async (userId, permissions) => {
+        if (!supabase) return false;
+        const { data, error } = await supabase.rpc('update_user_permissions', {
+            p_user_id: userId,
+            p_permissions: permissions
+        });
+        if (error || (data && data.error)) {
+            showToast(error ? error.message : data.error, "error");
+            return false;
+        }
+        
+        setState(prev => ({
+            ...prev,
+            users: (prev.users || []).map(u => u.id === userId ? { ...u, permissions: permissions } : u)
+        }));
+        showToast("Permissions updated successfully");
+        return true;
+    };
+
+    const authSignup = async (name, email, password, role, permissions = []) => {
+        if (!supabase) return false;
+        const { data, error } = await supabase.rpc('create_user_account', {
+            p_email: email,
+            p_password: password,
+            p_name: name,
+            p_role: role,
+            p_permissions: permissions
+        });
+        if (error || (data && data.error)) {
+            showToast(error ? error.message : data.error, "error");
+            return false;
+        }
+        logActivity("auth", `New ${role} account created for ${name}.`);
+        showToast(`Account created successfully!`);
+        
+        // Refresh users list
+        const { data: users } = await supabase.from('user_profiles').select('*');
+        setState(prev => ({ ...prev, users: users || [] }));
+        
+        return true;
+    };
+
+    const authLogout = async () => {
+        if (supabase) await supabase.auth.signOut();
         setState(prev => ({ ...prev, currentUser: null }));
         showToast("Logged out successfully.");
     };
+    // Customers CRUD Actions
+    const addCustomer = async (customer) => {
+        if (!supabase) return;
+        const newCustomer = { ...customer, id: customer.id || crypto.randomUUID() };
+        setState(prev => ({ ...prev, customers: [newCustomer, ...prev.customers] }));
+        
+        try {
+            await supabase.from('customers').insert([newCustomer]);
+            showToast(`Customer '${newCustomer.name}' added successfully.`);
+        } catch (e) {
+            console.error("Supabase Error:", e);
+        }
+        return newCustomer;
+    };
+
+    const editCustomer = async (updatedCustomer) => {
+        if (!supabase) return;
+        setState(prev => ({
+            ...prev,
+            customers: prev.customers.map(c => c.id === updatedCustomer.id ? updatedCustomer : c)
+        }));
+        
+        try {
+            await supabase.from('customers').update(updatedCustomer).eq('id', updatedCustomer.id);
+            showToast(`Customer '${updatedCustomer.name}' updated successfully.`);
+        } catch (e) {
+            console.error("Supabase Error:", e);
+        }
+    };
+
+    const getOrCreateCustomer = async (phone, name, governorate) => {
+        if (!phone) return null;
+        let customer = state.customers.find(c => c.phone === phone);
+        if (customer) return customer.id;
+        
+        const newCustomer = {
+            id: crypto.randomUUID(),
+            name: name || "Unknown",
+            phone,
+            governorate: governorate || "",
+            customer_type: 'Regular',
+            total_purchases: 0,
+            orders_count: 0
+        };
+        await addCustomer(newCustomer);
+        return newCustomer.id;
+    };
+
+    const updateCustomerStats = async (customerId, valueChange, countChange) => {
+        if (!supabase || !customerId) return;
+        
+        setState(prev => {
+            let thresholdPurchases = prev.storeSettings?.vipThresholdPurchases || 5000;
+            let thresholdOrders = prev.storeSettings?.vipThresholdOrders || 10;
+            
+            return {
+                ...prev,
+                customers: prev.customers.map(c => {
+                    if (c.id === customerId) {
+                        const newTotal = parseFloat(c.total_purchases || 0) + parseFloat(valueChange);
+                        const newCount = parseInt(c.orders_count || 0) + parseInt(countChange);
+                        let newType = c.customer_type;
+                        if (c.customer_type === 'Regular' && (newTotal >= thresholdPurchases || newCount >= thresholdOrders)) {
+                            newType = 'VIP';
+                        }
+                        return { ...c, total_purchases: newTotal, orders_count: newCount, customer_type: newType };
+                    }
+                    return c;
+                })
+            };
+        });
+
+        // Background sync
+        setTimeout(async () => {
+            const { data: cData } = await supabase.from('customers').select('total_purchases, orders_count, customer_type').eq('id', customerId).single();
+            if (cData) {
+                const thresholdPurchases = state.storeSettings?.vipThresholdPurchases || 5000;
+                const thresholdOrders = state.storeSettings?.vipThresholdOrders || 10;
+                
+                const newTotal = parseFloat(cData.total_purchases || 0) + parseFloat(valueChange);
+                const newCount = parseInt(cData.orders_count || 0) + parseInt(countChange);
+                let newType = cData.customer_type;
+                if (cData.customer_type === 'Regular' && (newTotal >= thresholdPurchases || newCount >= thresholdOrders)) {
+                    newType = 'VIP';
+                }
+                
+                await supabase.from('customers').update({
+                    total_purchases: newTotal,
+                    orders_count: newCount,
+                    customer_type: newType
+                }).eq('id', customerId);
+            }
+        }, 500);
+    };
+
+    // Coupons CRUD Actions
+    const addCoupon = async (coupon) => {
+        if (!supabase) return;
+        setState(prev => ({ ...prev, coupons: [coupon, ...prev.coupons] }));
+        try {
+            await supabase.from('coupons').insert([coupon]);
+            showToast(`Coupon '${coupon.code}' added successfully.`);
+        } catch (e) {
+            console.error("Supabase Error:", e);
+        }
+    };
+
+    const editCoupon = async (updatedCoupon) => {
+        if (!supabase) return;
+        setState(prev => ({
+            ...prev,
+            coupons: prev.coupons.map(c => c.id === updatedCoupon.id ? updatedCoupon : c)
+        }));
+        try {
+            await supabase.from('coupons').update(updatedCoupon).eq('id', updatedCoupon.id);
+            showToast(`Coupon '${updatedCoupon.code}' updated successfully.`);
+        } catch (e) {
+            console.error("Supabase Error:", e);
+        }
+    };
+
+    const deleteCoupon = async (couponId) => {
+        if (!supabase) return;
+        setState(prev => ({
+            ...prev,
+            coupons: prev.coupons.filter(c => c.id !== couponId)
+        }));
+        try {
+            await supabase.from('coupons').delete().eq('id', couponId);
+            showToast(`Coupon deleted.`);
+        } catch (e) {
+            console.error("Supabase Error:", e);
+        }
+    };
+
+    const validateCoupon = (code, cartTotal) => {
+        const coupon = state.coupons.find(c => c.code === code && c.is_active);
+        if (!coupon) return { valid: false, error: "Invalid or inactive coupon." };
+        if (coupon.expiry_date && new Date(coupon.expiry_date) < new Date()) return { valid: false, error: "Coupon expired." };
+        if (coupon.usage_limit && coupon.times_used >= coupon.usage_limit) return { valid: false, error: "Usage limit reached." };
+        if (coupon.min_order_value && cartTotal < coupon.min_order_value) return { valid: false, error: `Minimum order value is ${coupon.min_order_value}.` };
+        return { valid: true, coupon };
+    };
+
+    const applyCouponUsage = async (code, increment) => {
+        if (!supabase) return;
+        setState(prev => ({
+            ...prev,
+            coupons: prev.coupons.map(c => c.code === code ? { ...c, times_used: c.times_used + increment } : c)
+        }));
+        try {
+            await supabase.rpc('apply_coupon_usage', { p_coupon_code: code, p_increment: increment });
+        } catch (e) {
+            console.error("Supabase Error:", e);
+        }
+    };
 
     // Products CRUD Actions
+
     const addProduct = (product) => {
         setState(prev => ({
             ...prev,
@@ -404,7 +663,7 @@ export const AppProvider = ({ children }) => {
     };
 
     // Orders CRUD Actions
-    const addOrder = (order) => {
+    const addOrder = async (order) => {
         setState(prev => {
             let products = [...prev.products];
             if (order.status === "Completed" || order.status === "Partially Delivered") {
@@ -463,7 +722,13 @@ export const AppProvider = ({ children }) => {
                 orders: [order, ...prev.orders]
             };
         });
-        logActivity("order", `New Order ${order.id} registered for ${order.client}.`);
+
+        // Trigger customer stats update if completed
+        if (order.status === "Completed" && order.customer_id) {
+            updateCustomerStats(order.customer_id, order.totalValue, 1);
+        }
+
+        logActivity("order", `New Order ${order.id} registered.`);
         showToast(`Order ${order.id} recorded.`);
 
         if (supabase) {
@@ -472,10 +737,14 @@ export const AppProvider = ({ children }) => {
                     await supabase.from('orders').insert([{
                         id: order.id,
                         client: order.client,
+                        customer_id: order.customer_id || null,
                         date: order.date,
                         warehouse: order.warehouse || 'Sulur',
                         status: order.status,
                         total_value: order.totalValue,
+                        discount_type: order.discount_type || null,
+                        discount_value: order.discount_value || 0,
+                        applied_coupon_code: order.applied_coupon_code || null,
                         address: order.address || null,
                         governorate: order.governorate || null,
                         deposit: order.deposit || 0,
@@ -521,12 +790,17 @@ export const AppProvider = ({ children }) => {
 
     const updateOrderStatus = (orderId, newStatus) => {
         let oldStatus = "";
+        let orderTotal = 0;
+        let customerId = null;
+        
         setState(prev => {
             const order = prev.orders.find(o => o.id === orderId);
             if (!order) return prev;
             
             let products = [...prev.products];
             oldStatus = order.status;
+            orderTotal = order.totalValue;
+            customerId = order.customer_id;
             
             const wasDeducted = oldStatus === "Completed" || oldStatus === "Partially Delivered";
             const isDeducted = newStatus === "Completed" || newStatus === "Partially Delivered";
@@ -583,7 +857,7 @@ export const AppProvider = ({ children }) => {
                         const vr = prod.variants.find(v => v.sku === item.variantSku);
                         const currentBal = vr ? (vr.stock[order.warehouse || "Sulur"] || 0) : 0;
                         newLedger = [{
-                            date: getLocalDateString(),
+                            date: new Date().toISOString().split('T')[0],
                             productId: prod.id,
                             variantSku: item.variantSku,
                             warehouse: order.warehouse || "Sulur",
@@ -600,7 +874,7 @@ export const AppProvider = ({ children }) => {
                         const vr = prod.variants.find(v => v.sku === item.variantSku);
                         const currentBal = vr ? (vr.stock[order.warehouse || "Sulur"] || 0) : 0;
                         newLedger = [{
-                            date: getLocalDateString(),
+                            date: new Date().toISOString().split('T')[0],
                             productId: prod.id,
                             variantSku: item.variantSku,
                             warehouse: order.warehouse || "Sulur",
@@ -619,6 +893,14 @@ export const AppProvider = ({ children }) => {
                 orders: prev.orders.map(o => o.id === orderId ? { ...o, status: newStatus } : o)
             };
         });
+
+        // Trigger customer stats update if transitioning to/from Completed
+        if (oldStatus !== "Completed" && newStatus === "Completed" && customerId) {
+            updateCustomerStats(customerId, orderTotal, 1);
+        } else if (oldStatus === "Completed" && newStatus !== "Completed" && customerId) {
+            updateCustomerStats(customerId, -orderTotal, -1);
+        }
+
         logActivity("order", `Order ${orderId} status changed to ${newStatus}.`);
         showToast(`Order status updated to ${newStatus}.`);
 
@@ -642,7 +924,7 @@ export const AppProvider = ({ children }) => {
                                     await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', item.variant_sku);
                                     
                                     await supabase.from('stock_ledger').insert([{
-                                        date: getLocalDateString(),
+                                        date: new Date().toISOString().split('T')[0],
                                         product_id: vData.product_id,
                                         variant_sku: item.variant_sku,
                                         warehouse: order.warehouse || 'Sulur',
@@ -660,7 +942,7 @@ export const AppProvider = ({ children }) => {
                                     await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', item.variant_sku);
                                     
                                     await supabase.from('stock_ledger').insert([{
-                                        date: getLocalDateString(),
+                                        date: new Date().toISOString().split('T')[0],
                                         product_id: vData.product_id,
                                         variant_sku: item.variant_sku,
                                         warehouse: order.warehouse || 'Sulur',
@@ -680,10 +962,28 @@ export const AppProvider = ({ children }) => {
     };
 
     const deleteOrder = (orderId) => {
-        setState(prev => ({
-            ...prev,
-            orders: prev.orders.filter(o => o.id !== orderId)
-        }));
+        let orderTotal = 0;
+        let customerId = null;
+        let status = null;
+        
+        setState(prev => {
+            const order = prev.orders.find(o => o.id === orderId);
+            if(order) {
+                orderTotal = order.totalValue;
+                customerId = order.customer_id;
+                status = order.status;
+            }
+            return {
+                ...prev,
+                orders: prev.orders.filter(o => o.id !== orderId)
+            }
+        });
+
+        // Trigger customer stats update if deleting a completed order
+        if (status === "Completed" && customerId) {
+            updateCustomerStats(customerId, -orderTotal, -1);
+        }
+
         logActivity("order", `Order ${orderId} removed from records.`);
         showToast(`Order ${orderId} deleted.`);
 
@@ -700,13 +1000,16 @@ export const AppProvider = ({ children }) => {
 
     const editOrder = (updatedOrder) => {
         let oldOrder = null;
+        let requiresCustomerUpdate = false;
+        let customerStatsDiff = { value: 0, count: 0 };
+        
         setState(prev => {
             oldOrder = prev.orders.find(o => o.id === updatedOrder.id);
             if (!oldOrder) return prev;
 
             let products = [...prev.products];
 
-            // 1. Revert old stock changes if deducted
+            // Revert old stock changes if deducted
             const oldDeducted = oldOrder.status === "Completed" || oldOrder.status === "Partially Delivered";
             if (oldDeducted) {
                 oldOrder.items.forEach(item => {
@@ -731,7 +1034,7 @@ export const AppProvider = ({ children }) => {
                 });
             }
 
-            // 2. Deduct new stock changes if new status is deducted
+            // Deduct new stock changes if new status is deducted
             const newDeducted = updatedOrder.status === "Completed" || updatedOrder.status === "Partially Delivered";
             if (newDeducted) {
                 updatedOrder.items.forEach(item => {
@@ -756,7 +1059,22 @@ export const AppProvider = ({ children }) => {
                 });
             }
 
-            // 3. Update order in list
+            // Check if customer stats need update (only if modifying a Completed order's total or changing status)
+            if (oldOrder.status === "Completed" && updatedOrder.status === "Completed") {
+                if (oldOrder.totalValue !== updatedOrder.totalValue) {
+                    requiresCustomerUpdate = true;
+                    customerStatsDiff.value = updatedOrder.totalValue - oldOrder.totalValue;
+                }
+            } else if (oldOrder.status !== "Completed" && updatedOrder.status === "Completed") {
+                requiresCustomerUpdate = true;
+                customerStatsDiff.value = updatedOrder.totalValue;
+                customerStatsDiff.count = 1;
+            } else if (oldOrder.status === "Completed" && updatedOrder.status !== "Completed") {
+                requiresCustomerUpdate = true;
+                customerStatsDiff.value = -oldOrder.totalValue;
+                customerStatsDiff.count = -1;
+            }
+
             const newOrders = prev.orders.map(o => o.id === updatedOrder.id ? updatedOrder : o);
 
             return {
@@ -766,7 +1084,11 @@ export const AppProvider = ({ children }) => {
             };
         });
 
-        logActivity("order", `Order ${updatedOrder.id} updated for ${updatedOrder.client}.`);
+        if (requiresCustomerUpdate && updatedOrder.customer_id) {
+            updateCustomerStats(updatedOrder.customer_id, customerStatsDiff.value, customerStatsDiff.count);
+        }
+
+        logActivity("order", `Order ${updatedOrder.id} updated.`);
         showToast(`Order ${updatedOrder.id} updated.`);
 
         if (supabase) {
@@ -774,10 +1096,14 @@ export const AppProvider = ({ children }) => {
                 try {
                     await supabase.from('orders').update({
                         client: updatedOrder.client,
+                        customer_id: updatedOrder.customer_id || null,
                         date: updatedOrder.date,
                         warehouse: updatedOrder.warehouse || 'Sulur',
                         status: updatedOrder.status,
                         total_value: updatedOrder.totalValue,
+                        discount_type: updatedOrder.discount_type || null,
+                        discount_value: updatedOrder.discount_value || 0,
+                        applied_coupon_code: updatedOrder.applied_coupon_code || null,
                         address: updatedOrder.address || null,
                         governorate: updatedOrder.governorate || null,
                         deposit: updatedOrder.deposit || 0,
@@ -802,11 +1128,8 @@ export const AppProvider = ({ children }) => {
                         const newSKUs = updatedOrder.items.map(i => i.variantSku);
                         const allSKUs = Array.from(new Set([...oldSKUs, ...newSKUs]));
                         
-                        // We fetch new state and sync
                         for (const sku of allSKUs) {
-                            // Find product variant
                             let stockQty = 0;
-                            // Read current stock inside state in direct access since state isn't finished setting yet
                             setState(currState => {
                                 const prod = currState.products.find(p => p.variants.some(v => v.sku === sku));
                                 if (prod) {
@@ -815,7 +1138,6 @@ export const AppProvider = ({ children }) => {
                                 }
                                 return currState;
                             });
-                            
                             await supabase.from('product_variants').update({ stock_sulur: stockQty }).eq('sku', sku);
                         }
                     }, 500);
@@ -1215,6 +1537,9 @@ export const AppProvider = ({ children }) => {
             showToast,
             authLogin,
             authSignup,
+            updateUserPermissions,
+            toggleUserStatus,
+            deleteUser,
             authLogout,
             addProduct,
             editProduct,
@@ -1230,6 +1555,14 @@ export const AppProvider = ({ children }) => {
             recordWaste,
             recordStockAdjustment,
             saveStoreConfig,
+            addCustomer,
+            editCustomer,
+            getOrCreateCustomer,
+            addCoupon,
+            editCoupon,
+            deleteCoupon,
+            validateCoupon,
+            applyCouponUsage,
             restoreStoreData,
             logActivity,
             language,
@@ -1462,7 +1795,25 @@ const translations = {
         markup: "Markup",
         margin: "Margin",
         profitMargin: "Profit Margin",
-        expiry: "Expiry"
+        
+        recordPurchaseOrder: "Record Purchase Order",
+        markup: "Markup",
+        margin: "Margin",
+        profitMargin: "Profit Margin",
+        expiry: "Expiry",
+        customersList: "Customers",
+        totalCustomers: "Total Customers",
+        vipCustomers: "VIP Customers",
+        addCustomer: "Add Customer",
+        customerName: "Customer Name",
+        customerType: "Type",
+        totalPurchases: "Total Purchases",
+        ordersCount: "Orders",
+        editCustomer: "Edit Customer",
+        regular: "Regular",
+        vip: "VIP",
+        governorate: "Governorate"
+
     },
     ar: {
         dashboard: "لوحة التحكم",
@@ -1683,6 +2034,24 @@ const translations = {
         markup: "الربح المضاف",
         margin: "الهامش",
         profitMargin: "هامش الربح",
-        expiry: "تاريخ الصلاحية"
+        
+        recordPurchaseOrder: "تسجيل فاتورة مشتريات",
+        markup: "الهامش الكلي",
+        margin: "الربح",
+        profitMargin: "نسبة الربح",
+        expiry: "تاريخ الصلاحية",
+        customersList: "العملاء",
+        totalCustomers: "إجمالي العملاء",
+        vipCustomers: "عملاء VIP المميزين",
+        addCustomer: "إضافة عميل",
+        customerName: "اسم العميل",
+        customerType: "فئة العميل",
+        totalPurchases: "إجمالي المشتريات",
+        ordersCount: "عدد الطلبات",
+        editCustomer: "تعديل عميل",
+        regular: "عادي",
+        vip: "مميز (VIP)",
+        governorate: "المحافظة"
+
     }
 };

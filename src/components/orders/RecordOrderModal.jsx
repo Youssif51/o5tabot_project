@@ -34,7 +34,7 @@ export const shippingFees = {
 };
 
 export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
-    const { state, addOrder, editOrder, showToast, t } = useContext(AppContext);
+    const { state, addOrder, editOrder, showToast, t, validateCoupon, getOrCreateCustomer } = useContext(AppContext);
     
     // Order info
     const [orderId, setOrderId] = useState('');
@@ -43,6 +43,11 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     
     // Customer Section
     const [client, setClient] = useState('');
+    const [customerId, setCustomerId] = useState(null);
+    const [couponCode, setCouponCode] = useState('');
+    const [couponValid, setCouponValid] = useState(false);
+    const [couponDiscountValue, setCouponDiscountValue] = useState(0);
+    const [couponDiscountType, setCouponDiscountType] = useState('');
     const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
     const [phone, setPhone] = useState('');
     const [governorate, setGovernorate] = useState('');
@@ -68,6 +73,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         let vatEnabled = false;
         let orderDiscountPercent = 0;
         let customerCode = 'CUS-0000';
+        let appliedCoupon = '';
         
         if (addressStr && addressStr.startsWith('{')) {
             try {
@@ -77,9 +83,10 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 vatEnabled = parsed.vatEnabled || false;
                 orderDiscountPercent = parseFloat(parsed.orderDiscountPercent) || 0;
                 customerCode = parsed.customerCode || 'CUS-0000';
+                appliedCoupon = parsed.appliedCoupon || '';
             } catch(e) {}
         }
-        return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode };
+        return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode, appliedCoupon };
     };
 
     // Deterministic Customer Code Generator
@@ -96,7 +103,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const customerCode = getCustomerCode(client);
 
     // Load active unique customers list for searchable dropdown
-    const existingCustomers = Array.from(new Set((state.orders || []).map(o => o.client))).filter(Boolean);
+    const existingCustomers = state.customers ? state.customers.map(c => c.name) : Array.from(new Set((state.orders || []).map(o => o.client))).filter(Boolean);
     const filteredCustomers = existingCustomers.filter(c => c.toLowerCase().includes(client.toLowerCase()));
 
     // Reset and initialize form on open
@@ -117,6 +124,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     setAddress(parsed.detailAddress || order.address);
                     setVatEnabled(parsed.vatEnabled);
                     setOrderDiscountPercent(parsed.orderDiscountPercent || '');
+                    setCouponCode(parsed.appliedCoupon || '');
+                    setCustomerId(order.customer_id || null);
                     
                     setGovernorate(order.governorate || '');
                     setShippingFee(order.shipping_fee || '');
@@ -174,6 +183,11 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 setShippingFee('');
                 setVatEnabled(false);
                 setDeposit('');
+                setCustomerId(null);
+                setCouponCode('');
+                setCouponValid(false);
+                setCouponDiscountValue(0);
+                setCouponDiscountType('');
             }
         }
     }, [isOpen, editOrderId]);
@@ -192,6 +206,15 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const handleSelectCustomer = (name) => {
         setClient(name);
         setIsClientDropdownOpen(false);
+        const cust = state.customers?.find(c => c.name === name);
+        if (cust) {
+            setCustomerId(cust.id);
+            setPhone(cust.phone || '');
+            setGovernorate(cust.governorate || '');
+            setAddress(cust.address || '');
+        } else {
+            setCustomerId(null);
+        }
         const lastOrder = (state.orders || []).find(o => o.client === name);
         if (lastOrder) {
             if (lastOrder.address && lastOrder.address.startsWith('{')) {
@@ -285,7 +308,15 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         return sum + (item.variantSku ? sub : 0);
     }, 0);
 
-    const orderDiscountAmount = totalProductsSubtotal * (orderDiscountPercentVal / 100);
+    let couponDisc = 0;
+    if (couponValid) {
+        if (couponDiscountType === 'Percentage') {
+            couponDisc = totalProductsSubtotal * (couponDiscountValue / 100);
+        } else {
+            couponDisc = couponDiscountValue;
+        }
+    }
+    const orderDiscountAmount = (totalProductsSubtotal * (orderDiscountPercentVal / 100)) + couponDisc;
     const discountedProductsTotal = totalProductsSubtotal - orderDiscountAmount;
     
     const vatAmount = vatEnabled ? (discountedProductsTotal * 0.14) : 0;
@@ -358,7 +389,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const canConfirm = isStep1Valid && isStep2Valid && isStep3Valid;
 
     // Handle Submit
-    const handleSaveOrder = (isDraftSave) => {
+    const handleSaveOrder = async (isDraftSave) => {
         if (!client.trim()) {
             showToast("يرجى إدخال اسم العميل", "error");
             setStep(1);
@@ -393,12 +424,24 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
         const finalStatus = isDraftSave ? 'Draft' : 'Completed'; // Draft = مسودة, Completed = مؤكد/مكتمل
 
+        
+        // Ensure we have a valid customer_id in DB
+        let finalCustomerId = customerId;
+        if (!finalCustomerId) {
+            finalCustomerId = await getOrCreateCustomer(phone, client, governorate);
+            setCustomerId(finalCustomerId); // update local state as well
+        }
+
         const newOrderObj = {
             id: orderId,
             client: client,
             date: getLocalDateString(),
             items: orderItems,
             totalValue: finalOrderTotal,
+            customer_id: finalCustomerId,
+            discount_type: couponValid ? couponDiscountType : null,
+            discount_value: couponValid ? couponDiscountValue : 0,
+            applied_coupon_code: couponValid ? couponCode : null,
             warehouse: 'Sulur',
             status: finalStatus,
             address: JSON.stringify({
@@ -406,7 +449,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 phone: phone,
                 vatEnabled: vatEnabled,
                 orderDiscountPercent: orderDiscountPercentVal,
-                customerCode: customerCode
+                customerCode: customerCode,
+                appliedCoupon: couponValid ? couponCode : ''
             }),
             governorate: governorate,
             deposit: depositVal,
@@ -426,12 +470,12 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
     return (
         <Modal isOpen={isOpen} onClose={onClose} title={editOrderId ? `تعديل طلب مبيعات: ${orderId}` : "تسجيل طلب مبيعات جديد"} width="1150px">
-            <div dir="rtl" style={{ background: '#1a1a1a', color: '#fff', padding: '10px 4px', borderRadius: '8px' }}>
+            <div dir="rtl" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', padding: '10px 4px', borderRadius: '8px' }}>
                 
                 {/* 1. ORDER HEADER */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '12px', borderBottom: '1px solid var(--glass-border)' }}>
                     <div>
-                        <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.5)', marginLeft: '8px' }}>رقم الطلب (تلقائي):</span>
+                        <span style={{ fontSize: '13px', color: 'var(--text-secondary)', marginLeft: '8px' }}>رقم الطلب (تلقائي):</span>
                         <strong style={{ fontSize: '16px', color: 'var(--gold-primary)', letterSpacing: '0.5px' }}>{orderId}</strong>
                     </div>
                     <div>
@@ -443,7 +487,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
                 {/* 4-STEP STEPPER */}
                 <div className="stepper-container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', position: 'relative', padding: '0 40px' }}>
-                    <div style={{ position: 'absolute', top: '15px', left: '60px', right: '60px', height: '2px', background: 'rgba(255,255,255,0.08)', zIndex: 1 }} />
+                    <div style={{ position: 'absolute', top: '15px', left: '60px', right: '60px', height: '2px', background: 'var(--glass-border-hover)', zIndex: 1 }} />
                     <div style={{ position: 'absolute', top: '15px', right: '60px', width: `${((step - 1) / 3) * 100}%`, height: '2px', background: 'var(--gold-primary)', zIndex: 2, transition: 'width 0.3s ease' }} />
                     {[
                         { stepNum: 1, label: 'بيانات العميل' },
@@ -466,7 +510,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                 fontWeight: 'bold',
                                 fontSize: '13px',
                                 border: '2px solid',
-                                borderColor: step === s.stepNum ? 'var(--gold-primary)' : (step > s.stepNum ? '#27AE60' : 'rgba(255,255,255,0.1)'),
+                                borderColor: step === s.stepNum ? 'var(--gold-primary)' : (step > s.stepNum ? '#27AE60' : 'var(--glass-border-hover)'),
                                 transition: 'all 0.3s ease'
                             }}>
                                 {step > s.stepNum ? <i className="fa-solid fa-check" style={{ fontSize: '11px' }}></i> : s.stepNum}
@@ -515,7 +559,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                 <div 
                                                     key={custName}
                                                     onMouseDown={() => handleSelectCustomer(custName)}
-                                                    style={{ padding: '8px 12px', fontSize: '12px', cursor: 'pointer', borderBottom: '1px solid rgba(255,255,255,0.03)', color: '#fff', borderRadius: '4px' }}
+                                                    style={{ padding: '8px 12px', fontSize: '12px', cursor: 'pointer', borderBottom: '1px solid var(--glass-bg-hover)', color: 'var(--text-primary)', borderRadius: '4px' }}
                                                     className="autocomplete-option"
                                                 >
                                                     {custName}
@@ -531,7 +575,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         className="form-input" 
                                         value={customerCode} 
                                         disabled 
-                                        style={{ background: 'rgba(255,255,255,0.03)', color: 'rgba(255,255,255,0.6)', cursor: 'not-allowed' }}
+                                        style={{ background: 'var(--glass-bg-hover)', color: 'var(--text-secondary)', cursor: 'not-allowed' }}
                                     />
                                 </div>
                             </div>
@@ -601,7 +645,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             <div style={{ overflow: 'visible' }}>
                                 <table className="summary-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead>
-                                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+                                        <tr style={{ borderBottom: '1px solid var(--glass-border-hover)' }}>
                                             <th style={{ width: '38%', textAlign: 'right', padding: '10px' }}>المنتج / SKU</th>
                                             <th style={{ width: '15%', textAlign: 'center', padding: '10px' }}>الكمية</th>
                                             <th style={{ width: '15%', textAlign: 'center', padding: '10px' }}>سعر الوحدة</th>
@@ -615,7 +659,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             const subtotal = item.quantity * item.price * (1 - (item.discountPercent || 0) / 100);
                                             const rowOptions = getRowOptions(item);
                                             return (
-                                                <tr key={`order-item-${idx}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
+                                                <tr key={`order-item-${idx}`} style={{ borderBottom: '1px solid var(--glass-border)' }}>
                                                     <td style={{ padding: '8px 10px', verticalAlign: 'middle', position: 'relative' }}>
                                                         <input 
                                                             type="text"
@@ -626,7 +670,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                             onFocus={() => setItemOpen(idx, true)}
                                                             onBlur={() => setTimeout(() => setItemOpen(idx, false), 250)}
                                                             required
-                                                            style={{ background: 'rgba(255,255,255,0.02)', borderColor: item.variantSku ? 'var(--color-success)' : 'var(--glass-border)' }}
+                                                            style={{ background: 'var(--glass-bg)', borderColor: item.variantSku ? 'var(--color-success)' : 'var(--glass-border)' }}
                                                         />
                                                         {item.maxStock > 0 && (
                                                             <div style={{ fontSize: '10px', color: 'var(--gold-primary)', marginTop: '4px' }}>
@@ -643,7 +687,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                                 maxHeight: '320px',
                                                                 overflowY: 'auto',
                                                                 zIndex: 2000,
-                                                                background: 'rgba(25, 25, 30, 0.99)',
+                                                                background: 'var(--bg-secondary)',
                                                                 border: '1px solid var(--glass-border)',
                                                                 borderRadius: '10px',
                                                                 boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
@@ -651,7 +695,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                             }}>
                                                                 {/* Popular items header when query is empty */}
                                                                 {!(item.searchVal || '').trim() && rowOptions.length > 0 && (
-                                                                    <div style={{ padding: '6px 12px', fontSize: '10px', color: 'var(--gold-primary)', fontWeight: 'bold', borderBottom: '1px solid rgba(255,255,255,0.04)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                    <div style={{ padding: '6px 12px', fontSize: '10px', color: 'var(--gold-primary)', fontWeight: 'bold', borderBottom: '1px solid var(--glass-border)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                         <i className="fa-solid fa-fire" style={{ color: '#E74C3C' }}></i> الأكثر طلباً وشيوعاً
                                                                     </div>
                                                                 )}
@@ -666,11 +710,11 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                                                 padding: '8px 12px',
                                                                                 fontSize: '11px',
                                                                                 cursor: 'pointer',
-                                                                                borderBottom: '1px solid rgba(255,255,255,0.03)',
+                                                                                borderBottom: '1px solid var(--glass-bg-hover)',
                                                                                 display: 'flex',
                                                                                 justifyContent: 'space-between',
                                                                                 alignItems: 'center',
-                                                                                color: '#fff',
+                                                                                color: 'var(--text-primary)',
                                                                                 borderRadius: '4px'
                                                                             }}
                                                                             className="autocomplete-option"
@@ -689,7 +733,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                         <div style={{ 
                                                             display: 'inline-flex', 
                                                             alignItems: 'center', 
-                                                            background: 'rgba(255,255,255,0.02)', 
+                                                            background: 'var(--glass-bg)', 
                                                             border: '1px solid var(--glass-border)', 
                                                             borderRadius: '6px', 
                                                             overflow: 'hidden',
@@ -704,7 +748,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                                     height: '100%',
                                                                     border: 'none',
                                                                     background: 'none',
-                                                                    color: '#fff',
+                                                                    color: 'var(--text-primary)',
                                                                     cursor: (!item.variantSku || item.quantity <= 1) ? 'not-allowed' : 'pointer',
                                                                     opacity: (!item.variantSku || item.quantity <= 1) ? 0.3 : 0.8,
                                                                     fontSize: '10px'
@@ -724,7 +768,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                                     height: '100%',
                                                                     border: 'none',
                                                                     background: 'none',
-                                                                    color: '#fff',
+                                                                    color: 'var(--text-primary)',
                                                                     textAlign: 'center',
                                                                     fontSize: '12px',
                                                                     fontWeight: 600,
@@ -741,7 +785,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                                     height: '100%',
                                                                     border: 'none',
                                                                     background: 'none',
-                                                                    color: '#fff',
+                                                                    color: 'var(--text-primary)',
                                                                     cursor: (!item.variantSku || item.quantity >= item.maxStock) ? 'not-allowed' : 'pointer',
                                                                     opacity: (!item.variantSku || item.quantity >= item.maxStock) ? 0.3 : 0.8,
                                                                     fontSize: '10px'
@@ -759,7 +803,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                             value={item.variantSku ? `${currency}${item.price.toFixed(2)}` : ''}
                                                             placeholder={`${currency}0.00`}
                                                             readOnly
-                                                            style={{ textAlign: 'center', background: 'rgba(255,255,255,0.02)', color: 'rgba(255,255,255,0.8)' }}
+                                                            style={{ textAlign: 'center', background: 'var(--glass-bg)', color: 'rgba(255,255,255,0.8)' }}
                                                         />
                                                     </td>
                                                     <td style={{ padding: '8px 10px', verticalAlign: 'middle' }}>
@@ -818,6 +862,40 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     />
                                 </div>
                                 <div className="form-group">
+                                    <label className="form-label">كود الخصم (كوبون)</label>
+                                    <div style={{ display: 'flex', gap: '8px' }}>
+                                        <input 
+                                            type="text" 
+                                            className="form-input" 
+                                            value={couponCode}
+                                            onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                                            placeholder="أدخل كود الخصم"
+                                        />
+                                        <button 
+                                            type="button"
+                                            className="btn btn-secondary"
+                                            onClick={async () => {
+                                                if(!couponCode) return;
+                                                const res = await validateCoupon(couponCode, totalProductsSubtotal);
+                                                if (res.valid) {
+                                                    setCouponValid(true);
+                                                    setCouponDiscountValue(res.discount_value);
+                                                    setCouponDiscountType(res.discount_type);
+                                                    showToast("تم تطبيق الكوبون بنجاح", "success");
+                                                } else {
+                                                    setCouponValid(false);
+                                                    setCouponDiscountValue(0);
+                                                    showToast(res.message || "كوبون غير صالح", "error");
+                                                }
+                                            }}
+                                        >
+                                            تطبيق
+                                        </button>
+                                    </div>
+                                    {couponValid && <div style={{ fontSize: '11px', color: 'var(--color-success)', marginTop: '4px' }}>خصم: {couponDiscountValue} {couponDiscountType === 'Percentage' ? '%' : currency}</div>}
+                                </div>
+
+                                <div className="form-group">
                                     <label className="form-label">سعر الشحن ({currency})</label>
                                     <input 
                                         type="number" 
@@ -849,7 +927,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             width: '46px',
                                             height: '24px',
                                             borderRadius: '12px',
-                                            background: vatEnabled ? 'var(--gold-primary)' : 'rgba(255,255,255,0.1)',
+                                            background: vatEnabled ? 'var(--gold-primary)' : 'var(--glass-border-hover)',
                                             position: 'relative',
                                             cursor: 'pointer',
                                             transition: 'background 0.3s ease'
@@ -874,30 +952,30 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                 <h4 style={{ fontSize: '14px', color: 'var(--gold-primary)', marginBottom: '12px', fontWeight: 600 }}>الخلاصة المالية المؤقتة</h4>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px 24px', fontSize: '13px' }}>
                                     <div>
-                                        <span style={{ color: 'rgba(255,255,255,0.5)' }}>مجموع المنتجات:</span>
+                                        <span style={{ color: 'var(--text-secondary)' }}>مجموع المنتجات:</span>
                                         <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px' }}>{currency}{totalProductsSubtotal.toFixed(2)}</strong>
                                     </div>
                                     <div>
-                                        <span style={{ color: 'rgba(255,255,255,0.5)' }}>خصم الأوردر:</span>
+                                        <span style={{ color: 'var(--text-secondary)' }}>خصم الأوردر:</span>
                                         <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px', color: 'var(--color-danger)' }}>
                                             -{currency}{orderDiscountAmount.toFixed(2)} ({orderDiscountPercent}%)
                                         </strong>
                                     </div>
                                     <div>
-                                        <span style={{ color: 'rgba(255,255,255,0.5)' }}>ضريبة القيمة المضافة (14%):</span>
+                                        <span style={{ color: 'var(--text-secondary)' }}>ضريبة القيمة المضافة (14%):</span>
                                         <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px' }}>{currency}{vatAmount.toFixed(2)}</strong>
                                     </div>
                                     <div>
-                                        <span style={{ color: 'rgba(255,255,255,0.5)' }}>سعر الشحن ({governorate || 'لم تحدد'}):</span>
+                                        <span style={{ color: 'var(--text-secondary)' }}>سعر الشحن ({governorate || 'لم تحدد'}):</span>
                                         <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px' }}>+{currency}{shippingFeeVal.toFixed(2)}</strong>
                                     </div>
                                     <div>
-                                        <span style={{ color: 'rgba(255,255,255,0.5)' }}>العربون المستلم:</span>
+                                        <span style={{ color: 'var(--text-secondary)' }}>العربون المستلم:</span>
                                         <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px', color: 'var(--color-success)' }}>
                                             -{currency}{depositVal.toFixed(2)}
                                         </strong>
                                     </div>
-                                    <div style={{ borderLeft: '1px dashed rgba(255,255,255,0.1)', paddingRight: '12px' }}>
+                                    <div style={{ borderLeft: '1px dashed var(--glass-border-hover)', paddingRight: '12px' }}>
                                         <span style={{ color: 'var(--gold-primary)', fontWeight: 600 }}>المتبقي للتحصيل:</span>
                                         <strong style={{ display: 'block', marginTop: '4px', fontSize: '18px', color: 'var(--gold-primary)', fontWeight: 'bold' }}>
                                             {currency}{remainingToCollect.toFixed(2)}
@@ -915,11 +993,11 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                 
                                 {/* Customer Review */}
                                 <div className="glass-card" style={{ padding: '16px', background: 'rgba(0,0,0,0.1)' }}>
-                                    <h4 style={{ fontSize: '14px', color: 'var(--gold-primary)', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '6px' }}>
+                                    <h4 style={{ fontSize: '14px', color: 'var(--gold-primary)', marginBottom: '12px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '6px' }}>
                                         <i className="fa-solid fa-user" style={{ marginLeft: '6px' }}></i> بيانات العميل والشحن
                                     </h4>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
-                                        <div><strong>اسم العميل:</strong> {client} <span style={{ color: 'rgba(255,255,255,0.5)', marginRight: '6px' }}>({customerCode})</span></div>
+                                        <div><strong>اسم العميل:</strong> {client} <span style={{ color: 'var(--text-secondary)', marginRight: '6px' }}>({customerCode})</span></div>
                                         <div><strong>رقم الهاتف:</strong> {phone}</div>
                                         <div><strong>المحافظة:</strong> {governorate}</div>
                                         <div><strong>العنوان التفصيلي:</strong> {address}</div>
@@ -928,7 +1006,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
                                 {/* Cost Breakdown Review */}
                                 <div className="glass-card" style={{ padding: '16px', background: 'rgba(0,0,0,0.15)', border: '1px solid rgba(212, 175, 55, 0.2)' }}>
-                                    <h4 style={{ fontSize: '14px', color: 'var(--gold-primary)', marginBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: '6px' }}>
+                                    <h4 style={{ fontSize: '14px', color: 'var(--gold-primary)', marginBottom: '12px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '6px' }}>
                                         <i className="fa-solid fa-calculator" style={{ marginLeft: '6px' }}></i> الخلاصة المالية النهائية
                                     </h4>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
@@ -958,7 +1036,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                 <span>-{currency}{depositVal.toFixed(2)}</span>
                                             </div>
                                         )}
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: 'bold', borderTop: '1px dashed rgba(255,255,255,0.1)', paddingTop: '8px', marginTop: '4px', color: 'var(--gold-primary)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: 'bold', borderTop: '1px dashed var(--glass-border-hover)', paddingTop: '8px', marginTop: '4px', color: 'var(--gold-primary)' }}>
                                             <span>المتبقي للتحصيل:</span>
                                             <span>{currency}{remainingToCollect.toFixed(2)}</span>
                                         </div>
@@ -973,7 +1051,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                 </h4>
                                 <table style={{ width: '100%', fontSize: '12px', borderCollapse: 'collapse' }}>
                                     <thead>
-                                        <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.5)' }}>
+                                        <tr style={{ borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }}>
                                             <th style={{ textAlign: 'right', padding: '6px 4px' }}>اسم المنتج</th>
                                             <th style={{ textAlign: 'center', padding: '6px 4px' }}>الكمية</th>
                                             <th style={{ textAlign: 'center', padding: '6px 4px' }}>سعر الوحدة</th>
@@ -985,8 +1063,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         {items.map((item, i) => {
                                             const sub = item.quantity * item.price * (1 - (item.discountPercent || 0) / 100);
                                             return (
-                                                <tr key={`review-item-${i}`} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                                                    <td style={{ padding: '6px 4px' }}>{item.productName} <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '10px' }}>({item.variantName})</span></td>
+                                                <tr key={`review-item-${i}`} style={{ borderBottom: '1px solid var(--glass-bg-hover)' }}>
+                                                    <td style={{ padding: '6px 4px' }}>{item.productName} <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>({item.variantName})</span></td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>{item.quantity}</td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>{currency}{item.price.toFixed(2)}</td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px', color: 'var(--color-danger)' }}>{item.discountPercent > 0 ? `${item.discountPercent}%` : '-'}</td>
@@ -1002,7 +1080,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 </div>
 
                 {/* NAVIGATION FOOTER */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--glass-border)' }}>
                     <div>
                         {step > 1 ? (
                             <button type="button" className="btn btn-secondary" onClick={() => setStep(prev => prev - 1)}>

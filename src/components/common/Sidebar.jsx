@@ -6,14 +6,20 @@ export default function Sidebar() {
     
     if (!state.currentUser) return null;
 
+    const checkPermission = (perm) => {
+        if (state.currentUser.role === 'SuperAdmin') return true;
+        return (state.currentUser.permissions || []).includes(perm);
+    };
+
     const navItems = [
-        { id: 'dashboard', name: t('dashboard'), icon: 'Home.png' },
-        { id: 'inventory', name: t('inventory'), icon: 'Inventory.png' },
-        { id: 'reports', name: t('reports'), icon: 'Report.png' },
-        { id: 'suppliers', name: t('suppliers'), icon: 'Suppliers.png' },
-        { id: 'orders', name: t('orders'), icon: 'Order.png' },
-        { id: 'supabaseTasks', name: t('supabaseTasks'), icon: 'Calendar.png' }
-    ];
+        { id: 'dashboard', name: t('dashboard'), icon: 'Home.png', perm: 'view_dashboard' },
+        { id: 'inventory', name: t('inventory'), icon: 'Inventory.png', perm: 'manage_inventory' },
+        { id: 'reports', name: t('reports'), icon: 'Report.png', perm: 'view_reports' },
+        { id: 'suppliers', name: t('suppliers'), icon: 'Suppliers.png', perm: 'manage_suppliers' },
+        { id: 'customers', name: t('customersList') || 'العملاء', icon: 'Support.png', perm: 'manage_customers' },
+        { id: 'orders', name: t('orders'), icon: 'Order.png', perm: 'manage_orders' },
+        { id: 'supabaseTasks', name: t('supabaseTasks'), icon: 'Calendar.png', perm: 'manage_settings' }
+    ].filter(item => checkPermission(item.perm));
 
     return (
         <aside className="sidebar">
@@ -46,14 +52,15 @@ export default function Sidebar() {
             </ul>
             
             <div className="sidebar-footer" style={{ borderTop: 'none', paddingTop: 0 }}>
-                {/* Settings custom link */}
                 <ul className="nav-links" style={{ width: '100%', marginBottom: '14px' }}>
-                    <li className={`nav-item ${currentView === 'store' ? 'active' : ''}`}>
-                        <a href="#" onClick={(e) => { e.preventDefault(); setCurrentView('store'); }}>
-                            <img src="/icons/Settings.png" alt="Settings" style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
-                            <span>{t('settings')}</span>
-                        </a>
-                    </li>
+                    {checkPermission('manage_settings') && (
+                        <li className={`nav-item ${currentView === 'store' ? 'active' : ''}`}>
+                            <a href="#" onClick={(e) => { e.preventDefault(); setCurrentView('store'); }}>
+                                <img src="/icons/Settings.png" alt="Settings" style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
+                                <span>{t('settings')}</span>
+                            </a>
+                        </li>
+                    )}
                     <li className="nav-item">
                         <a href="#" onClick={(e) => { e.preventDefault(); authLogout(); }}>
                             <img src="/icons/Log Out.png" alt="Log Out" style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
@@ -64,7 +71,7 @@ export default function Sidebar() {
 
                 <div className="user-profile" style={{ marginTop: '10px' }}>
                     <div className="user-avatar" id="user-avatar-lbl">
-                        {state.currentUser.avatar || 'A'}
+                        {state.currentUser.avatar || state.currentUser.name?.charAt(0)?.toUpperCase() || 'U'}
                     </div>
                     <div className="user-details">
                         <h4 id="user-display-name">{state.currentUser.name}</h4>
@@ -75,3 +82,5 @@ export default function Sidebar() {
         </aside>
     );
 }
+
+// hmr force update
