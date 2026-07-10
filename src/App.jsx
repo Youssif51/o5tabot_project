@@ -15,6 +15,7 @@ import LowQuantity from './components/dashboard/LowQuantity';
 // Module components
 import InventoryList from './components/inventory/InventoryList';
 import OrdersList from './components/orders/OrdersList';
+import ShopifyPendingList from './components/orders/ShopifyPendingList';
 import SuppliersList from './components/suppliers/SuppliersList';
 import CustomersList from './components/customers/CustomersList';
 import ReportsView from './components/reports/ReportsView';
@@ -335,6 +336,12 @@ export default function App() {
                         globalSearch={globalSearch}
                         setGlobalSearch={setGlobalSearch}
                         onOpenAddOrder={() => { setEditOrderId(null); setIsAddOrderOpen(true); }}
+                        onOpenEditOrder={(id) => { setEditOrderId(id); setIsAddOrderOpen(true); }}
+                    />
+                )}
+
+                {currentView === 'shopifyPending' && (
+                    <ShopifyPendingList 
                         onOpenEditOrder={(id) => { setEditOrderId(id); setIsAddOrderOpen(true); }}
                     />
                 )}

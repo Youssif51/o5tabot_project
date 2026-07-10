@@ -8,6 +8,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
 
     // Barcode Printing State
     const [printVariant, setPrintVariant] = useState(null);
+    const [selectedImageIdx, setSelectedImageIdx] = useState(0);
 
     const product = state.products.find(p => p.id === productId);
     const currency = state.storeSettings.currency || '$';
@@ -34,6 +35,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
     let sulurStock = 0;
     let singanallurStock = 0;
     let mainWholesalePrice = 0;
+    let mainAverageCost = 0;
     let mainRetailPrice = 0;
     let thresholdValue = 12;
 
@@ -42,6 +44,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
         sulurStock = mainVar.stock.Sulur || 0;
         singanallurStock = mainVar.stock.Singanallur || 0;
         mainWholesalePrice = mainVar.wholesalePrice;
+        mainAverageCost = mainVar.averageCost || mainVar.wholesalePrice || 0;
         mainRetailPrice = mainVar.retailPrice;
         thresholdValue = mainVar.reorderLimit;
     }
@@ -193,6 +196,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                         <tr>
                                             <th>{t('optionName')}</th>
                                             <th>{t('buyingPrice')}</th>
+                                            <th>متوسط التكلفة (WAC)</th>
                                             <th>{t('price')}</th>
                                             <th>{t('margin')}</th>
                                             <th>{t('stock')}</th>
@@ -201,11 +205,13 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                     <tbody>
                                         {product.variants.map(v => {
                                             const vQty = (v.stock?.Sulur || 0);
-                                            const profitMargin = v.retailPrice > 0 ? ((v.retailPrice - v.wholesalePrice) / v.retailPrice * 100).toFixed(1) : 0;
+                                            const costVal = v.averageCost || v.wholesalePrice || 0;
+                                            const profitMargin = v.retailPrice > 0 ? ((v.retailPrice - costVal) / v.retailPrice * 100).toFixed(1) : 0;
                                             return (
                                                 <tr key={v.sku}>
-                                                    <td style={{ fontWeight: 600 }}>{v.name || 'Standard Option'}</td>
+                                                    <td style={{ fontWeight: 600 }}>{v.name === 'Standard Option' ? (t('defaultOption') || 'المنتج الأساسي') : v.name}</td>
                                                     <td>{currency}{v.wholesalePrice.toFixed(2)}</td>
+                                                    <td style={{ fontWeight: 600, color: 'var(--color-warning)' }}>{currency}{costVal.toFixed(2)}</td>
                                                     <td style={{ color: 'var(--gold-primary)', fontWeight: 600 }}>{currency}{v.retailPrice.toFixed(2)}</td>
                                                     <td><span className="badge badge-success">{profitMargin}%</span></td>
                                                     <td>{vQty} {t('packets')}</td>
@@ -241,24 +247,67 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                     {/* Right Panel */}
                     <div className="glass-card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                         
-                        {/* Product Thumbnail image or placeholder */}
-                        <div style={{ 
-                            width: '100%', 
-                            height: '140px', 
-                            border: product.image ? 'none' : '2px dashed rgba(255, 255, 255, 0.12)', 
-                            borderRadius: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: 'rgba(255,255,255,0.01)',
-                            overflow: 'hidden'
-                        }}>
-                            {product.image ? (
-                                <img src={product.image} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            ) : (
-                                <i className="fa-regular fa-image" style={{ fontSize: '40px', color: 'var(--text-muted)' }}></i>
-                            )}
-                        </div>
+                        {/* Product Images Gallery */}
+                        {(() => {
+                            let validImages = [];
+                            // Try images array first
+                            if (product.images && Array.isArray(product.images)) {
+                                validImages = product.images.filter(img => img && (img.startsWith('data:') || img.startsWith('http')));
+                            }
+                            // Fallback to image field
+                            if (validImages.length === 0 && product.image && typeof product.image === 'string') {
+                                try {
+                                    const parsed = JSON.parse(product.image);
+                                    if (Array.isArray(parsed)) {
+                                        validImages = parsed.filter(img => img && (img.startsWith('data:') || img.startsWith('http')));
+                                    }
+                                } catch {
+                                    if (product.image.startsWith('data:') || product.image.startsWith('http')) {
+                                        validImages = [product.image];
+                                    }
+                                }
+                            }
+
+                            if (validImages.length === 0) {
+                                return (
+                                    <div style={{ 
+                                        width: '100%', height: '180px', border: '2px dashed rgba(255, 255, 255, 0.12)', 
+                                        borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                        background: 'rgba(255,255,255,0.02)'
+                                    }}>
+                                        <i className="fa-regular fa-image" style={{ fontSize: '40px', color: 'var(--text-muted)' }}></i>
+                                    </div>
+                                );
+                            }
+
+                            return (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {/* Main large image */}
+                                    <div style={{ 
+                                        width: '100%', height: '220px', borderRadius: '8px', overflow: 'hidden',
+                                        background: 'rgba(255,255,255,0.03)', display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                    }}>
+                                        <img src={validImages[selectedImageIdx] || validImages[0]} alt={product.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                                    </div>
+                                    {/* Thumbnails row */}
+                                    {validImages.length > 1 && (
+                                        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                                            {validImages.map((img, idx) => (
+                                                <div key={idx} onClick={() => setSelectedImageIdx(idx)} style={{ 
+                                                    width: '52px', height: '52px', borderRadius: '6px', overflow: 'hidden',
+                                                    border: idx === (selectedImageIdx || 0) ? '2px solid var(--gold-primary)' : '2px solid rgba(255,255,255,0.08)',
+                                                    cursor: 'pointer', flexShrink: 0,
+                                                    opacity: idx === (selectedImageIdx || 0) ? 1 : 0.6,
+                                                    transition: 'all 0.2s ease'
+                                                }}>
+                                                    <img src={img} alt={`${product.name} ${idx + 1}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
 
                         {/* Right Summary metrics */}
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '13px' }}>
@@ -283,15 +332,23 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                 <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{((product.totalConsumed || 0) / 30).toFixed(1)} / day</span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                                 <span style={{ color: 'var(--text-secondary)' }}>{t('buyingPrice')}</span>
+                                 <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency}{mainWholesalePrice.toFixed(2)}</span>
+                             </div>
+                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                                 <span style={{ color: 'var(--text-secondary)' }}>متوسط التكلفة (WAC)</span>
+                                 <span style={{ fontWeight: 600, color: 'var(--color-warning)' }}>{currency}{mainAverageCost.toFixed(2)}</span>
+                             </div>
+                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
                                 <span style={{ color: 'var(--text-secondary)' }}>{t('markup')}</span>
                                 <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>
-                                    {mainRetailPrice > 0 ? ((mainRetailPrice - mainWholesalePrice) / mainWholesalePrice * 100).toFixed(0) : 0}%
+                                    {mainRetailPrice > 0 ? ((mainRetailPrice - mainAverageCost) / mainAverageCost * 100).toFixed(0) : 0}%
                                 </span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
                                 <span style={{ color: 'var(--text-secondary)' }}>{t('profitMargin')}</span>
                                 <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>
-                                    {mainRetailPrice > 0 ? ((mainRetailPrice - mainWholesalePrice) / mainRetailPrice * 100).toFixed(1) : 0}%
+                                    {mainRetailPrice > 0 ? ((mainRetailPrice - mainAverageCost) / mainRetailPrice * 100).toFixed(1) : 0}%
                                 </span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px' }}>
@@ -304,46 +361,117 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
 
                 </div>
             ) : activeTab === 'Purchases' ? (
-                <div className="glass-card" style={{ padding: '24px' }}>
-                    <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '20px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
-                        {t('fifoQueue')}
-                    </h3>
-                    {(!product.batches || product.batches.length === 0) ? (
-                        <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>{t('noFifoBatches')}</p>
-                    ) : (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            {[...(product.batches || [])].map((batch, index) => {
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    {/* Purchase History and Cost Fluctuations */}
+                    <div className="glass-card" style={{ padding: '24px' }}>
+                        <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '20px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
+                            تاريخ المشتريات وتقلبات الأسعار
+                        </h3>
+                        {(() => {
+                            const productSkus = product.variants.map(v => v.sku);
+                            const purchaseHistory = [];
+                            (state.purchaseOrders || []).forEach(po => {
+                                const supplier = state.suppliers.find(s => s.id === po.supplierId);
+                                (po.items || []).forEach(item => {
+                                    if (productSkus.includes(item.variantSku)) {
+                                        const variant = product.variants.find(v => v.sku === item.variantSku);
+                                        purchaseHistory.push({
+                                            id: po.id,
+                                            date: po.date,
+                                            supplierName: supplier ? supplier.name : po.supplierId,
+                                            variantName: variant ? variant.name : item.variantSku,
+                                            sku: item.variantSku,
+                                            quantity: item.quantity,
+                                            cost: item.cost
+                                        });
+                                    }
+                                });
+                            });
+                            purchaseHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+                            if (purchaseHistory.length === 0) {
                                 return (
-                                    <div key={batch.batchId} style={{ 
-                                        padding: '16px', 
-                                        background: 'rgba(255,255,255,0.02)', 
-                                        borderRadius: '8px', 
-                                        border: '1px solid var(--glass-border)',
-                                        display: 'flex', 
-                                        justifyContent: 'space-between', 
-                                        alignItems: 'center' 
-                                    }}>
-                                        <div>
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                <strong style={{ color: '#fff', fontSize: '14px' }}>{batch.batchId}</strong>
-                                                <span className="badge badge-in" style={{ fontSize: '10px', padding: '2px 8px' }}>
-                                                    {index === 0 ? t('nextToDispatch') : `${t('batchFifo')}${index + 1}`}
-                                                </span>
-                                            </div>
-                                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px' }}>
-                                                {t('warehouse') || 'المستودع'}: <span style={{ color: '#fff' }}>{t('inSulur')}</span>
-                                            </div>
-                                        </div>
-                                        <div style={{ textAlign: 'right' }}>
-                                            <div style={{ fontSize: '14px', color: 'var(--gold-primary)', fontWeight: 700 }}>
-                                                {batch.quantity} {t('packets')} {t('remainingQty') || 'متبقي'}
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>
+                                        لا توجد عمليات شراء مسجلة لهذا المنتج بعد.
+                                    </p>
                                 );
-                            })}
-                        </div>
-                    )}
+                            }
+
+                            return (
+                                <div className="table-wrapper">
+                                    <table className="custom-table" style={{ fontSize: '12px' }}>
+                                        <thead>
+                                            <tr>
+                                                <th>التاريخ</th>
+                                                <th>رقم الفاتورة</th>
+                                                <th>المورد</th>
+                                                <th>الخيار (Variant)</th>
+                                                <th>الكمية</th>
+                                                <th>سعر الشراء الفعلي</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {purchaseHistory.map((item, idx) => (
+                                                <tr key={idx}>
+                                                    <td>{item.date}</td>
+                                                    <td style={{ fontWeight: 600 }}>{item.id}</td>
+                                                    <td>{item.supplierName}</td>
+                                                    <td>{item.variantName === 'Standard Option' ? 'الأساسي' : item.variantName}</td>
+                                                    <td>{item.quantity} قطعة</td>
+                                                    <td style={{ fontWeight: 600, color: 'var(--gold-primary)' }}>
+                                                        {currency}{item.cost.toFixed(2)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            );
+                        })()}
+                    </div>
+
+                    {/* FIFO Batches */}
+                    <div className="glass-card" style={{ padding: '24px' }}>
+                        <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '20px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
+                            {t('fifoQueue')}
+                        </h3>
+                        {(!product.batches || product.batches.length === 0) ? (
+                            <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px' }}>{t('noFifoBatches')}</p>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                {[...(product.batches || [])].map((batch, index) => {
+                                    return (
+                                        <div key={batch.batchId} style={{ 
+                                            padding: '16px', 
+                                            background: 'rgba(255,255,255,0.02)', 
+                                            borderRadius: '8px', 
+                                            border: '1px solid var(--glass-border)',
+                                            display: 'flex', 
+                                            justifyContent: 'space-between', 
+                                            alignItems: 'center' 
+                                        }}>
+                                            <div>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                    <strong style={{ color: '#fff', fontSize: '14px' }}>{batch.batchId}</strong>
+                                                    <span className="badge badge-in" style={{ fontSize: '10px', padding: '2px 8px' }}>
+                                                        {index === 0 ? t('nextToDispatch') : `${t('batchFifo')}${index + 1}`}
+                                                    </span>
+                                                </div>
+                                                <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '6px' }}>
+                                                    {t('warehouse') || 'المستودع'}: <span style={{ color: '#fff' }}>{t('inSulur')}</span>
+                                                </div>
+                                            </div>
+                                            <div style={{ textAlign: 'right' }}>
+                                                <div style={{ fontSize: '14px', color: 'var(--gold-primary)', fontWeight: 700 }}>
+                                                    {batch.quantity} {t('packets')} {t('remainingQty') || 'متبقي'}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
                 </div>
             ) : activeTab === 'Adjustments' ? (
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '24px' }}>
@@ -369,7 +497,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                 >
                                     {product.variants.map(v => (
                                         <option key={v.sku} value={v.sku}>
-                                            {v.name}
+                                            {v.name === 'Standard Option' ? (t('defaultOption') || 'المنتج الأساسي') : v.name}
                                         </option>
                                     ))}
                                 </select>

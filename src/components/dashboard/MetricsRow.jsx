@@ -50,12 +50,14 @@ export default function MetricsRow({ timeFilter = 'all' }) {
             salesCount++;
             salesRevenue += ord.totalValue;
             ord.items.forEach(item => {
-                let wholesalePrice = 0;
-                state.products.forEach(p => {
-                    let vr = p.variants.find(v => v.sku === item.variantSku);
-                    if (vr) wholesalePrice = vr.wholesalePrice;
-                });
-                salesCost += item.quantity * wholesalePrice;
+                let cost = item.costAtTimeOfSale || 0;
+                if (!cost) {
+                    state.products.forEach(p => {
+                        let vr = p.variants.find(v => v.sku === item.variantSku);
+                        if (vr) cost = vr.wholesalePrice || 0;
+                    });
+                }
+                salesCost += item.quantity * cost;
             });
         }
     });

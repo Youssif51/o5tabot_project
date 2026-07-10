@@ -3,7 +3,7 @@ import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 
 export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrder, onOpenEditOrder }) {
-    const { state, updateOrderStatus, deleteOrder, showToast, logActivity, t } = useContext(AppContext);
+    const { state, updateOrderStatus, deleteOrder, showToast, logActivity, setCurrentView, t } = useContext(AppContext);
     
     // Expanded rows state (keeps track of order IDs that are expanded)
     const [expandedOrderIds, setExpandedOrderIds] = useState({});
@@ -160,6 +160,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
 
     const todayStr = getLocalDateString();
     const todayOrdersCount = filteredOrders.filter(o => o.date === todayStr).length;
+    const pendingShopifyOrders = (state.orders || []).filter(o => o.status === 'Pending' && o.source === 'shopify');
 
     // Toggle Row Expansion
     const toggleRow = (orderId) => {
@@ -220,7 +221,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         let name = sku;
         state.products.forEach(p => {
             const v = p.variants.find(vr => vr.sku === sku);
-            if (v) name = `${p.name} (${v.name})`;
+            if (v) name = v.name === 'Standard Option' ? p.name : `${p.name} (${v.name})`;
         });
         return name;
     };
@@ -259,6 +260,71 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                     <strong style={{ fontSize: '20px', color: '#3498db' }}>{todayOrdersCount} طلب</strong>
                 </div>
             </div>
+
+            {/* Shopify Pending Orders Queue Alert */}
+            {pendingShopifyOrders.length > 0 && (
+                <div className="glass-card" style={{
+                    background: 'linear-gradient(135deg, rgba(212,175,55,0.06), rgba(150,191,72,0.12))',
+                    border: '1px solid rgba(150,191,72,0.25)',
+                    borderRadius: '12px',
+                    padding: '16px 20px',
+                    marginBottom: '24px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '16px',
+                    boxShadow: '0 8px 32px 0 rgba(0,0,0,0.15)',
+                    backdropFilter: 'blur(4px)'
+                }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{
+                            width: '40px',
+                            height: '40px',
+                            borderRadius: '50%',
+                            background: '#96bf48',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            color: 'white',
+                            fontSize: '18px'
+                        }}>
+                            <i className="fa-brands fa-shopify"></i>
+                        </div>
+                        <div>
+                            <h4 style={{ margin: 0, fontSize: '15px', fontWeight: 'bold', color: 'var(--text-primary)' }}>
+                                طلبات شوبيفاي معلقة للمراجعة
+                            </h4>
+                            <p style={{ margin: '4px 0 0 0', fontSize: '12px', color: 'var(--text-muted)' }}>
+                                هناك <strong>{pendingShopifyOrders.length}</strong> طلبات جديدة من متجر شوبيفاي معلّقة بانتظار مراجعتك وتأكيد الشحن.
+                            </p>
+                        </div>
+                    </div>
+                    <button 
+                        className="btn" 
+                        onClick={() => {
+                            setCurrentView('shopifyPending');
+                        }}
+                        style={{
+                            background: 'var(--gold-primary)',
+                            color: '#000',
+                            fontWeight: 'bold',
+                            padding: '8px 16px',
+                            borderRadius: '6px',
+                            border: 'none',
+                            fontSize: '12px',
+                            cursor: 'pointer',
+                            transition: 'all 0.2s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px'
+                        }}
+                    >
+                        <i className="fa-solid fa-filter"></i>
+                        عرض الطلبات المعلقة
+                    </button>
+                </div>
+            )}
 
             {/* 6. FILTER BAR */}
             <div className="glass-card filter-bar" style={{ padding: '16px', marginBottom: '24px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
@@ -412,7 +478,27 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                 }}
                                                 className="table-row-hover"
                                             >
-                                                <td style={{ fontFamily: 'monospace', fontWeight: 600, padding: '14px 16px', color: 'var(--gold-primary)' }}>{ord.id}</td>
+                                                <td style={{ fontFamily: 'monospace', fontWeight: 600, padding: '14px 16px', color: 'var(--gold-primary)' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        {ord.id}
+                                                        {ord.source === 'shopify' && (
+                                                            <span style={{
+                                                                background: 'linear-gradient(135deg, #96bf48, #5a8a1e)',
+                                                                color: 'white',
+                                                                padding: '2px 6px',
+                                                                borderRadius: '10px',
+                                                                fontSize: '0.65rem',
+                                                                fontWeight: 'bold',
+                                                                display: 'inline-flex',
+                                                                alignItems: 'center',
+                                                                gap: '3px'
+                                                            }}>
+                                                                <i className="fa-brands fa-shopify" style={{ fontSize: '0.75rem' }}></i>
+                                                                متجر
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </td>
                                                 <td style={{ padding: '14px 16px' }}>
                                                     <div>{ord.client}</div>
                                                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{phone || 'بدون هاتف'}</div>
@@ -544,6 +630,13 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                     <div><strong>كود العميل:</strong> {getCustomerCode(ord.client)}</div>
                                                                     <div><strong>اسم العميل:</strong> {ord.client}</div>
                                                                     <div><strong>رقم الهاتف:</strong> {phone || 'غير مسجل'}</div>
+                                                                    {ord.source === 'shopify' && (
+                                                                        <>
+                                                                            <div><strong>البريد الإلكتروني:</strong> {(state.customers || []).find(c => c.id === ord.customer_id)?.email || 'غير مسجل'}</div>
+                                                                            <div><strong>طريقة الدفع:</strong> {ord.paymentMethod || 'الدفع عند الاستلام'}</div>
+                                                                            {ord.shopifyOrderId && <div><strong>رقم طلب شوبيفاي:</strong> #{ord.shopifyOrderId}</div>}
+                                                                        </>
+                                                                    )}
                                                                     <div><strong>المحافظة:</strong> {ord.governorate || 'غير مسجل'}</div>
                                                                     <div><strong>العنوان بالتفصيل:</strong> {detailAddress || 'غير مسجل'}</div>
                                                                     <div><strong>سجل الطلب بواسطة:</strong> <span style={{ color: 'var(--gold-primary)' }}>{ord.createdBy || 'sfsf'}</span></div>
@@ -602,6 +695,89 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                 </div>
                                                             </div>
                                                         </div>
+
+                                                        {/* Shopify Pending Approval Action Banner */}
+                                                        {ord.status === 'Pending' && ord.source === 'shopify' && (
+                                                            <div style={{
+                                                                marginTop: '20px',
+                                                                padding: '16px 20px',
+                                                                background: 'linear-gradient(135deg, rgba(212,175,55,0.04), rgba(46,204,113,0.06))',
+                                                                border: '1px solid rgba(212,175,55,0.2)',
+                                                                borderRadius: '8px',
+                                                                display: 'flex',
+                                                                justifyContent: 'space-between',
+                                                                alignItems: 'center',
+                                                                gap: '16px',
+                                                                flexWrap: 'wrap'
+                                                            }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                                    <i className="fa-solid fa-circle-exclamation" style={{ color: 'var(--gold-primary)', fontSize: '18px' }}></i>
+                                                                    <span style={{ fontSize: '12.5px', color: 'var(--text-primary)', fontWeight: 500 }}>
+                                                                        هذا الطلب قادم من شوبيفاي ومعلق بانتظار موافقتك. الموافقة ستقوم بخصم المخزون وتأكيد الطلب.
+                                                                    </span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', gap: '10px' }}>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            if (window.confirm('هل أنت متأكد من الموافقة على هذا الطلب وتأكيده للخصم من المخزون؟')) {
+                                                                                updateOrderStatus(ord.id, 'Completed');
+                                                                                showToast('تمت الموافقة على الطلب وتأكيده وخصم الكميات بنجاح!', 'success');
+                                                                            }
+                                                                        }}
+                                                                        className="btn"
+                                                                        style={{
+                                                                            background: '#2ecc71',
+                                                                            color: 'white',
+                                                                            border: 'none',
+                                                                            padding: '8px 16px',
+                                                                            borderRadius: '6px',
+                                                                            fontWeight: 'bold',
+                                                                            fontSize: '12px',
+                                                                            cursor: 'pointer',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '6px',
+                                                                            transition: 'transform 0.1s ease'
+                                                                        }}
+                                                                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                                                                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                                                    >
+                                                                        <i className="fa-solid fa-circle-check"></i>
+                                                                        موافقة وتأكيد الطلب
+                                                                    </button>
+                                                                    <button
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            if (window.confirm('هل أنت متأكد من رفض وإلغاء هذا الطلب؟')) {
+                                                                                updateOrderStatus(ord.id, 'Cancelled');
+                                                                                showToast('تم إلغاء الطلب بنجاح', 'warning');
+                                                                            }
+                                                                        }}
+                                                                        className="btn"
+                                                                        style={{
+                                                                            background: '#e74c3c',
+                                                                            color: 'white',
+                                                                            border: 'none',
+                                                                            padding: '8px 16px',
+                                                                            borderRadius: '6px',
+                                                                            fontWeight: 'bold',
+                                                                            fontSize: '12px',
+                                                                            cursor: 'pointer',
+                                                                            display: 'flex',
+                                                                            alignItems: 'center',
+                                                                            gap: '6px',
+                                                                            transition: 'transform 0.1s ease'
+                                                                        }}
+                                                                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
+                                                                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                                                    >
+                                                                        <i className="fa-solid fa-circle-xmark"></i>
+                                                                        رفض وإلغاء الطلب
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        )}
 
                                                         {/* Horizontal order pipeline timeline */}
                                                         <div style={{ marginTop: '24px', borderTop: '1px solid var(--glass-border)', paddingTop: '20px' }}>

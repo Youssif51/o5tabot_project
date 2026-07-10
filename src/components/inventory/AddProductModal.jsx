@@ -16,18 +16,25 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
     const [productId, setProductId] = useState('');
     const [category, setCategory] = useState('Electronics');
     const [unit, setUnit] = useState('Piece');
-    const [image, setImage] = useState('');
+    const [images, setImages] = useState([]);
+    const [vendor, setVendor] = useState('');
+    const [tags, setTags] = useState('');
+    const [description, setDescription] = useState('');
+    const [status, setStatus] = useState('draft');
     
     // Dynamic category addition states
     const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
     const [newCategoryName, setNewCategoryName] = useState('');
     
     // Multiple variants state (without SKU and Barcode input properties in UI)
+    const [hasVariants, setHasVariants] = useState(false);
     const [variants, setVariants] = useState([
         { name: 'Standard Option', sku: '', barcode: '', wholesalePrice: 50.00, retailPrice: 90.00, reorderLimit: 1, stockSulur: 10 }
     ]);
 
     useEffect(() => {
+        if (!isOpen) return;
+        
         if (editProductId) {
             const prod = state.products.find(p => p.id === editProductId);
             if (prod) {
@@ -35,11 +42,40 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 setProductId(prod.id);
                 setCategory(prod.category);
                 setUnit(prod.unit || 'Piece');
-                setImage(prod.image || '');
+                
+                // Handle both old single image and new array
+                if (prod.images && Array.isArray(prod.images) && prod.images.length > 0) {
+                    setImages(prod.images.filter(img => img && img.startsWith && (img.startsWith('data:') || img.startsWith('http'))));
+                } else if (prod.image && typeof prod.image === 'string') {
+                    // Try to parse JSON array first
+                    try {
+                        const parsed = JSON.parse(prod.image);
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                            setImages(parsed.filter(img => img && img.startsWith && (img.startsWith('data:') || img.startsWith('http'))));
+                        } else {
+                            setImages([]);
+                        }
+                    } catch {
+                        // Not JSON, check if it's a valid image string
+                        if (prod.image.startsWith('data:') || prod.image.startsWith('http')) {
+                            setImages([prod.image]);
+                        } else {
+                            setImages([]);
+                        }
+                    }
+                } else {
+                    setImages([]);
+                }
+                
+                setVendor(prod.vendor || '');
+                setTags(prod.tags || '');
+                setDescription(prod.description || '');
+                setStatus(prod.status || 'draft');
                 setShowNewCategoryInput(false);
                 setNewCategoryName('');
                 
                 if (prod.variants && prod.variants.length > 0) {
+                    setHasVariants(prod.variants.length > 1 || prod.variants[0].name !== 'Standard Option');
                     setVariants(prod.variants.map(v => ({
                         name: v.name,
                         sku: v.sku,
@@ -47,7 +83,8 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                         wholesalePrice: v.wholesalePrice,
                         retailPrice: v.retailPrice,
                         reorderLimit: v.reorderLimit,
-                        stockSulur: v.stock.Sulur || 0
+                        stockSulur: v.stock.Sulur || 0,
+                        shopify_id: v.shopify_id
                     })));
                 }
             }
@@ -58,9 +95,14 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
             setProductId(`PROD-${randomId}`);
             setCategory('Electronics');
             setUnit(t('piece'));
-            setImage('');
+            setImages([]);
+            setVendor('');
+            setTags('');
+            setDescription('');
+            setStatus('draft');
             setShowNewCategoryInput(false);
             setNewCategoryName('');
+            setHasVariants(false);
             setVariants([
                 { 
                     name: 'Standard Option', 
@@ -73,7 +115,8 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 }
             ]);
         }
-    }, [editProductId, isOpen, t]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [editProductId, isOpen]);
 
     const handleAddVariantRow = () => {
         const index = variants.length + 1;
@@ -106,14 +149,20 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
     };
 
     const handleFileChange = (e) => {
-        const file = e.target.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                setImage(event.target.result);
-            };
-            reader.readAsDataURL(file);
+        const files = Array.from(e.target.files);
+        if (files.length > 0) {
+            files.forEach(file => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    setImages(prev => [...prev, event.target.result]);
+                };
+                reader.readAsDataURL(file);
+            });
         }
+    };
+
+    const handleRemoveImage = (indexToRemove) => {
+        setImages(images.filter((_, idx) => idx !== indexToRemove));
     };
 
     const handlePlaceholderClick = () => {
@@ -134,11 +183,12 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
             const generatedBarcode = v.barcode || `${Math.floor(100000000000 + Math.random() * 900000000000)}`;
             return {
                 sku: generatedSku,
-                name: v.name || 'Standard Option',
+                name: hasVariants ? (v.name || 'Standard Option') : 'Standard Option',
                 barcode: generatedBarcode,
                 wholesalePrice: parseFloat(v.wholesalePrice) || 0,
                 retailPrice: parseFloat(v.retailPrice) || 0,
                 reorderLimit: parseInt(v.reorderLimit) || 0,
+                shopify_id: v.shopify_id,
                 stock: {
                     Sulur: parseInt(v.stockSulur) || 0,
                     Singanallur: 0
@@ -167,13 +217,19 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
             name,
             category,
             unit,
-            image,
+            images,
+            vendor,
+            tags,
+            // Keep old image prop as stringified version for database backwards compatibility if needed
+            image: JSON.stringify(images), 
             createdDate: originalProduct ? (originalProduct.createdDate || getLocalDateString()) : getLocalDateString(),
             createdBy: originalProduct ? (originalProduct.createdBy || 'sfsf') : (state.currentUser ? state.currentUser.name : 'sfsf'),
-            description: `${name} catalog entry, unit size ${unit}.`,
+            description: description,
+            status: status,
             variants: mappedVariants,
             batches: mappedBatches,
-            suppliers: originalProduct ? (originalProduct.suppliers || []) : []
+            suppliers: originalProduct ? (originalProduct.suppliers || []) : [],
+            shopify_id: originalProduct ? originalProduct.shopify_id : undefined
         };
 
         if (editProductId) {
@@ -193,52 +249,52 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
         >
             <form onSubmit={handleSubmit}>
                 
-                {/* Image Uploader Input & Place Holder */}
+                {/* Multiple Images Uploader */}
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', margin: '10px 0 24px 0' }}>
                     <input 
                         type="file" 
                         id="product-image-uploader-input" 
                         accept="image/*" 
+                        multiple
                         onChange={handleFileChange} 
                         style={{ display: 'none' }} 
                     />
-                    <div 
-                        onClick={handlePlaceholderClick}
-                        style={{
-                            width: '90px',
-                            height: '90px',
-                            border: image ? 'none' : '2px dashed rgba(255, 255, 255, 0.15)',
-                            borderRadius: '8px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: 'rgba(255, 255, 255, 0.01)',
-                            cursor: 'pointer',
-                            overflow: 'hidden',
-                            position: 'relative'
-                        }} 
-                        className="image-upload-dashed"
-                        title="Upload Product Photo"
-                    >
-                        {image ? (
-                            <img src={image} alt="Upload preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        ) : (
-                            <i className="fa-regular fa-image" style={{ fontSize: '24px', color: 'var(--text-muted)' }}></i>
-                        )}
-                        <div style={{
-                            position: 'absolute',
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            background: 'rgba(0,0,0,0.5)',
-                            color: '#fff',
-                            fontSize: '9px',
-                            padding: '2px 0',
-                            textAlign: 'center',
-                            opacity: 0,
-                            transition: 'opacity 0.2s'
-                        }} className="image-upload-hover-label">
-                            {t('edit')}
+                    
+                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center', marginBottom: '10px' }}>
+                        {images.map((imgSrc, idx) => (
+                            <div key={idx} style={{ position: 'relative', width: '90px', height: '90px', borderRadius: '8px', overflow: 'hidden' }}>
+                                <img src={imgSrc} alt={`Preview ${idx}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                <button
+                                    type="button"
+                                    onClick={() => handleRemoveImage(idx)}
+                                    style={{
+                                        position: 'absolute', top: '4px', right: '4px', background: 'rgba(255,0,0,0.8)', color: 'white',
+                                        border: 'none', borderRadius: '50%', width: '20px', height: '20px', display: 'flex',
+                                        alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '10px'
+                                    }}
+                                >
+                                    <i className="fa-solid fa-times"></i>
+                                </button>
+                            </div>
+                        ))}
+                        
+                        <div 
+                            onClick={handlePlaceholderClick}
+                            style={{
+                                width: '90px',
+                                height: '90px',
+                                border: '2px dashed rgba(255, 255, 255, 0.15)',
+                                borderRadius: '8px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                background: 'rgba(255, 255, 255, 0.01)',
+                                cursor: 'pointer',
+                                transition: 'background 0.2s'
+                            }} 
+                            title="Upload Product Photos"
+                        >
+                            <i className="fa-solid fa-plus" style={{ fontSize: '24px', color: 'var(--text-muted)' }}></i>
                         </div>
                     </div>
                 </div>
@@ -308,7 +364,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                     </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '16px', marginBottom: '20px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '20px' }}>
                     <div className="form-group">
                         <label className="form-label">{t('unit')}</label>
                         <input 
@@ -319,64 +375,167 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                             required 
                         />
                     </div>
+                    <div className="form-group">
+                        <label className="form-label">الماركة (Vendor)</label>
+                        <input 
+                            type="text" 
+                            className="form-input" 
+                            value={vendor}
+                            onChange={(e) => setVendor(e.target.value)}
+                            placeholder="مثال: Sarafox"
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">كلمات مفتاحية (Tags)</label>
+                        <input 
+                            type="text" 
+                            className="form-input" 
+                            value={tags}
+                            onChange={(e) => setTags(e.target.value)}
+                            placeholder="صيفي, عرض, جديد..."
+                        />
+                    </div>
+                    <div className="form-group">
+                        <label className="form-label">الحالة (Status)</label>
+                        <select 
+                            className="form-select"
+                            value={status}
+                            onChange={(e) => setStatus(e.target.value)}
+                            style={{ height: '38px', padding: '0 10px' }}
+                        >
+                            <option value="active" style={{ background: '#1d1d21', color: '#fff' }}>Active</option>
+                            <option value="draft" style={{ background: '#1d1d21', color: '#fff' }}>Draft</option>
+                            <option value="archived" style={{ background: '#1d1d21', color: '#fff' }}>Unlisted / Archived</option>
+                        </select>
+                    </div>
                 </div>
 
-                {/* Multiple Variants Builder Table */}
-                <div style={{ marginBottom: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                        <h4 style={{ margin: 0, color: '#fff', fontSize: '14px' }}>{t('productVariants')}</h4>
-                        <button type="button" className="btn btn-secondary" onClick={handleAddVariantRow} style={{ padding: '4px 10px', fontSize: '12px' }}>
-                            <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> {t('addVariantOption')}
-                        </button>
-                    </div>
+                <div className="form-group" style={{ marginBottom: '20px' }}>
+                    <label className="form-label">الوصف (Description)</label>
+                    <textarea 
+                        className="form-input" 
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                        placeholder="اكتب وصف المنتج هنا..."
+                        style={{ height: '100px', resize: 'vertical' }}
+                    />
+                </div>
 
-                    <div style={{ overflowX: 'auto', border: '1px solid var(--glass-border)', borderRadius: '8px' }}>
-                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
-                            <thead>
-                                <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--glass-border)' }}>
-                                    <th style={{ padding: '8px' }}>{t('optionName')}</th>
-                                    <th style={{ padding: '8px' }}>{t('wholesalePrice')}</th>
-                                    <th style={{ padding: '8px' }}>{t('retailPrice')}</th>
-                                    <th style={{ padding: '8px' }}>{t('limit')}</th>
-                                    <th style={{ padding: '8px' }}>{t('stock')}</th>
-                                    <th style={{ padding: '8px', textAlign: 'center' }}>{t('actions')}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {variants.map((v, idx) => (
-                                    <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                        <td style={{ padding: '6px' }}>
-                                            <input type="text" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.name} onChange={(e) => handleVariantChange(idx, 'name', e.target.value)} required />
-                                        </td>
-                                        <td style={{ padding: '6px', width: '120px' }}>
-                                            <input type="number" step="0.01" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.wholesalePrice} onChange={(e) => handleVariantChange(idx, 'wholesalePrice', parseFloat(e.target.value) || 0)} required />
-                                        </td>
-                                        <td style={{ padding: '6px', width: '120px' }}>
-                                            <input type="number" step="0.01" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.retailPrice} onChange={(e) => handleVariantChange(idx, 'retailPrice', parseFloat(e.target.value) || 0)} required />
-                                        </td>
-                                        <td style={{ padding: '6px', width: '100px' }}>
-                                            <input type="number" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.reorderLimit} onChange={(e) => handleVariantChange(idx, 'reorderLimit', parseInt(e.target.value) || 0)} required />
-                                        </td>
-                                        <td style={{ padding: '6px', width: '120px' }}>
-                                            <input type="number" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.stockSulur} onChange={(e) => handleVariantChange(idx, 'stockSulur', parseInt(e.target.value) || 0)} required />
-                                        </td>
-                                        <td style={{ padding: '6px', textAlign: 'center', width: '80px' }}>
-                                            <button 
-                                                type="button" 
-                                                className="action-btn-circle" 
-                                                onClick={() => handleRemoveVariantRow(idx)}
-                                                disabled={variants.length <= 1}
-                                                style={{ border: 'none', background: 'rgba(255,75,75,0.1)', color: 'var(--color-danger)', width: '24px', height: '24px' }}
-                                            >
-                                                <i className="fa-solid fa-trash" style={{ fontSize: '10px' }}></i>
-                                            </button>
-                                        </td>
+                {/* Toggle Variants */}
+                <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <label className="ios-toggle" style={{ margin: 0 }}>
+                        <input 
+                            type="checkbox" 
+                            checked={hasVariants}
+                            onChange={(e) => setHasVariants(e.target.checked)}
+                        />
+                        <span className="ios-toggle-slider"></span>
+                    </label>
+                    <span style={{ fontSize: '14px', cursor: 'pointer' }} onClick={() => setHasVariants(!hasVariants)}>يوجد بدائل/خيارات متعددة لهذا المنتج (Variants)</span>
+                </div>
+
+                {hasVariants ? (
+                    <div style={{ marginBottom: '20px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                            <h4 style={{ margin: 0, color: '#fff', fontSize: '14px' }}>{t('productVariants')}</h4>
+                            <button type="button" className="btn btn-secondary" onClick={handleAddVariantRow} style={{ padding: '4px 10px', fontSize: '12px' }}>
+                                <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> {t('addVariantOption')}
+                            </button>
+                        </div>
+
+                        <div style={{ overflowX: 'auto', border: '1px solid var(--glass-border)', borderRadius: '8px' }}>
+                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
+                                <thead>
+                                    <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--glass-border)' }}>
+                                        <th style={{ padding: '8px' }}>{t('optionName')}</th>
+                                        <th style={{ padding: '8px' }}>{t('wholesalePrice')}</th>
+                                        <th style={{ padding: '8px' }}>{t('retailPrice')}</th>
+                                        <th style={{ padding: '8px' }}>{t('limit')}</th>
+                                        <th style={{ padding: '8px' }}>{t('stock')}</th>
+                                        <th style={{ padding: '8px', textAlign: 'center' }}>{t('actions')}</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody>
+                                    {variants.map((v, idx) => (
+                                        <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                            <td style={{ padding: '6px' }}>
+                                                <input type="text" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.name} onChange={(e) => handleVariantChange(idx, 'name', e.target.value)} required />
+                                            </td>
+                                            <td style={{ padding: '6px', width: '120px' }}>
+                                                <input type="number" step="0.01" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.wholesalePrice} onChange={(e) => handleVariantChange(idx, 'wholesalePrice', parseFloat(e.target.value) || 0)} required />
+                                            </td>
+                                            <td style={{ padding: '6px', width: '120px' }}>
+                                                <input type="number" step="0.01" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.retailPrice} onChange={(e) => handleVariantChange(idx, 'retailPrice', parseFloat(e.target.value) || 0)} required />
+                                            </td>
+                                            <td style={{ padding: '6px', width: '100px' }}>
+                                                <input type="number" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.reorderLimit} onChange={(e) => handleVariantChange(idx, 'reorderLimit', parseInt(e.target.value) || 0)} required />
+                                            </td>
+                                            <td style={{ padding: '6px', width: '120px' }}>
+                                                <input type="number" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.stockSulur} onChange={(e) => handleVariantChange(idx, 'stockSulur', parseInt(e.target.value) || 0)} required />
+                                            </td>
+                                            <td style={{ padding: '6px', textAlign: 'center', width: '80px' }}>
+                                                <button 
+                                                    type="button" 
+                                                    className="action-btn-circle" 
+                                                    onClick={() => handleRemoveVariantRow(idx)}
+                                                    disabled={variants.length <= 1}
+                                                    style={{ border: 'none', background: 'rgba(255,75,75,0.1)', color: 'var(--color-danger)', width: '24px', height: '24px' }}
+                                                >
+                                                    <i className="fa-solid fa-trash" style={{ fontSize: '10px' }}></i>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
-                </div>
+                ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+                        <div className="form-group">
+                            <label className="form-label">{t('wholesalePrice')}</label>
+                            <input 
+                                type="number" 
+                                step="0.01" 
+                                className="form-input" 
+                                value={variants[0].wholesalePrice} 
+                                onChange={(e) => handleVariantChange(0, 'wholesalePrice', parseFloat(e.target.value) || 0)} 
+                                required 
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">{t('retailPrice')}</label>
+                            <input 
+                                type="number" 
+                                step="0.01" 
+                                className="form-input" 
+                                value={variants[0].retailPrice} 
+                                onChange={(e) => handleVariantChange(0, 'retailPrice', parseFloat(e.target.value) || 0)} 
+                                required 
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">{t('stock')}</label>
+                            <input 
+                                type="number" 
+                                className="form-input" 
+                                value={variants[0].stockSulur} 
+                                onChange={(e) => handleVariantChange(0, 'stockSulur', parseInt(e.target.value) || 0)} 
+                                required 
+                            />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">{t('limit')}</label>
+                            <input 
+                                type="number" 
+                                className="form-input" 
+                                value={variants[0].reorderLimit} 
+                                onChange={(e) => handleVariantChange(0, 'reorderLimit', parseInt(e.target.value) || 0)} 
+                                required 
+                            />
+                        </div>
+                    </div>
+                )}
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '28px', borderTop: '1px solid var(--glass-border)', paddingTop: '20px' }}>
                     <button 

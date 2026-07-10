@@ -159,7 +159,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             price: retailPrice,
                             discountPercent: itemDiscount,
                             maxStock: maxStock,
-                            searchVal: variantName ? `${productName} | ${variantName}` : oi.variantSku,
+                            searchVal: (variantName && variantName !== 'Standard Option') ? `${productName} | ${variantName}` : productName,
                             isOpen: false,
                             productName: productName,
                             variantName: variantName
@@ -266,7 +266,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
             maxStock: variant.stock,
             productName: variant.productName,
             variantName: variant.name,
-            searchVal: `${variant.productName} | ${variant.name}`,
+            searchVal: variant.name === 'Standard Option' ? variant.productName : `${variant.productName} | ${variant.name}`,
             isOpen: false
         } : item));
     };
@@ -1064,7 +1064,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             const sub = item.quantity * item.price * (1 - (item.discountPercent || 0) / 100);
                                             return (
                                                 <tr key={`review-item-${i}`} style={{ borderBottom: '1px solid var(--glass-bg-hover)' }}>
-                                                    <td style={{ padding: '6px 4px' }}>{item.productName} <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>({item.variantName})</span></td>
+                                                    <td style={{ padding: '6px 4px' }}>{item.productName} {item.variantName && item.variantName !== 'Standard Option' && <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>({item.variantName})</span>}</td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>{item.quantity}</td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>{currency}{item.price.toFixed(2)}</td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px', color: 'var(--color-danger)' }}>{item.discountPercent > 0 ? `${item.discountPercent}%` : '-'}</td>

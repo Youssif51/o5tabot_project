@@ -105,7 +105,9 @@ export const AppProvider = ({ children }) => {
                         wholesalePrice: parseFloat(v.wholesale_price) || 0,
                         retailPrice: parseFloat(v.retail_price) || 0,
                         reorderLimit: parseInt(v.reorder_limit) || 0,
-                        stock: { Sulur: parseInt(v.stock_sulur) || 0 }
+                        stock: { Sulur: parseInt(v.stock_sulur) || 0 },
+                        shopify_id: v.shopify_id || null,
+                        averageCost: parseFloat(v.average_cost) || parseFloat(v.wholesale_price) || 0
                     }));
                     return {
                         id: p.id,
@@ -116,6 +118,7 @@ export const AppProvider = ({ children }) => {
                         createdDate: p.created_date,
                         createdBy: p.created_by,
                         description: p.description,
+                        shopify_id: p.shopify_id || null,
                         variants: pVars
                     };
                 });
@@ -134,7 +137,8 @@ export const AppProvider = ({ children }) => {
                     const items = (orderItems || []).filter(oi => oi.order_id === o.id).map(oi => ({
                         variantSku: oi.variant_sku,
                         quantity: parseInt(oi.quantity) || 0,
-                        price: parseFloat(oi.price) || 0
+                        price: parseFloat(oi.price) || 0,
+                        costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0
                     }));
                     return {
                         id: o.id,
@@ -148,6 +152,9 @@ export const AppProvider = ({ children }) => {
                         deposit: parseFloat(o.deposit) || 0,
                         shipping_fee: parseFloat(o.shipping_fee) || 0,
                         createdBy: o.created_by,
+                        shopifyOrderId: o.shopify_order_id || null,
+                        source: o.source || 'manual',
+                        paymentMethod: o.payment_method || null,
                         items
                     };
                 });
@@ -208,6 +215,7 @@ export const AppProvider = ({ children }) => {
         loadSupabaseData();
     }, []);
 
+
     const [currentView, setCurrentView] = useState(() => localStorage.getItem("octabot_view") || "dashboard");
     const [toast, setToast] = useState({ visible: false, message: "", type: "success" });
     const [language, setLanguage] = useState(() => localStorage.getItem("octabot_lang") || "en");
@@ -228,6 +236,116 @@ export const AppProvider = ({ children }) => {
         localStorage.setItem("octabot_theme", theme);
         document.documentElement.setAttribute("data-theme", theme);
     }, [theme]);
+
+    // Realtime postgres subscription for Shopify order webhooks
+    useEffect(() => {
+        if (!supabase) return;
+
+        const ordersChannel = supabase
+            .channel('realtime-shopify-orders')
+            .on(
+                'postgres_changes',
+                { event: 'INSERT', schema: 'public', table: 'orders' },
+                async (payload) => {
+                    const newOrder = payload.new;
+                    setState(prev => {
+                        const exists = prev.orders.some(o => o.id === newOrder.id);
+                        if (exists) return prev;
+
+                        // Fetch items asynchronously
+                        (async () => {
+                            try {
+                                // Wait 1.5 seconds to allow Edge Function to finish inserting order items
+                                await new Promise(resolve => setTimeout(resolve, 1500));
+
+                                const { data: orderItems } = await supabase
+                                    .from('order_items')
+                                    .select('*')
+                                    .eq('order_id', newOrder.id);
+
+                                const items = (orderItems || []).map(oi => ({
+                                    variantSku: oi.variant_sku,
+                                    quantity: parseInt(oi.quantity) || 0,
+                                    price: parseFloat(oi.price) || 0,
+                                    costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0
+                                }));
+
+                                const enrichedOrder = {
+                                    id: newOrder.id,
+                                    client: newOrder.client,
+                                    date: newOrder.date,
+                                    warehouse: newOrder.warehouse,
+                                    status: newOrder.status,
+                                    totalValue: parseFloat(newOrder.total_value) || 0,
+                                    address: newOrder.address || '',
+                                    governorate: newOrder.governorate || '',
+                                    deposit: parseFloat(newOrder.deposit) || 0,
+                                    shipping_fee: parseFloat(newOrder.shipping_fee) || 0,
+                                    createdBy: newOrder.created_by,
+                                    shopifyOrderId: newOrder.shopify_order_id || null,
+                                    source: newOrder.source || 'manual',
+                                    paymentMethod: newOrder.payment_method || null,
+                                    items
+                                };
+
+                                setState(curr => {
+                                    if (curr.orders.some(o => o.id === enrichedOrder.id)) return curr;
+                                    return {
+                                        ...curr,
+                                        orders: [enrichedOrder, ...curr.orders]
+                                    };
+                                });
+
+                                // Reload customers
+                                const { data: customersList } = await supabase.from('customers').select('*');
+                                if (customersList) {
+                                    setState(curr => ({ ...curr, customers: customersList }));
+                                }
+
+                                showToast(
+                                    language === 'ar' 
+                                        ? `وصل طلب جديد من شوبيفاي: ${enrichedOrder.id}` 
+                                        : `New Shopify order received: ${enrichedOrder.id}`, 
+                                    'success'
+                                );
+                            } catch (e) {
+                                console.error("Realtime load error:", e);
+                            }
+                        })();
+
+                        return prev;
+                    });
+                }
+            )
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'orders' },
+                async (payload) => {
+                    const updatedOrder = payload.new;
+                    setState(prev => {
+                        const existing = prev.orders.find(o => o.id === updatedOrder.id);
+                        if (!existing) return prev;
+
+                        if (existing.status !== updatedOrder.status || existing.deposit !== parseFloat(updatedOrder.deposit)) {
+                            return {
+                                ...prev,
+                                orders: prev.orders.map(o => o.id === updatedOrder.id ? {
+                                    ...o,
+                                    status: updatedOrder.status,
+                                    deposit: parseFloat(updatedOrder.deposit) || 0
+                                } : o)
+                            };
+                        }
+                        return prev;
+                    });
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(ordersChannel);
+        };
+    }, [supabase, language]);
 
     const t = (key) => {
         const tr = translations[language] && translations[language][key];
@@ -570,10 +688,58 @@ export const AppProvider = ({ children }) => {
                             wholesale_price: v.wholesalePrice,
                             retail_price: v.retailPrice,
                             reorder_limit: v.reorderLimit,
-                            stock_sulur: v.stock.Sulur || 0
+                            stock_sulur: v.stock.Sulur || 0,
+                            average_cost: v.averageCost || v.wholesalePrice || 0
                         }));
                         await supabase.from('product_variants').insert(vars);
                     }
+                    
+                    // Sync to Shopify using Edge Function
+                    try {
+                        console.log("Syncing to Shopify...");
+                        const { data: shopifyData, error: shopifyError } = await supabase.functions.invoke('swift-processor', {
+                            body: product
+                        });
+                        
+                        if (shopifyError) {
+                            console.error("Failed to sync to Shopify:", shopifyError);
+                            showToast("تم حفظ المنتج محلياً ولكن فشل رفعه لشوبيفاي", "warning");
+                        } else {
+                            console.log("Shopify sync success:", shopifyData);
+                            if (shopifyData.warnings && shopifyData.warnings.length > 0) {
+                                console.warn("Shopify Warnings:", shopifyData.warnings);
+                                showToast("تم رفع المنتج ولكن فشل تعيين المخزون. راجع الكونسول لمعرفة السبب.", "warning");
+                            } else {
+                                showToast("تم رفع المنتج وتحديث المخزون بنجاح في شوبيفاي", "success");
+                            }
+                            
+                            // Save Shopify ID to local state and Supabase
+                            if (shopifyData.shopify_product_id) {
+                                setState(prevState => {
+                                    const updatedProducts = prevState.products.map(p => {
+                                        if (p.id === product.id) {
+                                            const updatedVariants = p.variants.map(v => {
+                                                const vMap = shopifyData.variants_map?.find(m => m.sku === v.sku);
+                                                return vMap ? { ...v, shopify_id: String(vMap.id) } : v;
+                                            });
+                                            return { ...p, shopify_id: String(shopifyData.shopify_product_id), variants: updatedVariants };
+                                        }
+                                        return p;
+                                    });
+                                    return { ...prevState, products: updatedProducts };
+                                });
+                                await supabase.from('products').update({ shopify_id: String(shopifyData.shopify_product_id) }).eq('id', product.id);
+                                if (shopifyData.variants_map) {
+                                    for (const vMap of shopifyData.variants_map) {
+                                        await supabase.from('product_variants').update({ shopify_id: String(vMap.id) }).eq('product_id', product.id).eq('sku', vMap.sku);
+                                    }
+                                }
+                            }
+                        }
+                    } catch (err) {
+                        console.error("Shopify invoke error:", err);
+                    }
+                    
                 } catch (e) {
                     console.error("Supabase Error:", e);
                 }
@@ -610,8 +776,49 @@ export const AppProvider = ({ children }) => {
                                 wholesale_price: v.wholesalePrice,
                                 retail_price: v.retailPrice,
                                 reorder_limit: v.reorderLimit,
-                                stock_sulur: v.stock.Sulur || 0
+                                stock_sulur: v.stock.Sulur || 0,
+                                average_cost: v.averageCost || v.wholesalePrice || 0
                             });
+                        }
+                    }
+
+                    // Sync update to Shopify
+                    if (updatedProduct.shopify_id) {
+                        try {
+                            console.log("Syncing update to Shopify...");
+                            const shopifyUpdatePayload = {
+                                ...updatedProduct,
+                                action: 'update'
+                            };
+                            const { data: shopifyData, error: shopifyError } = await supabase.functions.invoke('swift-processor', {
+                                body: shopifyUpdatePayload
+                            });
+                            
+                            if (shopifyError) {
+                                console.error("Failed to sync update to Shopify:", shopifyError);
+                            } else {
+                                console.log("Shopify update success:", shopifyData);
+                                if (shopifyData?.variants_map) {
+                                    setState(prevState => {
+                                        const updatedProducts = prevState.products.map(p => {
+                                            if (p.id === updatedProduct.id) {
+                                                const updatedVariants = p.variants.map(v => {
+                                                    const vMap = shopifyData.variants_map?.find(m => m.sku === v.sku);
+                                                    return vMap ? { ...v, shopify_id: String(vMap.id) } : v;
+                                                });
+                                                return { ...p, variants: updatedVariants };
+                                            }
+                                            return p;
+                                        });
+                                        return { ...prevState, products: updatedProducts };
+                                    });
+                                    for (const vMap of shopifyData.variants_map) {
+                                        await supabase.from('product_variants').update({ shopify_id: String(vMap.id) }).eq('product_id', updatedProduct.id).eq('sku', vMap.sku);
+                                    }
+                                }
+                            }
+                        } catch (err) {
+                            console.error("Shopify invoke error on update:", err);
                         }
                     }
                 } catch (e) {
@@ -635,6 +842,18 @@ export const AppProvider = ({ children }) => {
         if (supabase) {
             (async () => {
                 try {
+                    // Sync delete to Shopify
+                    if (prod && prod.shopify_id) {
+                        try {
+                            console.log("Deleting from Shopify...");
+                            await supabase.functions.invoke('swift-processor', {
+                                body: { action: 'delete', shopify_id: prod.shopify_id }
+                            });
+                        } catch (err) {
+                            console.error("Shopify delete error:", err);
+                        }
+                    }
+                    
                     await supabase.from('products').delete().eq('id', productId);
                 } catch (e) {
                     console.error("Supabase Error:", e);
@@ -644,6 +863,7 @@ export const AppProvider = ({ children }) => {
     };
 
     const deleteMultipleProducts = (productIds) => {
+        const prodsToDelete = state.products.filter(p => productIds.includes(p.id));
         setState(prev => ({
             ...prev,
             products: prev.products.filter(p => !productIds.includes(p.id))
@@ -654,6 +874,19 @@ export const AppProvider = ({ children }) => {
         if (supabase) {
             (async () => {
                 try {
+                    // Sync bulk delete to Shopify
+                    for (const prod of prodsToDelete) {
+                        if (prod.shopify_id) {
+                            try {
+                                await supabase.functions.invoke('swift-processor', {
+                                    body: { action: 'delete', shopify_id: prod.shopify_id }
+                                });
+                            } catch (err) {
+                                console.error("Shopify bulk delete error for product:", prod.id, err);
+                            }
+                        }
+                    }
+                    
                     await supabase.from('products').delete().in('id', productIds);
                 } catch (e) {
                     console.error("Supabase Error:", e);
@@ -664,10 +897,21 @@ export const AppProvider = ({ children }) => {
 
     // Orders CRUD Actions
     const addOrder = async (order) => {
+        const enrichedItems = order.items.map(item => {
+            let avgCost = 0;
+            const prod = state.products.find(p => p.variants.some(v => v.sku === item.variantSku));
+            if (prod) {
+                const vr = prod.variants.find(v => v.sku === item.variantSku);
+                if (vr) avgCost = vr.averageCost || vr.wholesalePrice || 0;
+            }
+            return { ...item, costAtTimeOfSale: avgCost };
+        });
+        const enrichedOrder = { ...order, items: enrichedItems };
+
         setState(prev => {
             let products = [...prev.products];
-            if (order.status === "Completed" || order.status === "Partially Delivered") {
-                order.items.forEach(item => {
+            if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered") {
+                enrichedOrder.items.forEach(item => {
                     products = products.map(p => {
                         const hasVar = p.variants.some(v => v.sku === item.variantSku);
                         if (hasVar) {
@@ -676,8 +920,8 @@ export const AppProvider = ({ children }) => {
                                 variants: p.variants.map(v => {
                                     if (v.sku === item.variantSku) {
                                         const stock = { ...v.stock };
-                                        if (stock[order.warehouse] !== undefined) {
-                                            stock[order.warehouse] = Math.max(0, stock[order.warehouse] - item.quantity);
+                                        if (stock[enrichedOrder.warehouse] !== undefined) {
+                                            stock[enrichedOrder.warehouse] = Math.max(0, stock[enrichedOrder.warehouse] - item.quantity);
                                         } else {
                                             const keys = Object.keys(stock);
                                             if (keys.length > 0) {
@@ -696,17 +940,17 @@ export const AppProvider = ({ children }) => {
             }
 
             let newLedger = prev.stockLedger || [];
-            if (order.status === "Completed" || order.status === "Partially Delivered") {
-                order.items.forEach(item => {
+            if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered") {
+                enrichedOrder.items.forEach(item => {
                     const prod = products.find(p => p.variants.some(v => v.sku === item.variantSku));
                     if (prod) {
                         const vr = prod.variants.find(v => v.sku === item.variantSku);
-                        const currentBal = vr ? (vr.stock[order.warehouse] || 0) : 0;
+                        const currentBal = vr ? (vr.stock[enrichedOrder.warehouse] || 0) : 0;
                         newLedger = [{
-                            date: order.date,
+                            date: enrichedOrder.date,
                             productId: prod.id,
                             variantSku: item.variantSku,
-                            warehouse: order.warehouse,
+                            warehouse: enrichedOrder.warehouse,
                             type: "Sale",
                             quantity: -item.quantity,
                             balanceAfter: currentBal
@@ -719,51 +963,55 @@ export const AppProvider = ({ children }) => {
                 ...prev,
                 products,
                 stockLedger: newLedger,
-                orders: [order, ...prev.orders]
+                orders: [enrichedOrder, ...prev.orders]
             };
         });
 
         // Trigger customer stats update if completed
-        if (order.status === "Completed" && order.customer_id) {
-            updateCustomerStats(order.customer_id, order.totalValue, 1);
+        if (enrichedOrder.status === "Completed" && enrichedOrder.customer_id) {
+            updateCustomerStats(enrichedOrder.customer_id, enrichedOrder.totalValue, 1);
         }
 
-        logActivity("order", `New Order ${order.id} registered.`);
-        showToast(`Order ${order.id} recorded.`);
+        logActivity("order", `New Order ${enrichedOrder.id} registered.`);
+        showToast(`Order ${enrichedOrder.id} recorded.`);
 
         if (supabase) {
             (async () => {
                 try {
                     await supabase.from('orders').insert([{
-                        id: order.id,
-                        client: order.client,
-                        customer_id: order.customer_id || null,
-                        date: order.date,
-                        warehouse: order.warehouse || 'Sulur',
-                        status: order.status,
-                        total_value: order.totalValue,
-                        discount_type: order.discount_type || null,
-                        discount_value: order.discount_value || 0,
-                        applied_coupon_code: order.applied_coupon_code || null,
-                        address: order.address || null,
-                        governorate: order.governorate || null,
-                        deposit: order.deposit || 0,
-                        shipping_fee: order.shipping_fee || 0,
-                        created_by: order.createdBy || null
+                        id: enrichedOrder.id,
+                        client: enrichedOrder.client,
+                        customer_id: enrichedOrder.customer_id || null,
+                        date: enrichedOrder.date,
+                        warehouse: enrichedOrder.warehouse || 'Sulur',
+                        status: enrichedOrder.status,
+                        total_value: enrichedOrder.totalValue,
+                        discount_type: enrichedOrder.discount_type || null,
+                        discount_value: enrichedOrder.discount_value || 0,
+                        applied_coupon_code: enrichedOrder.applied_coupon_code || null,
+                        address: enrichedOrder.address || null,
+                        governorate: enrichedOrder.governorate || null,
+                        deposit: enrichedOrder.deposit || 0,
+                        shipping_fee: enrichedOrder.shipping_fee || 0,
+                        created_by: enrichedOrder.createdBy || null,
+                        shopify_order_id: enrichedOrder.shopifyOrderId || null,
+                        source: enrichedOrder.source || 'manual',
+                        payment_method: enrichedOrder.paymentMethod || null
                     }]);
 
-                    if (order.items && order.items.length > 0) {
-                        const items = order.items.map(item => ({
-                            order_id: order.id,
+                    if (enrichedOrder.items && enrichedOrder.items.length > 0) {
+                        const items = enrichedOrder.items.map(item => ({
+                            order_id: enrichedOrder.id,
                             variant_sku: item.variantSku,
                             quantity: item.quantity,
-                            price: item.price
+                            price: item.price,
+                            cost_at_time_of_sale: item.costAtTimeOfSale
                         }));
                         await supabase.from('order_items').insert(items);
                     }
 
-                    if (order.status === "Completed" || order.status === "Partially Delivered") {
-                        for (const item of order.items) {
+                    if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered") {
+                        for (const item of enrichedOrder.items) {
                             const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id').eq('sku', item.variantSku).single();
                             if (vData) {
                                 const newStock = Math.max(0, vData.stock_sulur - item.quantity);
@@ -1003,8 +1251,20 @@ export const AppProvider = ({ children }) => {
         let requiresCustomerUpdate = false;
         let customerStatsDiff = { value: 0, count: 0 };
         
+        const enrichedItems = updatedOrder.items.map(item => {
+            if (item.costAtTimeOfSale) return item;
+            let avgCost = 0;
+            const prod = state.products.find(p => p.variants.some(v => v.sku === item.variantSku));
+            if (prod) {
+                const vr = prod.variants.find(v => v.sku === item.variantSku);
+                if (vr) avgCost = vr.averageCost || vr.wholesalePrice || 0;
+            }
+            return { ...item, costAtTimeOfSale: avgCost };
+        });
+        const enrichedOrder = { ...updatedOrder, items: enrichedItems };
+        
         setState(prev => {
-            oldOrder = prev.orders.find(o => o.id === updatedOrder.id);
+            oldOrder = prev.orders.find(o => o.id === enrichedOrder.id);
             if (!oldOrder) return prev;
 
             let products = [...prev.products];
@@ -1035,9 +1295,9 @@ export const AppProvider = ({ children }) => {
             }
 
             // Deduct new stock changes if new status is deducted
-            const newDeducted = updatedOrder.status === "Completed" || updatedOrder.status === "Partially Delivered";
+            const newDeducted = enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered";
             if (newDeducted) {
-                updatedOrder.items.forEach(item => {
+                enrichedOrder.items.forEach(item => {
                     products = products.map(p => {
                         const hasVar = p.variants.some(v => v.sku === item.variantSku);
                         if (hasVar) {
@@ -1046,7 +1306,7 @@ export const AppProvider = ({ children }) => {
                                 variants: p.variants.map(v => {
                                     if (v.sku === item.variantSku) {
                                         const stock = { ...v.stock };
-                                        const wh = updatedOrder.warehouse || "Sulur";
+                                        const wh = enrichedOrder.warehouse || "Sulur";
                                         stock[wh] = Math.max(0, (stock[wh] || 0) - item.quantity);
                                         return { ...v, stock };
                                     }
@@ -1059,23 +1319,45 @@ export const AppProvider = ({ children }) => {
                 });
             }
 
-            // Check if customer stats need update (only if modifying a Completed order's total or changing status)
-            if (oldOrder.status === "Completed" && updatedOrder.status === "Completed") {
-                if (oldOrder.totalValue !== updatedOrder.totalValue) {
-                    requiresCustomerUpdate = true;
-                    customerStatsDiff.value = updatedOrder.totalValue - oldOrder.totalValue;
-                }
-            } else if (oldOrder.status !== "Completed" && updatedOrder.status === "Completed") {
-                requiresCustomerUpdate = true;
-                customerStatsDiff.value = updatedOrder.totalValue;
-                customerStatsDiff.count = 1;
-            } else if (oldOrder.status === "Completed" && updatedOrder.status !== "Completed") {
-                requiresCustomerUpdate = true;
-                customerStatsDiff.value = -oldOrder.totalValue;
-                customerStatsDiff.count = -1;
+            // Clean up ledger and generate new ledger entries
+            let newLedger = (prev.stockLedger || []).filter(entry => entry.productId !== (oldOrder ? oldOrder.id : ''));
+            if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered") {
+                enrichedOrder.items.forEach(item => {
+                    const prod = products.find(p => p.variants.some(v => v.sku === item.variantSku));
+                    if (prod) {
+                        const vr = prod.variants.find(v => v.sku === item.variantSku);
+                        const currentBal = vr ? (vr.stock[enrichedOrder.warehouse] || 0) : 0;
+                        newLedger = [{
+                            date: enrichedOrder.date,
+                            productId: prod.id,
+                            variantSku: item.variantSku,
+                            warehouse: enrichedOrder.warehouse,
+                            type: "Sale",
+                            quantity: -item.quantity,
+                            balanceAfter: currentBal
+                        }, ...newLedger];
+                    }
+                });
             }
 
-            const newOrders = prev.orders.map(o => o.id === updatedOrder.id ? updatedOrder : o);
+            if (oldOrder) {
+                if (oldOrder.status === "Completed" && enrichedOrder.status === "Completed") {
+                    if (oldOrder.totalValue !== enrichedOrder.totalValue) {
+                        requiresCustomerUpdate = true;
+                        customerStatsDiff.value = enrichedOrder.totalValue - oldOrder.totalValue;
+                    }
+                } else if (oldOrder.status !== "Completed" && enrichedOrder.status === "Completed") {
+                    requiresCustomerUpdate = true;
+                    customerStatsDiff.value = enrichedOrder.totalValue;
+                    customerStatsDiff.count = 1;
+                } else if (oldOrder.status === "Completed" && enrichedOrder.status !== "Completed") {
+                    requiresCustomerUpdate = true;
+                    customerStatsDiff.value = -oldOrder.totalValue;
+                    customerStatsDiff.count = -1;
+                }
+            }
+
+            const newOrders = prev.orders.map(o => o.id === enrichedOrder.id ? enrichedOrder : o);
 
             return {
                 ...prev,
@@ -1084,40 +1366,44 @@ export const AppProvider = ({ children }) => {
             };
         });
 
-        if (requiresCustomerUpdate && updatedOrder.customer_id) {
-            updateCustomerStats(updatedOrder.customer_id, customerStatsDiff.value, customerStatsDiff.count);
+        if (requiresCustomerUpdate && enrichedOrder.customer_id) {
+            updateCustomerStats(enrichedOrder.customer_id, customerStatsDiff.value, customerStatsDiff.count);
         }
 
-        logActivity("order", `Order ${updatedOrder.id} updated.`);
-        showToast(`Order ${updatedOrder.id} updated.`);
+        logActivity("order", `Order ${enrichedOrder.id} updated.`);
+        showToast(`Order ${enrichedOrder.id} updated.`);
 
         if (supabase) {
             (async () => {
                 try {
                     await supabase.from('orders').update({
-                        client: updatedOrder.client,
-                        customer_id: updatedOrder.customer_id || null,
-                        date: updatedOrder.date,
-                        warehouse: updatedOrder.warehouse || 'Sulur',
-                        status: updatedOrder.status,
-                        total_value: updatedOrder.totalValue,
-                        discount_type: updatedOrder.discount_type || null,
-                        discount_value: updatedOrder.discount_value || 0,
-                        applied_coupon_code: updatedOrder.applied_coupon_code || null,
-                        address: updatedOrder.address || null,
-                        governorate: updatedOrder.governorate || null,
-                        deposit: updatedOrder.deposit || 0,
-                        shipping_fee: updatedOrder.shipping_fee || 0,
-                        created_by: updatedOrder.createdBy || null
-                    }).eq('id', updatedOrder.id);
+                        client: enrichedOrder.client,
+                        customer_id: enrichedOrder.customer_id || null,
+                        date: enrichedOrder.date,
+                        warehouse: enrichedOrder.warehouse || 'Sulur',
+                        status: enrichedOrder.status,
+                        total_value: enrichedOrder.totalValue,
+                        discount_type: enrichedOrder.discount_type || null,
+                        discount_value: enrichedOrder.discount_value || 0,
+                        applied_coupon_code: enrichedOrder.applied_coupon_code || null,
+                        address: enrichedOrder.address || null,
+                        governorate: enrichedOrder.governorate || null,
+                        deposit: enrichedOrder.deposit || 0,
+                        shipping_fee: enrichedOrder.shipping_fee || 0,
+                        created_by: enrichedOrder.createdBy || null,
+                        shopify_order_id: enrichedOrder.shopifyOrderId || null,
+                        source: enrichedOrder.source || 'manual',
+                        payment_method: enrichedOrder.paymentMethod || null
+                    }).eq('id', enrichedOrder.id);
 
-                    await supabase.from('order_items').delete().eq('order_id', updatedOrder.id);
-                    if (updatedOrder.items && updatedOrder.items.length > 0) {
-                        const items = updatedOrder.items.map(item => ({
-                            order_id: updatedOrder.id,
+                    await supabase.from('order_items').delete().eq('order_id', enrichedOrder.id);
+                    if (enrichedOrder.items && enrichedOrder.items.length > 0) {
+                        const items = enrichedOrder.items.map(item => ({
+                            order_id: enrichedOrder.id,
                             variant_sku: item.variantSku,
                             quantity: item.quantity,
-                            price: item.price
+                            price: item.price,
+                            cost_at_time_of_sale: item.costAtTimeOfSale
                         }));
                         await supabase.from('order_items').insert(items);
                     }
@@ -1125,7 +1411,7 @@ export const AppProvider = ({ children }) => {
                     // Sync databases stock variants
                     setTimeout(async () => {
                         const oldSKUs = (oldOrder ? oldOrder.items : []).map(i => i.variantSku);
-                        const newSKUs = updatedOrder.items.map(i => i.variantSku);
+                        const newSKUs = enrichedOrder.items.map(i => i.variantSku);
                         const allSKUs = Array.from(new Set([...oldSKUs, ...newSKUs]));
                         
                         for (const sku of allSKUs) {
@@ -1422,8 +1708,23 @@ export const AppProvider = ({ children }) => {
                             variants: p.variants.map(v => {
                                 if (v.sku === item.variantSku) {
                                     const stock = { ...v.stock };
-                                    stock[purchaseOrder.warehouse] = (stock[purchaseOrder.warehouse] || 0) + item.quantity;
-                                    return { ...v, stock };
+                                    const currentStock = stock[purchaseOrder.warehouse] || 0;
+                                    const currentAvgCost = v.averageCost || v.wholesalePrice || 0;
+                                    const purchaseUnitCost = item.cost || 0;
+                                    
+                                    let newAvgCost = currentAvgCost;
+                                    if (currentStock <= 0) {
+                                        newAvgCost = purchaseUnitCost;
+                                    } else {
+                                        newAvgCost = ((currentStock * currentAvgCost) + (item.quantity * purchaseUnitCost)) / (currentStock + item.quantity);
+                                    }
+                                    
+                                    stock[purchaseOrder.warehouse] = currentStock + item.quantity;
+                                    return { 
+                                        ...v, 
+                                        stock, 
+                                        averageCost: newAvgCost 
+                                    };
                                 }
                                 return v;
                             }),
@@ -1499,10 +1800,25 @@ export const AppProvider = ({ children }) => {
                     }
 
                     for (const item of purchaseOrder.items) {
-                        const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id').eq('sku', item.variantSku).single();
+                        const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id, average_cost, wholesale_price').eq('sku', item.variantSku).single();
                         if (vData) {
-                            const newStock = vData.stock_sulur + item.quantity;
-                            await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', item.variantSku);
+                            const currentStock = vData.stock_sulur || 0;
+                            const currentAvgCost = parseFloat(vData.average_cost) || parseFloat(vData.wholesale_price) || 0;
+                            const newQty = item.quantity || 0;
+                            const purchaseUnitCost = parseFloat(item.cost) || 0;
+                            
+                            let newAvgCost = currentAvgCost;
+                            if (currentStock <= 0) {
+                                newAvgCost = purchaseUnitCost;
+                            } else {
+                                newAvgCost = ((currentStock * currentAvgCost) + (newQty * purchaseUnitCost)) / (currentStock + newQty);
+                            }
+
+                            const newStock = currentStock + newQty;
+                            await supabase.from('product_variants').update({ 
+                                stock_sulur: newStock,
+                                average_cost: newAvgCost
+                            }).eq('sku', item.variantSku);
                             
                             await supabase.from('stock_ledger').insert([{
                                 date: purchaseOrder.date,
@@ -1528,6 +1844,59 @@ export const AppProvider = ({ children }) => {
         }
     };
 
+    const approveOrderWithBosta = async (orderId, bostaMetadata, depositAmount = 0) => {
+        let orderObj = null;
+        setState(prev => {
+            const found = prev.orders.find(o => o.id === orderId);
+            if (found) {
+                orderObj = { ...found };
+            }
+            return prev;
+        });
+
+        if (!orderObj) return;
+
+        let addressObj = {};
+        if (orderObj.address && orderObj.address.startsWith('{')) {
+            try {
+                addressObj = JSON.parse(orderObj.address);
+            } catch (e) {
+                addressObj = { detailAddress: orderObj.address };
+            }
+        } else {
+            addressObj = { detailAddress: orderObj.address || "" };
+        }
+
+        const updatedAddressObj = {
+            ...addressObj,
+            ...bostaMetadata
+        };
+        const addressJson = JSON.stringify(updatedAddressObj);
+        const parsedDeposit = parseFloat(depositAmount) || 0;
+
+        setState(prev => ({
+            ...prev,
+            orders: prev.orders.map(o => o.id === orderId ? {
+                ...o,
+                address: addressJson,
+                deposit: parsedDeposit
+            } : o)
+        }));
+
+        if (supabase) {
+            try {
+                await supabase.from('orders').update({ 
+                    address: addressJson,
+                    deposit: parsedDeposit
+                }).eq('id', orderId);
+            } catch (e) {
+                console.error("Failed to update Bosta address details and deposit in DB:", e);
+            }
+        }
+
+        updateOrderStatus(orderId, 'Completed');
+    };
+
     return (
         <AppContext.Provider value={{
             state,
@@ -1535,6 +1904,7 @@ export const AppProvider = ({ children }) => {
             setCurrentView,
             toast,
             showToast,
+            approveOrderWithBosta,
             authLogin,
             authSignup,
             updateUserPermissions,

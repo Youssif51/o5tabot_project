@@ -25,12 +25,14 @@ export default function ReportsView() {
     const getOrderProfit = (ord) => {
         let cost = 0;
         ord.items.forEach(item => {
-            let wholesalePrice = 0;
-            state.products.forEach(p => {
-                let vr = p.variants.find(v => v.sku === item.variantSku);
-                if (vr) wholesalePrice = vr.wholesalePrice;
-            });
-            cost += item.quantity * wholesalePrice;
+            let itemCost = item.costAtTimeOfSale || 0;
+            if (!itemCost) {
+                state.products.forEach(p => {
+                    let vr = p.variants.find(v => v.sku === item.variantSku);
+                    if (vr) itemCost = vr.wholesalePrice || 0;
+                });
+            }
+            cost += item.quantity * itemCost;
         });
         return ord.totalValue - cost;
     };
@@ -88,11 +90,18 @@ export default function ReportsView() {
     state.products.forEach(p => {
         p.variants.forEach(v => {
             const qty = (v.stock.Sulur || 0);
-            totalPurchaseVal += qty * v.wholesalePrice;
+            totalPurchaseVal += qty * (v.averageCost || v.wholesalePrice || 0);
         });
     });
 
-    const netProfit = Math.max(0, totalSalesVal - (totalPurchaseVal * 0.45));
+    let totalProfitVal = 0;
+    state.orders.forEach(ord => {
+        if (ord.status !== 'Cancelled' && ord.status !== 'Draft') {
+            totalProfitVal += getOrderProfit(ord);
+        }
+    });
+
+    const netProfit = totalProfitVal;
 
     const categorySales = {};
     state.products.forEach(p => {

@@ -10,7 +10,7 @@ export default function InventoryList({
     onOpenEditProduct,
     onOpenScanner 
 }) {
-    const { state, showToast, t } = useContext(AppContext);
+    const { state, showToast, t, deleteProduct } = useContext(AppContext);
     
     // View mode: 'list' or 'inspect'
     const [viewMode, setViewMode] = useState('list');
@@ -402,6 +402,18 @@ export default function InventoryList({
                                                             onClick={() => onOpenEditProduct(prod.id)}
                                                         >
                                                             <i className="fa-solid fa-pencil"></i>
+                                                        </button>
+                                                        <button 
+                                                            className="action-btn-circle" 
+                                                            title="Delete Product"
+                                                            style={{ color: 'var(--color-danger)' }}
+                                                            onClick={() => {
+                                                                if (window.confirm('هل أنت متأكد من مسح هذا المنتج من المتجر ومن شوبيفاي؟')) {
+                                                                    deleteProduct(prod.id);
+                                                                }
+                                                            }}
+                                                        >
+                                                            <i className="fa-solid fa-trash"></i>
                                                         </button>
                                                     </div>
                                                 </td>

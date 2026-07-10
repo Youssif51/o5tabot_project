@@ -11,6 +11,8 @@ export default function Sidebar() {
         return (state.currentUser.permissions || []).includes(perm);
     };
 
+    const pendingShopifyCount = (state.orders || []).filter(o => o.status === 'Pending' && o.source === 'shopify').length;
+
     const navItems = [
         { id: 'dashboard', name: t('dashboard'), icon: 'Home.png', perm: 'view_dashboard' },
         { id: 'inventory', name: t('inventory'), icon: 'Inventory.png', perm: 'manage_inventory' },
@@ -18,6 +20,7 @@ export default function Sidebar() {
         { id: 'suppliers', name: t('suppliers'), icon: 'Suppliers.png', perm: 'manage_suppliers' },
         { id: 'customers', name: t('customersList') || 'العملاء', icon: 'Support.png', perm: 'manage_customers' },
         { id: 'orders', name: t('orders'), icon: 'Order.png', perm: 'manage_orders' },
+        { id: 'shopifyPending', name: 'طلبات شوبيفاي معلقة', icon: 'Order.png', perm: 'manage_orders', isShopify: true },
         { id: 'supabaseTasks', name: t('supabaseTasks'), icon: 'Calendar.png', perm: 'manage_settings' }
     ].filter(item => checkPermission(item.perm));
 
@@ -35,17 +38,48 @@ export default function Sidebar() {
                         className={`nav-item ${currentView === item.id ? 'active' : ''}`}
                     >
                         <a href="#" onClick={(e) => { e.preventDefault(); setCurrentView(item.id); }}>
-                            <img 
-                                src={`/icons/${item.icon}`} 
-                                alt={item.name} 
-                                style={{ 
-                                    width: '20px', 
-                                    height: '20px', 
-                                    objectFit: 'contain',
-                                    ...(item.id === 'supabaseTasks' ? { filter: 'brightness(0) saturate(100%) invert(26%) sepia(85%) saturate(7403%) hue-rotate(352deg) brightness(96%) contrast(106%)' } : {})
-                                }}
-                            />
+                            {item.id === 'shopifyPending' ? (
+                                <i className="fa-brands fa-shopify" style={{ 
+                                    fontSize: '18px', 
+                                    color: '#96bf48',
+                                    width: '20px',
+                                    height: '20px',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center'
+                                }}></i>
+                            ) : (
+                                <img 
+                                    src={`/icons/${item.icon}`} 
+                                    alt={item.name} 
+                                    style={{ 
+                                        width: '20px', 
+                                        height: '20px', 
+                                        objectFit: 'contain',
+                                        ...(item.id === 'supabaseTasks' ? { filter: 'brightness(0) saturate(100%) invert(26%) sepia(85%) saturate(7403%) hue-rotate(352deg) brightness(96%) contrast(106%)' } : {})
+                                    }}
+                                />
+                            )}
                             <span>{item.name}</span>
+                            {item.id === 'shopifyPending' && pendingShopifyCount > 0 && (
+                                <span style={{
+                                    background: '#2ecc71',
+                                    color: '#fff',
+                                    fontSize: '10px',
+                                    fontWeight: 'bold',
+                                    padding: '2px 7px',
+                                    borderRadius: '10px',
+                                    marginRight: 'auto',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: '0 0 10px rgba(46,204,113,0.4)',
+                                    height: '18px',
+                                    minWidth: '18px'
+                                }}>
+                                    {pendingShopifyCount}
+                                </span>
+                            )}
                         </a>
                     </li>
                 ))}
