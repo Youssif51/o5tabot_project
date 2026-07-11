@@ -63,6 +63,7 @@ export const AppProvider = ({ children }) => {
     useEffect(() => {
         const loadSupabaseData = async () => {
             if (!supabase) return;
+            if (!state.currentUser) return;
             try {
                 const [
                     { data: products, error: pErr },
@@ -119,6 +120,7 @@ export const AppProvider = ({ children }) => {
                         createdBy: p.created_by,
                         description: p.description,
                         shopify_id: p.shopify_id || null,
+                        status: p.status || 'active',
                         variants: pVars
                     };
                 });
@@ -144,6 +146,7 @@ export const AppProvider = ({ children }) => {
                         id: o.id,
                         client: o.client,
                         date: o.date,
+                        createdAt: o.created_at || null,
                         warehouse: o.warehouse,
                         status: o.status,
                         totalValue: parseFloat(o.total_value) || 0,
@@ -196,6 +199,36 @@ export const AppProvider = ({ children }) => {
                     balanceAfter: parseInt(l.balance_after) || 0
                 }));
 
+                // Sort products: newest first
+                mappedProducts.sort((a, b) => {
+                    const dateA = a.createdDate || '';
+                    const dateB = b.createdDate || '';
+                    if (dateA !== dateB) return dateB.localeCompare(dateA);
+                    return (b.id || '').localeCompare(a.id || '');
+                });
+
+                // Sort orders: newest first
+                mappedOrders.sort((a, b) => {
+                    const dateA = a.date || '';
+                    const dateB = b.date || '';
+                    if (dateA !== dateB) return dateB.localeCompare(dateA);
+                    return (b.id || '').localeCompare(a.id || '');
+                });
+
+                // Sort purchase orders: newest first
+                mappedPurchaseOrders.sort((a, b) => {
+                    const dateA = a.date || '';
+                    const dateB = b.date || '';
+                    if (dateA !== dateB) return dateB.localeCompare(dateA);
+                    return (b.id || '').localeCompare(a.id || '');
+                });
+
+                // Sort wastes: newest first
+                mappedWastes.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+                // Sort stock ledger logs: newest first
+                mappedLedger.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
                 setState(prev => ({
                     ...prev,
                     products: mappedProducts,
@@ -213,11 +246,18 @@ export const AppProvider = ({ children }) => {
             }
         };
         loadSupabaseData();
-    }, []);
+    }, [state.currentUser?.id]);
 
 
     const [currentView, setCurrentView] = useState(() => localStorage.getItem("octabot_view") || "dashboard");
     const [toast, setToast] = useState({ visible: false, message: "", type: "success" });
+    const [shopifyNotification, setShopifyNotification] = useState({
+        visible: false,
+        orderId: "",
+        client: "",
+        totalValue: 0,
+        itemCount: 0
+    });
     const [language, setLanguage] = useState(() => localStorage.getItem("octabot_lang") || "en");
     const [theme, setTheme] = useState(() => localStorage.getItem("octabot_theme") || "dark");
 
@@ -241,6 +281,8 @@ export const AppProvider = ({ children }) => {
     useEffect(() => {
         if (!supabase) return;
 
+        console.log("Initializing Supabase Realtime subscription for orders...");
+
         const ordersChannel = supabase
             .channel('realtime-shopify-orders')
             .on(
@@ -248,73 +290,92 @@ export const AppProvider = ({ children }) => {
                 { event: 'INSERT', schema: 'public', table: 'orders' },
                 async (payload) => {
                     const newOrder = payload.new;
-                    setState(prev => {
-                        const exists = prev.orders.some(o => o.id === newOrder.id);
-                        if (exists) return prev;
+                    console.log("Realtime INSERT event payload received for order:", newOrder.id, payload);
 
-                        // Fetch items asynchronously
-                        (async () => {
-                            try {
-                                // Wait 1.5 seconds to allow Edge Function to finish inserting order items
-                                await new Promise(resolve => setTimeout(resolve, 1500));
+                    try {
+                        // Wait 1.5 seconds to allow Edge Function to finish inserting order items
+                        await new Promise(resolve => setTimeout(resolve, 1500));
 
-                                const { data: orderItems } = await supabase
-                                    .from('order_items')
-                                    .select('*')
-                                    .eq('order_id', newOrder.id);
+                        const { data: orderItems, error: itemsErr } = await supabase
+                            .from('order_items')
+                            .select('*')
+                            .eq('order_id', newOrder.id);
 
-                                const items = (orderItems || []).map(oi => ({
-                                    variantSku: oi.variant_sku,
-                                    quantity: parseInt(oi.quantity) || 0,
-                                    price: parseFloat(oi.price) || 0,
-                                    costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0
-                                }));
+                        if (itemsErr) {
+                            console.error("Failed to fetch order items for realtime order:", itemsErr);
+                        }
 
-                                const enrichedOrder = {
-                                    id: newOrder.id,
-                                    client: newOrder.client,
-                                    date: newOrder.date,
-                                    warehouse: newOrder.warehouse,
-                                    status: newOrder.status,
-                                    totalValue: parseFloat(newOrder.total_value) || 0,
-                                    address: newOrder.address || '',
-                                    governorate: newOrder.governorate || '',
-                                    deposit: parseFloat(newOrder.deposit) || 0,
-                                    shipping_fee: parseFloat(newOrder.shipping_fee) || 0,
-                                    createdBy: newOrder.created_by,
-                                    shopifyOrderId: newOrder.shopify_order_id || null,
-                                    source: newOrder.source || 'manual',
-                                    paymentMethod: newOrder.payment_method || null,
-                                    items
-                                };
+                        const items = (orderItems || []).map(oi => ({
+                            variantSku: oi.variant_sku,
+                            quantity: parseInt(oi.quantity) || 0,
+                            price: parseFloat(oi.price) || 0,
+                            costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0
+                        }));
 
-                                setState(curr => {
-                                    if (curr.orders.some(o => o.id === enrichedOrder.id)) return curr;
-                                    return {
-                                        ...curr,
-                                        orders: [enrichedOrder, ...curr.orders]
-                                    };
-                                });
+                        const enrichedOrder = {
+                            id: newOrder.id,
+                            client: newOrder.client,
+                            date: newOrder.date,
+                            createdAt: newOrder.created_at || null,
+                            warehouse: newOrder.warehouse,
+                            status: newOrder.status,
+                            totalValue: parseFloat(newOrder.total_value) || 0,
+                            address: newOrder.address || '',
+                            governorate: newOrder.governorate || '',
+                            deposit: parseFloat(newOrder.deposit) || 0,
+                            shipping_fee: parseFloat(newOrder.shipping_fee) || 0,
+                            createdBy: newOrder.created_by,
+                            shopifyOrderId: newOrder.shopify_order_id || null,
+                            source: newOrder.source || 'manual',
+                            paymentMethod: newOrder.payment_method || null,
+                            items
+                        };
 
-                                // Reload customers
-                                const { data: customersList } = await supabase.from('customers').select('*');
-                                if (customersList) {
-                                    setState(curr => ({ ...curr, customers: customersList }));
-                                }
+                        console.log("Enriched realtime order structure:", enrichedOrder);
 
-                                showToast(
-                                    language === 'ar' 
-                                        ? `وصل طلب جديد من شوبيفاي: ${enrichedOrder.id}` 
-                                        : `New Shopify order received: ${enrichedOrder.id}`, 
-                                    'success'
-                                );
-                            } catch (e) {
-                                console.error("Realtime load error:", e);
+                        let added = false;
+                        setState(curr => {
+                            const exists = curr.orders.some(o => o.id === enrichedOrder.id);
+                            if (exists) {
+                                console.log(`Order ${enrichedOrder.id} already exists in local state. Skipping add.`);
+                                return curr;
                             }
-                        })();
+                            added = true;
+                            return {
+                                ...curr,
+                                orders: [enrichedOrder, ...curr.orders]
+                            };
+                        });
 
-                        return prev;
-                    });
+                        // Reload customers list in background
+                        const { data: customersList } = await supabase.from('customers').select('*');
+                        if (customersList) {
+                            setState(curr => ({ ...curr, customers: customersList }));
+                        }
+
+                        // Play sound and trigger popup notification only if it was actually added
+                        if (added) {
+                            try {
+                                console.log("Playing notification audio alert...");
+                                const audio = new Audio('/universfield-new-notification-031-480569.mp3');
+                                audio.volume = 0.8;
+                                audio.play().catch(e => console.warn("Audio autoplay blocked by browser policy:", e));
+                            } catch (err) {
+                                console.warn("Audio load/play error:", err);
+                            }
+
+                            console.log("Displaying Facebook-style notification popup...");
+                            setShopifyNotification({
+                                visible: true,
+                                orderId: enrichedOrder.id,
+                                client: enrichedOrder.client,
+                                totalValue: enrichedOrder.totalValue,
+                                itemCount: items.reduce((sum, i) => sum + i.quantity, 0)
+                            });
+                        }
+                    } catch (e) {
+                        console.error("Realtime load error:", e);
+                    }
                 }
             )
             .on(
@@ -322,11 +383,13 @@ export const AppProvider = ({ children }) => {
                 { event: 'UPDATE', schema: 'public', table: 'orders' },
                 async (payload) => {
                     const updatedOrder = payload.new;
+                    console.log("Realtime UPDATE event received for order:", updatedOrder.id, payload);
                     setState(prev => {
                         const existing = prev.orders.find(o => o.id === updatedOrder.id);
                         if (!existing) return prev;
 
                         if (existing.status !== updatedOrder.status || existing.deposit !== parseFloat(updatedOrder.deposit)) {
+                            console.log(`Updating local order status for ${updatedOrder.id} from ${existing.status} to ${updatedOrder.status}`);
                             return {
                                 ...prev,
                                 orders: prev.orders.map(o => o.id === updatedOrder.id ? {
@@ -340,9 +403,12 @@ export const AppProvider = ({ children }) => {
                     });
                 }
             )
-            .subscribe();
+            .subscribe((status, err) => {
+                console.log(`Supabase Realtime orders channel subscription status: ${status}`, err || '');
+            });
 
         return () => {
+            console.log("Cleaning up Supabase Realtime orders channel...");
             supabase.removeChannel(ordersChannel);
         };
     }, [supabase, language]);
@@ -906,11 +972,11 @@ export const AppProvider = ({ children }) => {
             }
             return { ...item, costAtTimeOfSale: avgCost };
         });
-        const enrichedOrder = { ...order, items: enrichedItems };
+        const enrichedOrder = { ...order, items: enrichedItems, createdAt: new Date().toISOString() };
 
         setState(prev => {
             let products = [...prev.products];
-            if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered") {
+            if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered" || enrichedOrder.status === "Shipped") {
                 enrichedOrder.items.forEach(item => {
                     products = products.map(p => {
                         const hasVar = p.variants.some(v => v.sku === item.variantSku);
@@ -940,7 +1006,7 @@ export const AppProvider = ({ children }) => {
             }
 
             let newLedger = prev.stockLedger || [];
-            if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered") {
+            if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered" || enrichedOrder.status === "Shipped") {
                 enrichedOrder.items.forEach(item => {
                     const prod = products.find(p => p.variants.some(v => v.sku === item.variantSku));
                     if (prod) {
@@ -1010,7 +1076,7 @@ export const AppProvider = ({ children }) => {
                         await supabase.from('order_items').insert(items);
                     }
 
-                    if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered") {
+                    if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered" || enrichedOrder.status === "Shipped") {
                         for (const item of enrichedOrder.items) {
                             const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id').eq('sku', item.variantSku).single();
                             if (vData) {
@@ -1050,8 +1116,8 @@ export const AppProvider = ({ children }) => {
             orderTotal = order.totalValue;
             customerId = order.customer_id;
             
-            const wasDeducted = oldStatus === "Completed" || oldStatus === "Partially Delivered";
-            const isDeducted = newStatus === "Completed" || newStatus === "Partially Delivered";
+            const wasDeducted = oldStatus === "Completed" || oldStatus === "Partially Delivered" || oldStatus === "Shipped";
+            const isDeducted = newStatus === "Completed" || newStatus === "Partially Delivered" || newStatus === "Shipped";
             
             if (!wasDeducted && isDeducted) {
                 order.items.forEach(item => {
@@ -1138,7 +1204,7 @@ export const AppProvider = ({ children }) => {
                 ...prev,
                 products,
                 stockLedger: newLedger,
-                orders: prev.orders.map(o => o.id === orderId ? { ...o, status: newStatus } : o)
+                orders: prev.orders.map(o => o.id === orderId ? (newStatus === 'Completed' ? { ...o, status: newStatus, deposit: o.totalValue } : { ...o, status: newStatus }) : o)
             };
         });
 
@@ -1155,14 +1221,19 @@ export const AppProvider = ({ children }) => {
         if (supabase) {
             (async () => {
                 try {
-                    await supabase.from('orders').update({ status: newStatus }).eq('id', orderId);
+                    const dbUpdate = { status: newStatus };
+                    if (newStatus === 'Completed') {
+                        const ord = state.orders.find(o => o.id === orderId);
+                        if (ord) dbUpdate.deposit = ord.totalValue;
+                    }
+                    await supabase.from('orders').update(dbUpdate).eq('id', orderId);
                     
                     const { data: order } = await supabase.from('orders').select('*').eq('id', orderId).single();
                     const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId);
                     
                     if (order && items && items.length > 0) {
-                        const wasDeducted = oldStatus === "Completed" || oldStatus === "Partially Delivered";
-                        const isDeducted = newStatus === "Completed" || newStatus === "Partially Delivered";
+                        const wasDeducted = oldStatus === "Completed" || oldStatus === "Partially Delivered" || oldStatus === "Shipped";
+                        const isDeducted = newStatus === "Completed" || newStatus === "Partially Delivered" || newStatus === "Shipped";
                         
                         if (!wasDeducted && isDeducted) {
                             for (const item of items) {
@@ -1270,7 +1341,7 @@ export const AppProvider = ({ children }) => {
             let products = [...prev.products];
 
             // Revert old stock changes if deducted
-            const oldDeducted = oldOrder.status === "Completed" || oldOrder.status === "Partially Delivered";
+            const oldDeducted = oldOrder.status === "Completed" || oldOrder.status === "Partially Delivered" || oldOrder.status === "Shipped";
             if (oldDeducted) {
                 oldOrder.items.forEach(item => {
                     products = products.map(p => {
@@ -1295,7 +1366,7 @@ export const AppProvider = ({ children }) => {
             }
 
             // Deduct new stock changes if new status is deducted
-            const newDeducted = enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered";
+            const newDeducted = enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered" || enrichedOrder.status === "Shipped";
             if (newDeducted) {
                 enrichedOrder.items.forEach(item => {
                     products = products.map(p => {
@@ -1321,7 +1392,7 @@ export const AppProvider = ({ children }) => {
 
             // Clean up ledger and generate new ledger entries
             let newLedger = (prev.stockLedger || []).filter(entry => entry.productId !== (oldOrder ? oldOrder.id : ''));
-            if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered") {
+            if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered" || enrichedOrder.status === "Shipped") {
                 enrichedOrder.items.forEach(item => {
                     const prod = products.find(p => p.variants.some(v => v.sku === item.variantSku));
                     if (prod) {
@@ -1845,56 +1916,51 @@ export const AppProvider = ({ children }) => {
     };
 
     const approveOrderWithBosta = async (orderId, bostaMetadata, depositAmount = 0) => {
-        let orderObj = null;
-        setState(prev => {
-            const found = prev.orders.find(o => o.id === orderId);
-            if (found) {
-                orderObj = { ...found };
-            }
-            return prev;
-        });
-
-        if (!orderObj) return;
-
-        let addressObj = {};
-        if (orderObj.address && orderObj.address.startsWith('{')) {
-            try {
-                addressObj = JSON.parse(orderObj.address);
-            } catch (e) {
-                addressObj = { detailAddress: orderObj.address };
-            }
-        } else {
-            addressObj = { detailAddress: orderObj.address || "" };
+        if (!supabase) {
+            showToast("قاعدة البيانات غير متصلة.", "error");
+            return;
         }
 
-        const updatedAddressObj = {
-            ...addressObj,
-            ...bostaMetadata
-        };
-        const addressJson = JSON.stringify(updatedAddressObj);
-        const parsedDeposit = parseFloat(depositAmount) || 0;
+        try {
+            showToast(language === 'ar' ? "جاري إنشاء الشحنة وتوليد البوليصة في بوسطة..." : "Creating shipment and air waybill in Bosta...", "info");
+            
+            // Invoke the create-bosta-delivery Edge Function
+            const { data, error } = await supabase.functions.invoke('create-bosta-delivery', {
+                body: { orderId, bostaMetadata, depositAmount }
+            });
 
-        setState(prev => ({
-            ...prev,
-            orders: prev.orders.map(o => o.id === orderId ? {
-                ...o,
-                address: addressJson,
-                deposit: parsedDeposit
-            } : o)
-        }));
-
-        if (supabase) {
-            try {
-                await supabase.from('orders').update({ 
-                    address: addressJson,
-                    deposit: parsedDeposit
-                }).eq('id', orderId);
-            } catch (e) {
-                console.error("Failed to update Bosta address details and deposit in DB:", e);
+            if (error || !data || !data.success) {
+                console.error("Bosta delivery creation failed:", error || data);
+                let errMsg = "Unknown error";
+                if (error && error.context) {
+                    try {
+                        const errBody = await error.context.json();
+                        errMsg = errBody.error || errBody.message || error.message;
+                    } catch (e) {
+                        errMsg = error.message;
+                    }
+                } else {
+                    errMsg = data?.error || (language === 'ar' ? "خطأ غير معروف" : "Unknown error");
+                }
+                showToast(language === 'ar' ? `فشل ربط بوسطة: ${errMsg}` : `Bosta Sync Failed: ${errMsg}`, "error");
+                return;
             }
-        }
 
-        updateOrderStatus(orderId, 'Completed');
+            // The Edge Function has already updated the order address with Bosta tracking code in DB.
+            // Now, we update status to 'Completed' locally and in DB, which deducts stock and records WAC.
+            updateOrderStatus(orderId, 'Shipped');
+            
+            showToast(
+                language === 'ar' 
+                    ? `تمت الموافقة وتوليد البوليصة رقم: ${data.trackingNumber} بنجاح!` 
+                    : `Order approved! Waybill #${data.trackingNumber} created successfully!`, 
+                "success"
+            );
+            
+        } catch (err) {
+            console.error("approveOrderWithBosta exception:", err);
+            showToast(language === 'ar' ? `خطأ في النظام: ${err.message}` : `System Error: ${err.message}`, "error");
+        }
     };
 
     return (
@@ -1904,6 +1970,8 @@ export const AppProvider = ({ children }) => {
             setCurrentView,
             toast,
             showToast,
+            shopifyNotification,
+            setShopifyNotification,
             approveOrderWithBosta,
             authLogin,
             authSignup,

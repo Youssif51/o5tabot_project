@@ -11,6 +11,7 @@ export default function ShopifyPendingList() {
     const [selectedCities, setSelectedCities] = useState({}); // { [orderId]: CityObject }
     const [selectedDistricts, setSelectedDistricts] = useState({}); // { [orderId]: DistrictObject }
     const [customDeposits, setCustomDeposits] = useState({}); // { [orderId]: string/number }
+    const [allowToOpenMap, setAllowToOpenMap] = useState({}); // { [orderId]: boolean }
     
     // Dropdowns UI search states
     const [citySearch, setCitySearch] = useState({}); // { [orderId]: string }
@@ -23,6 +24,22 @@ export default function ShopifyPendingList() {
     const pageSize = 10;
     
     const currency = state.storeSettings.currency || 'EGP';
+
+    const formatOrderTime = (createdAt) => {
+        if (!createdAt) return '';
+        try {
+            const dateObj = new Date(createdAt);
+            if (isNaN(dateObj.getTime())) return '';
+            let hours = dateObj.getHours();
+            const minutes = dateObj.getMinutes().toString().padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            return `${hours}:${minutes} ${ampm}`;
+        } catch (e) {
+            return '';
+        }
+    };
 
     // Parse address JSON structure safely
     const parseAddressData = (addressStr) => {
@@ -151,6 +168,7 @@ export default function ShopifyPendingList() {
         }
 
         const depositAmount = customDeposits[ordId] !== undefined ? (parseFloat(customDeposits[ordId]) || 0) : (pendingOrders.find(o => o.id === ordId)?.deposit || 0);
+        const allowToOpen = allowToOpenMap[ordId] !== undefined ? allowToOpenMap[ordId] : true;
 
         if (window.confirm('هل أنت متأكد من الموافقة على هذا الطلب وتأكيده للخصم من المخزون؟')) {
             approveOrderWithBosta(ordId, {
@@ -158,7 +176,8 @@ export default function ShopifyPendingList() {
                 bostaCityName: city.cityOtherName,
                 bostaDistrictId: district.districtId,
                 bostaDistrictName: district.districtOtherName,
-                bostaZoneId: district.zoneId
+                bostaZoneId: district.zoneId,
+                allowToOpenPackage: allowToOpen
             }, depositAmount);
             showToast('تمت الموافقة على الطلب وتأكيده للتحويل لبوسطة وخصم الكميات بنجاح!', 'success');
         }
@@ -331,7 +350,15 @@ export default function ShopifyPendingList() {
                                                     <div style={{ fontWeight: 500 }}>{ord.client}</div>
                                                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{phone || 'بدون هاتف'}</div>
                                                 </td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px' }}>{ord.date}</td>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px' }}>
+                                                    <div>{ord.date}</div>
+                                                    {ord.createdAt && (
+                                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                                            <i className="fa-regular fa-clock" style={{ marginLeft: '4px', fontSize: '10px' }}></i>
+                                                            {formatOrderTime(ord.createdAt)}
+                                                        </div>
+                                                    )}
+                                                </td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px' }}>{totalQty} قطع</td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, color: 'var(--gold-primary)' }}>{currency} {ord.totalValue.toFixed(2)}</td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '12px' }}>
@@ -557,6 +584,34 @@ export default function ShopifyPendingList() {
                                                                                 </div>
                                                                             </div>
                                                                         )}
+                                                                    </div>
+
+                                                                    {/* Allow to Open Package checkbox */}
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '12px', background: 'rgba(255,255,255,0.02)', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--glass-border)' }}>
+                                                                        <input 
+                                                                            type="checkbox" 
+                                                                            id={`allow-open-${ord.id}`}
+                                                                            checked={allowToOpenMap[ord.id] !== undefined ? allowToOpenMap[ord.id] : true}
+                                                                            onChange={(e) => {
+                                                                                setAllowToOpenMap({
+                                                                                    ...allowToOpenMap,
+                                                                                    [ord.id]: e.target.checked
+                                                                                });
+                                                                            }}
+                                                                            style={{
+                                                                                accentColor: '#96bf48',
+                                                                                cursor: 'pointer',
+                                                                                width: '15px',
+                                                                                height: '15px',
+                                                                                margin: 0
+                                                                            }}
+                                                                        />
+                                                                        <label 
+                                                                            htmlFor={`allow-open-${ord.id}`}
+                                                                            style={{ fontSize: '11px', color: 'var(--text-primary)', cursor: 'pointer', fontWeight: 500, userSelect: 'none' }}
+                                                                        >
+                                                                            السماح للعميل بفتح الشحنة عند الاستلام
+                                                                        </label>
                                                                     </div>
 
                                                                 </div>

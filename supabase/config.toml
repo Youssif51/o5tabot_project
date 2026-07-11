@@ -15,3 +15,9 @@ entrypoint = "./functions/swift-processor/index.ts"
 
 [functions.shopify-webhook]
 verify_jwt = false
+
+[functions.create-bosta-delivery]
+verify_jwt = true
+
+[functions.bosta-webhook]
+verify_jwt = false

@@ -20,7 +20,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
     const [vendor, setVendor] = useState('');
     const [tags, setTags] = useState('');
     const [description, setDescription] = useState('');
-    const [status, setStatus] = useState('draft');
+    const [status, setStatus] = useState('active');
     
     // Dynamic category addition states
     const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
@@ -70,7 +70,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 setVendor(prod.vendor || '');
                 setTags(prod.tags || '');
                 setDescription(prod.description || '');
-                setStatus(prod.status || 'draft');
+                setStatus(prod.status || 'active');
                 setShowNewCategoryInput(false);
                 setNewCategoryName('');
                 
@@ -99,7 +99,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
             setVendor('');
             setTags('');
             setDescription('');
-            setStatus('draft');
+            setStatus('active');
             setShowNewCategoryInput(false);
             setNewCategoryName('');
             setHasVariants(false);

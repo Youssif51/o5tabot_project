@@ -33,9 +33,13 @@ export default function App() {
     const { 
         state, 
         currentView, 
+        setCurrentView,
         toast, 
+        shopifyNotification,
+        setShopifyNotification,
         authLogin, 
-        authSignup 
+        authSignup,
+        language
     } = useContext(AppContext);
 
     // Auth screen toggling
@@ -54,6 +58,16 @@ export default function App() {
     React.useEffect(() => {
         setSidebarOpen(false);
     }, [currentView]);
+
+    // Auto-hide Shopify notification popup
+    React.useEffect(() => {
+        if (shopifyNotification?.visible) {
+            const timer = setTimeout(() => {
+                setShopifyNotification(prev => ({ ...prev, visible: false }));
+            }, 10000);
+            return () => clearTimeout(timer);
+        }
+    }, [shopifyNotification?.visible, setShopifyNotification]);
 
     // Global Search State
     const [globalSearch, setGlobalSearch] = useState('');
@@ -487,6 +501,128 @@ export default function App() {
                     {toast.message}
                 </div>
             </div>
+
+            {/* Facebook-style Shopify Webhook Notification Popup */}
+            {shopifyNotification?.visible && (
+                <>
+                <style>{`
+                    @keyframes slideUp {
+                        from {
+                            transform: translateY(100px);
+                            opacity: 0;
+                        }
+                        to {
+                            transform: translateY(0);
+                            opacity: 1;
+                        }
+                    }
+                `}</style>
+                <div 
+                    id="shopify-order-popup"
+                    style={{
+                        position: 'fixed',
+                        bottom: '24px',
+                        right: '24px',
+                        width: '360px',
+                        maxWidth: 'calc(100vw - 48px)',
+                        background: 'rgba(26, 26, 26, 0.95)',
+                        backdropFilter: 'blur(16px)',
+                        border: '1px solid rgba(150, 191, 72, 0.4)',
+                        boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5), 0 0 20px rgba(150, 191, 72, 0.2)',
+                        borderRadius: '12px',
+                        padding: '16px',
+                        zIndex: 2001,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '12px',
+                        animation: 'slideUp 0.4s cubic-bezier(0.165, 0.84, 0.44, 1) forwards',
+                        direction: 'rtl'
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <div style={{
+                                width: '32px',
+                                height: '32px',
+                                borderRadius: '50%',
+                                background: 'linear-gradient(135deg, #96bf48, #5a8a1e)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                color: '#fff',
+                                boxShadow: '0 0 10px rgba(150, 191, 72, 0.5)'
+                            }}>
+                                <i className="fa-solid fa-shopping-bag" style={{ fontSize: '14px' }}></i>
+                            </div>
+                            <span style={{ fontWeight: 'bold', fontSize: '14px', color: '#96bf48' }}>
+                                طلب جديد من شوبيفاي! 🛒
+                            </span>
+                        </div>
+                        <button 
+                            onClick={() => setShopifyNotification(prev => ({ ...prev, visible: false }))}
+                            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '16px' }}
+                        >
+                            <i className="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: 'rgba(255,255,255,0.85)' }}>
+                        <div>
+                            <strong>رقم الطلب:</strong> <span style={{ fontFamily: 'monospace', color: '#fff' }}>{shopifyNotification.orderId}</span>
+                        </div>
+                        <div>
+                            <strong>اسم العميل:</strong> <span style={{ color: '#fff', fontWeight: 500 }}>{shopifyNotification.client}</span>
+                        </div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
+                            <span><strong>عدد المنتجات:</strong> {shopifyNotification.itemCount} قطع</span>
+                            <span style={{ color: '#96bf48', fontWeight: 'bold' }}>{shopifyNotification.totalValue.toFixed(2)} EGP</span>
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+                        <button 
+                            onClick={() => {
+                                setCurrentView('shopifyPending');
+                                setShopifyNotification(prev => ({ ...prev, visible: false }));
+                            }}
+                            style={{
+                                flex: 1,
+                                background: 'linear-gradient(135deg, #96bf48, #5a8a1e)',
+                                color: '#fff',
+                                border: 'none',
+                                padding: '8px 12px',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                fontWeight: 'bold',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                gap: '6px',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            <i className="fa-solid fa-eye"></i> عرض الطلب
+                        </button>
+                        <button 
+                            onClick={() => setShopifyNotification(prev => ({ ...prev, visible: false }))}
+                            style={{
+                                background: 'rgba(255,255,255,0.1)',
+                                color: '#fff',
+                                border: 'none',
+                                padding: '8px 12px',
+                                borderRadius: '6px',
+                                fontSize: '12px',
+                                cursor: 'pointer',
+                                transition: 'all 0.2s'
+                            }}
+                        >
+                            إغلاق
+                        </button>
+                    </div>
+                </div>
+                </>
+            )}
         </div>
     );
 }

@@ -2,7 +2,8 @@
 // @ts-ignore - Supress VS Code errors since Deno is available globally in Supabase
 declare const Deno: any;
 
-const STORE_NAME = "c04z0k-00"; // استبدله بالاسم الفرعي للمتجر (بدون مسافات)
+const envStoreName = Deno.env.get("SHOPIFY_STORE_NAME") || "c04z0k-00";
+const STORE_NAME = envStoreName.replace(/\.myshopify\.com/i, "").trim();
 const API_VERSION = "2024-01"; // تم تحديث نسخة الـ API لنسخة صحيحة ومستقرة
 
 const corsHeaders = {
@@ -110,14 +111,14 @@ Deno.serve(async (req) => {
     // تجهيز البدائل (Variants)
     const shopifyVariants = (variants || []).map(v => ({
       id: v.shopify_id ? parseInt(v.shopify_id) : undefined,
-      price: v.retailPrice || v.wholesalePrice || 0,
+      price: v.price || v.retailPrice || v.wholesalePrice || 0,
       sku: v.sku || "",
-      option1: v.name || "Default Title",
+      option1: (variants.length === 1) ? "Default Title" : (v.name || "Default Title"),
       inventory_management: "shopify"
     }));
 
     // تجهيز خيارات البدائل (Options) إذا كان هناك أكثر من بديل أو بديل مخصص
-    const shopifyOptions = (shopifyVariants.length > 1 || (shopifyVariants[0] && shopifyVariants[0].option1 !== "Default Title" && shopifyVariants[0].option1 !== "Standard Option"))
+    const shopifyOptions = (shopifyVariants.length > 1 || (shopifyVariants[0] && shopifyVariants[0].option1 !== "Default Title"))
       ? [{ name: "Options", values: shopifyVariants.map(v => v.option1) }]
       : [];
 
@@ -141,6 +142,7 @@ Deno.serve(async (req) => {
         product_type: category || "",
         tags: tags || "",
         status: status || "draft",
+        published: status === "active",
         variants: shopifyVariants,
         ...(shopifyOptions.length > 0 && { options: shopifyOptions }),
         ...(shopifyImages.length > 0 && { images: shopifyImages })
@@ -207,7 +209,7 @@ Deno.serve(async (req) => {
           const frontVariant = (variants || [])[i]; // ربط كل بديل بما يقابله في الفرونت اند
           
           if (frontVariant && shopifyVariant.inventory_item_id) {
-            const stockValue = frontVariant.stockSulur || frontVariant.stock?.Sulur || 0;
+            const stockValue = (typeof frontVariant.stock === 'object' ? (frontVariant.stock?.Sulur ?? 0) : (frontVariant.stock ?? 0)) || frontVariant.stockSulur || 0;
             
             const inventoryRes = await fetch(
               `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/inventory_levels/set.json`,

@@ -25,6 +25,22 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
     const currency = state.storeSettings.currency || 'EGP';
     const activeSearch = globalSearch || '';
 
+    const formatOrderTime = (createdAt) => {
+        if (!createdAt) return '';
+        try {
+            const dateObj = new Date(createdAt);
+            if (isNaN(dateObj.getTime())) return '';
+            let hours = dateObj.getHours();
+            const minutes = dateObj.getMinutes().toString().padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            return `${hours}:${minutes} ${ampm}`;
+        } catch (e) {
+            return '';
+        }
+    };
+
     // Deterministic Customer Code Generator
     const getCustomerCode = (name) => {
         if (!name) return 'CUS-0000';
@@ -43,6 +59,10 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         let vatEnabled = false;
         let orderDiscountPercent = 0;
         let customerCode = 'CUS-0000';
+        let bostaStateName = '';
+        let bostaStateCode = null;
+        let bostaTrackingNumber = '';
+        let bostaExceptionReason = '';
         
         if (addressStr && addressStr.startsWith('{')) {
             try {
@@ -52,31 +72,68 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                 vatEnabled = parsed.vatEnabled || false;
                 orderDiscountPercent = parseFloat(parsed.orderDiscountPercent) || 0;
                 customerCode = parsed.customerCode || 'CUS-0000';
+                bostaStateName = parsed.bostaStateName || '';
+                bostaStateCode = parsed.bostaStateCode || null;
+                bostaTrackingNumber = parsed.bostaTrackingNumber || '';
+                bostaExceptionReason = parsed.bostaExceptionReason || '';
             } catch(e) {}
         }
-        return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode };
+        return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode, bostaStateName, bostaStateCode, bostaTrackingNumber, bostaExceptionReason };
+    };
+
+    // Helper to get the display badge text and class for an order
+    const getOrderStatusBadge = (ord) => {
+        const { bostaStateCode, bostaStateName } = parseAddressData(ord.address);
+        
+        // If it's a Bosta shipment (has a Bosta state code)
+        if (bostaStateCode !== null) {
+            switch (Number(bostaStateCode)) {
+                case 10: return { label: 'طلب استلام جديد', className: 'badge-warning' };
+                case 11: return { label: 'بانتظار خط السير', className: 'badge-warning' };
+                case 20: return { label: 'اتحدد مندوب', className: 'badge-info' };
+                case 21: return { label: 'المندوب استلم الشحنة', className: 'badge-info' };
+                case 22: return { label: 'جاري الاستلام من العميل', className: 'badge-info' };
+                case 23: return { label: 'تم الاستلام من المشتري', className: 'badge-info' };
+                case 24: return { label: 'وصلت مخزن بوسطة', className: 'badge-info' };
+                case 25: return { label: 'مكتمل في بوسطة', className: 'badge-success' };
+                case 30: return { label: 'في الطريق بين الفروع', className: 'badge-info' };
+                case 40: return { label: 'جاري الاستلام', className: 'badge-info' };
+                case 41: return { label: 'خرجت للتوصيل للعميل', className: 'badge-gold' };
+                case 45: return { label: 'تم التسليم بنجاح', className: 'badge-success' };
+                case 46: return { label: 'مرتجع للتاجر', className: 'badge-danger' };
+                case 47: return { label: 'تعذر التوصيل (مشكلة)', className: 'badge-danger' };
+                case 48: return { label: 'فشل التوصيل نهائياً', className: 'badge-danger' };
+                case 49: return { label: 'ملغي في بوسطة', className: 'badge-danger' };
+                case 60: return { label: 'تمت إعادتها للمخزن', className: 'badge-danger' };
+                case 100: return { label: 'شحنة مفقودة', className: 'badge-danger' };
+                case 101: return { label: 'شحنة تالفة', className: 'badge-danger' };
+                case 102: return { label: 'شحنة تحت التحقيق', className: 'badge-warning' };
+                case 103: return { label: 'بانتظار إجراء التاجر', className: 'badge-warning' };
+                default: return { label: bostaStateName || `حالة ${bostaStateCode}`, className: 'badge-info' };
+            }
+        }
+        
+        switch (ord.status) {
+            case 'Draft': return { label: 'مسودة', className: 'badge-grey' };
+            case 'Pending': return { label: 'قيد الانتظار', className: 'badge-warning' };
+            case 'Shipped': return { label: 'تم الشحن', className: 'badge-info' };
+            case 'Partially Delivered': return { label: 'تسليم جزئي', className: 'badge-gold' };
+            case 'Completed': return { label: 'تم التسليم', className: 'badge-success' };
+            case 'Cancelled': return { label: 'ملغي', className: 'badge-danger' };
+            default: return { label: ord.status, className: 'badge-grey' };
+        }
     };
 
     // Delivery Status translations
     const getDeliveryStatusLabel = (status) => {
         switch (status) {
             case 'Draft': return 'مسودة';
-            case 'Pending': return 'في الانتظار';
-            case 'Partially Delivered': return 'تسليم جاري';
+            case 'Pending': return 'قيد الانتظار';
+            case 'Shipped': return 'تم الشحن';
+            case 'Partially Delivered': return 'تسليم جزئي';
             case 'Completed': return 'تم التسليم';
-            case 'Cancelled': return 'ملغي';
+            case 'Cancelled': return 'ملغي / مرتجع';
             default: return status;
-        }
-    };
-
-    const getDeliveryStatusBadgeClass = (status) => {
-        switch (status) {
-            case 'Draft': return 'bg-yellow-500/10 text-yellow-500 border border-yellow-500/20';
-            case 'Pending': return 'bg-blue-500/10 text-blue-500 border border-blue-500/20';
-            case 'Partially Delivered': return 'bg-orange-500/10 text-orange-500 border border-orange-500/20';
-            case 'Completed': return 'bg-green-500/10 text-green-500 border border-green-500/20';
-            case 'Cancelled': return 'bg-red-500/10 text-red-500 border border-red-500/20';
-            default: return 'bg-gray-500/10 text-gray-500 border border-gray-500/20';
         }
     };
 
@@ -119,7 +176,18 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         if (!clientMatches && !idMatches) return false;
 
         // 2. Delivery Status
-        if (deliveryStatusFilter !== 'all' && ord.status !== deliveryStatusFilter) return false;
+        if (deliveryStatusFilter !== 'all') {
+            if (!isNaN(deliveryStatusFilter)) {
+                const { bostaStateCode } = parseAddressData(ord.address);
+                if (bostaStateCode === null || String(bostaStateCode) !== deliveryStatusFilter) {
+                    return false;
+                }
+            } else {
+                if (ord.status !== deliveryStatusFilter) {
+                    return false;
+                }
+            }
+        }
 
         // 3. Payment Status
         const paymentStatus = getPaymentStatus(ord);
@@ -152,7 +220,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         .reduce((sum, o) => sum + (parseFloat(o.totalValue) || 0), 0);
 
     const remainingToCollectTotal = filteredOrders
-        .filter(o => o.status !== 'Cancelled')
+        .filter(o => o.status !== 'Cancelled' && o.status !== 'Completed')
         .reduce((sum, o) => {
             const remaining = (parseFloat(o.totalValue) || 0) - (parseFloat(o.deposit) || 0);
             return sum + (remaining > 0 ? remaining : 0);
@@ -185,9 +253,9 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         const rows = filteredOrders.map(ord => {
             const { phone, customerCode } = parseAddressData(ord.address);
             const totalQty = (ord.items || []).reduce((acc, curr) => acc + curr.quantity, 0);
-            const remaining = ord.totalValue - (parseFloat(ord.deposit) || 0);
+            const remaining = ord.status === 'Completed' ? 0 : ord.totalValue - (parseFloat(ord.deposit) || 0);
             const paymentStatus = getPaymentStatus(ord);
-            const deliveryStatus = getDeliveryStatusLabel(ord.status);
+            const deliveryStatus = getOrderStatusBadge(ord).label;
             
             return [
                 ord.id,
@@ -346,22 +414,49 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                         {/* Delivery Status Filter */}
                         <select 
                             className="form-select" 
-                            style={{ width: '175px', backgroundColor: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: '6px', padding: '8px' }}
+                            style={{ 
+                                width: '220px', 
+                                backgroundColor: 'var(--glass-bg)', 
+                                color: 'var(--text-primary)', 
+                                border: '1px solid var(--glass-border)', 
+                                borderRadius: '6px', 
+                                paddingTop: '8px', 
+                                paddingBottom: '8px' 
+                            }}
                             value={deliveryStatusFilter}
                             onChange={(e) => { setDeliveryStatusFilter(e.target.value); setCurrentPage(1); }}
                         >
                             <option value="all" style={{ background: 'var(--bg-secondary)' }}>كل حالات التوصيل</option>
                             <option value="Draft" style={{ background: 'var(--bg-secondary)' }}>مسودة</option>
-                            <option value="Pending" style={{ background: 'var(--bg-secondary)' }}>في الانتظار</option>
-                            <option value="Partially Delivered" style={{ background: 'var(--bg-secondary)' }}>تسليم جاري</option>
-                            <option value="Completed" style={{ background: 'var(--bg-secondary)' }}>تم التسليم</option>
-                            <option value="Cancelled" style={{ background: 'var(--bg-secondary)' }}>ملغي</option>
+                            <option value="Pending" style={{ background: 'var(--bg-secondary)' }}>قيد الانتظار</option>
+                            
+                            {/* Bosta Live Statuses */}
+                            <option value="10" style={{ background: 'var(--bg-secondary)' }}>طلب استلام جديد</option>
+                            <option value="20" style={{ background: 'var(--bg-secondary)' }}>اتحدد مندوب</option>
+                            <option value="21" style={{ background: 'var(--bg-secondary)' }}>المندوب استلم الشحنة</option>
+                            <option value="24" style={{ background: 'var(--bg-secondary)' }}>وصلت مخزن بوسطة</option>
+                            <option value="30" style={{ background: 'var(--bg-secondary)' }}>في الطريق بين الفروع</option>
+                            <option value="41" style={{ background: 'var(--bg-secondary)' }}>خرجت للتوصيل للعميل</option>
+                            <option value="45" style={{ background: 'var(--bg-secondary)' }}>تم التسليم بنجاح</option>
+                            <option value="47" style={{ background: 'var(--bg-secondary)' }}>تعذر التوصيل (مشكلة)</option>
+                            <option value="49" style={{ background: 'var(--bg-secondary)' }}>ملغي في بوسطة</option>
+                            <option value="48" style={{ background: 'var(--bg-secondary)' }}>فشل التوصيل نهائياً</option>
+                            <option value="100" style={{ background: 'var(--bg-secondary)' }}>شحنة مفقودة</option>
+                            <option value="101" style={{ background: 'var(--bg-secondary)' }}>شحنة تالفة</option>
                         </select>
 
                         {/* Payment Status Filter */}
                         <select 
                             className="form-select" 
-                            style={{ width: '155px', backgroundColor: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: '6px', padding: '8px' }}
+                            style={{ 
+                                width: '155px', 
+                                backgroundColor: 'var(--glass-bg)', 
+                                color: 'var(--text-primary)', 
+                                border: '1px solid var(--glass-border)', 
+                                borderRadius: '6px', 
+                                paddingTop: '8px', 
+                                paddingBottom: '8px' 
+                            }}
                             value={paymentStatusFilter}
                             onChange={(e) => { setPaymentStatusFilter(e.target.value); setCurrentPage(1); }}
                         >
@@ -438,16 +533,16 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                     <table className="custom-table" style={{ width: '100%', borderCollapse: 'collapse', overflow: 'visible' }}>
                         <thead>
                             <tr style={{ borderBottom: '1px solid var(--glass-border-hover)' }}>
-                                <th style={{ textAlign: 'right', padding: '12px 16px' }}>رقم الطلب</th>
-                                <th style={{ textAlign: 'right', padding: '12px 16px' }}>العميل + الهاتف</th>
-                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>التاريخ</th>
-                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>المنتجات</th>
-                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>الإجمالي</th>
-                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>المتبقي للتحصيل</th>
-                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>الآدمن (المسجل)</th>
-                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>حالة التوصيل</th>
-                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>حالة الدفع</th>
-                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>الإجراءات</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px', whiteSpace: 'nowrap' }}>رقم الطلب</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px', whiteSpace: 'nowrap' }}>العميل + الهاتف</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px', whiteSpace: 'nowrap' }}>التاريخ</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px', whiteSpace: 'nowrap' }}>المنتجات</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px', whiteSpace: 'nowrap' }}>الإجمالي</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px', whiteSpace: 'nowrap' }}>المتبقي للتحصيل</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px', whiteSpace: 'nowrap' }}>الآدمن (المسجل)</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px', whiteSpace: 'nowrap' }}>حالة التوصيل</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px', whiteSpace: 'nowrap' }}>حالة الدفع</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px', whiteSpace: 'nowrap' }}>الإجراءات</th>
                             </tr>
                         </thead>
                         <tbody style={{ overflow: 'visible' }}>
@@ -460,9 +555,9 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                             ) : (
                                 paginatedOrders.map(ord => {
                                     const isExpanded = expandedOrderIds[ord.id];
-                                    const { phone, detailAddress } = parseAddressData(ord.address);
+                                    const { phone, detailAddress, bostaStateName, bostaTrackingNumber } = parseAddressData(ord.address);
                                     const totalQty = (ord.items || []).reduce((acc, curr) => acc + curr.quantity, 0);
-                                    const remaining = ord.totalValue - (parseFloat(ord.deposit) || 0);
+                                    const remaining = ord.status === 'Completed' ? 0 : ord.totalValue - (parseFloat(ord.deposit) || 0);
                                     const paymentStatus = getPaymentStatus(ord);
                                     const isDropdownOpen = activeDropdownOrderId === ord.id;
 
@@ -478,8 +573,8 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                 }}
                                                 className="table-row-hover"
                                             >
-                                                <td style={{ fontFamily: 'monospace', fontWeight: 600, padding: '14px 16px', color: 'var(--gold-primary)' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                <td style={{ fontFamily: 'monospace', fontWeight: 600, padding: '14px 16px', color: 'var(--gold-primary)', textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                                                         {ord.id}
                                                         {ord.source === 'shopify' && (
                                                             <span style={{
@@ -499,34 +594,54 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td style={{ padding: '14px 16px' }}>
-                                                    <div>{ord.client}</div>
-                                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{phone || 'بدون هاتف'}</div>
+                                                <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                                                    <div style={{ fontWeight: 500 }}>{ord.client}</div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', fontFamily: 'monospace' }}>{phone || 'بدون هاتف'}</div>
                                                 </td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px' }}>{ord.date}</td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px' }}>{totalQty} قطع</td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600 }}>{currency} {ord.totalValue.toFixed(2)}</td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, color: remaining > 0 ? '#e74c3c' : '#2ecc71' }}>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                                                    <div style={{ fontWeight: 500 }}>{ord.date}</div>
+                                                    {ord.createdAt && (
+                                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                            <i className="fa-regular fa-clock" style={{ fontSize: '10px' }}></i>
+                                                            {formatOrderTime(ord.createdAt)}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>{totalQty} قطع</td>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, verticalAlign: 'middle', whiteSpace: 'nowrap' }}>{currency} {ord.totalValue.toFixed(2)}</td>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, color: remaining > 0 ? '#e74c3c' : '#2ecc71', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                                                     {remaining > 0 ? `${currency} ${remaining.toFixed(2)}` : 'خالص'}
                                                 </td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', color: 'var(--text-primary)' }}>{ord.createdBy || 'الآدمن'}</td>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', color: 'var(--text-primary)', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>{ord.createdBy || 'الآدمن'}</td>
                                                 
                                                 {/* Delivery Status Badge */}
-                                                <td style={{ textAlign: 'center', padding: '14px 16px' }}>
-                                                    <span className={`badge ${getDeliveryStatusBadgeClass(ord.status)}`} style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
-                                                        {getDeliveryStatusLabel(ord.status)}
-                                                    </span>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                                                    {(() => {
+                                                        const badge = getOrderStatusBadge(ord);
+                                                        return (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
+                                                                <span className={`badge ${badge.className}`} style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '4px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                                                    {badge.label}
+                                                                </span>
+                                                                {bostaTrackingNumber && (
+                                                                    <span style={{ fontSize: '10px', opacity: 0.8, fontFamily: 'monospace', color: 'var(--text-secondary)', marginTop: '2px', whiteSpace: 'nowrap' }}>
+                                                                        بوليصة: {bostaTrackingNumber}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </td>
 
                                                 {/* Payment Status Badge */}
-                                                <td style={{ textAlign: 'center', padding: '14px 16px' }}>
-                                                    <span className={`badge ${getPaymentStatusBadgeClass(paymentStatus)}`} style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '4px', fontWeight: 600 }}>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                                                    <span className={`badge ${getPaymentStatusBadgeClass(paymentStatus)}`} style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '4px', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                                         {paymentStatus}
                                                     </span>
                                                 </td>
 
                                                 {/* Action Buttons with Labels */}
-                                                <td style={{ padding: '14px 16px', verticalAlign: 'middle', textAlign: 'center', overflow: 'visible' }} onClick={(e) => e.stopPropagation()}>
+                                                <td style={{ padding: '14px 16px', verticalAlign: 'middle', textAlign: 'center', overflow: 'visible', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
                                                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center', position: 'relative', overflow: 'visible' }}>
                                                         
                                                         {/* Details Toggle Button */}
@@ -565,7 +680,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                         padding: '4px',
                                                                         marginTop: '4px'
                                                                     }}>
-                                                                        {['Draft', 'Pending', 'Partially Delivered', 'Completed', 'Cancelled'].map(st => (
+                                                                        {['Draft', 'Pending', 'Shipped', 'Partially Delivered', 'Completed', 'Cancelled'].map(st => (
                                                                             <div 
                                                                                 key={st}
                                                                                 onClick={() => {
@@ -721,7 +836,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
                                                                             if (window.confirm('هل أنت متأكد من الموافقة على هذا الطلب وتأكيده للخصم من المخزون؟')) {
-                                                                                updateOrderStatus(ord.id, 'Completed');
+                                                                                updateOrderStatus(ord.id, 'Shipped');
                                                                                 showToast('تمت الموافقة على الطلب وتأكيده وخصم الكميات بنجاح!', 'success');
                                                                             }
                                                                         }}
