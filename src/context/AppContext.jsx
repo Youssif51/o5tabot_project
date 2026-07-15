@@ -1,6 +1,6 @@
 import { supabase } from '../utils/supabase';
 import { getLocalDateString } from '../utils/dateUtils';
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useEffect, useRef } from 'react';
 
 export const AppContext = createContext();
 
@@ -25,6 +25,7 @@ const initialState = {
     coupons: [],
     users: [],
     activities: [],
+    collections: [],
     storeSettings: { name: "o5taboad store", address: "Egypt", currency: "EGP", vipThresholdPurchases: 5000, vipThresholdOrders: 10 },
     currentUser: null
 };
@@ -77,7 +78,8 @@ export const AppProvider = ({ children }) => {
                     { data: wastes, error: wErr },
                     { data: customers, error: cErr },
                     { data: coupons, error: couErr },
-                    { data: users, error: uErr }
+                    { data: users, error: uErr },
+                    { data: collections, error: colErr }
                 ] = await Promise.all([
                     supabase.from('products').select('*'),
                     supabase.from('product_variants').select('*'),
@@ -90,10 +92,11 @@ export const AppProvider = ({ children }) => {
                     supabase.from('wastes').select('*'),
                     supabase.from('customers').select('*'),
                     supabase.from('coupons').select('*'),
-                    supabase.from('user_profiles').select('*')
+                    supabase.from('user_profiles').select('*'),
+                    supabase.from('shopify_collections').select('*')
                 ]);
 
-                if (pErr || vErr || sErr || oErr || oiErr || poErr || poiErr || lErr || wErr || cErr || couErr || uErr) {
+                if (pErr || vErr || sErr || oErr || oiErr || poErr || poiErr || lErr || wErr || cErr || couErr || uErr || colErr) {
                     console.warn("Could not retrieve all Supabase tables, using local state instead.");
                     return;
                 }
@@ -120,6 +123,7 @@ export const AppProvider = ({ children }) => {
                         createdBy: p.created_by,
                         description: p.description,
                         shopify_id: p.shopify_id || null,
+                        shopifyCollectionId: p.shopify_collection_id || null,
                         status: p.status || 'active',
                         variants: pVars
                     };
@@ -239,7 +243,8 @@ export const AppProvider = ({ children }) => {
                     customers: customers || [],
                     coupons: coupons || [],
                     users: users || [],
-                    stockLedger: mappedLedger
+                    stockLedger: mappedLedger,
+                    collections: collections || []
                 }));
             } catch (err) {
                 console.error("Supabase load error:", err);
@@ -260,6 +265,60 @@ export const AppProvider = ({ children }) => {
     });
     const [language, setLanguage] = useState(() => localStorage.getItem("octabot_lang") || "en");
     const [theme, setTheme] = useState(() => localStorage.getItem("octabot_theme") || "dark");
+
+    const [confirmSpamToggle, setConfirmSpamToggle] = useState(false);
+    const confirmSpamToggleRef = useRef(false);
+    const toggleSpamFlag = (val) => {
+        confirmSpamToggleRef.current = val;
+        setConfirmSpamToggle(val);
+    };
+    const [confirmModal, setConfirmModal] = useState({
+        isOpen: false,
+        title: 'تأكيد الإجراء',
+        message: '',
+        onConfirm: null,
+        onCancel: null,
+        type: 'confirm',
+        showSpamToggle: false
+    });
+
+    const showConfirm = (message, onConfirm, onCancel = null, options = {}) => {
+        toggleSpamFlag(false);
+        setConfirmModal({
+            isOpen: true,
+            title: language === 'ar' ? 'تأكيد الإجراء' : 'Confirm Action',
+            message: message,
+            onConfirm: (flagAsSpam) => {
+                try {
+                    onConfirm(flagAsSpam);
+                } catch (e) {
+                    console.error("Error in showConfirm callback:", e);
+                }
+                closeConfirmModal();
+            },
+            onCancel: () => {
+                if (onCancel) onCancel();
+                closeConfirmModal();
+            },
+            type: 'confirm',
+            showSpamToggle: !!options.showSpamToggle
+        });
+    };
+
+    const showAlert = (message) => {
+        setConfirmModal({
+            isOpen: true,
+            title: language === 'ar' ? 'تنبيه' : 'Alert',
+            message: message,
+            onConfirm: closeConfirmModal,
+            onCancel: closeConfirmModal,
+            type: 'alert'
+        });
+    };
+
+    const closeConfirmModal = () => {
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+    };
 
     useEffect(() => {
         localStorage.setItem("octabot_view", currentView);
@@ -570,29 +629,82 @@ export const AppProvider = ({ children }) => {
     const addCustomer = async (customer) => {
         if (!supabase) return;
         const newCustomer = { ...customer, id: customer.id || crypto.randomUUID() };
+        // Optimistic: update state immediately so UI reflects the change
         setState(prev => ({ ...prev, customers: [newCustomer, ...prev.customers] }));
         
         try {
-            await supabase.from('customers').insert([newCustomer]);
-            showToast(`Customer '${newCustomer.name}' added successfully.`);
+            const { error } = await supabase.from('customers').insert([newCustomer]);
+            if (error) {
+                console.error("Supabase addCustomer Error:", error);
+                showToast(`فشلت إضافة العميل: ${error.message}`, "error");
+                // Rollback optimistic update
+                setState(prev => ({ ...prev, customers: prev.customers.filter(c => c.id !== newCustomer.id) }));
+                return null;
+            }
+            showToast(`تمت إضافة العميل '${newCustomer.name}' بنجاح.`);
         } catch (e) {
-            console.error("Supabase Error:", e);
+            console.error("Supabase Exception:", e);
+            showToast(`حدث خطأ غير متوقع: ${e.message}`, "error");
+            setState(prev => ({ ...prev, customers: prev.customers.filter(c => c.id !== newCustomer.id) }));
         }
         return newCustomer;
     };
 
     const editCustomer = async (updatedCustomer) => {
         if (!supabase) return;
+        // Optimistic: update state immediately so UI reflects the change
+        const prevCustomers = [...(state.customers || [])];
         setState(prev => ({
             ...prev,
             customers: prev.customers.map(c => c.id === updatedCustomer.id ? updatedCustomer : c)
         }));
         
         try {
-            await supabase.from('customers').update(updatedCustomer).eq('id', updatedCustomer.id);
-            showToast(`Customer '${updatedCustomer.name}' updated successfully.`);
+            const { error } = await supabase.from('customers').update(updatedCustomer).eq('id', updatedCustomer.id);
+            if (error) {
+                console.error("Supabase editCustomer Error:", error);
+                showToast(`فشل تحديث بيانات العميل: ${error.message}`, "error");
+                // Rollback
+                setState(prev => ({ ...prev, customers: prevCustomers }));
+                return;
+            }
+            showToast(`تم تحديث بيانات العميل '${updatedCustomer.name}' بنجاح.`);
         } catch (e) {
-            console.error("Supabase Error:", e);
+            console.error("Supabase Exception:", e);
+            showToast(`حدث خطأ غير متوقع: ${e.message}`, "error");
+            setState(prev => ({ ...prev, customers: prevCustomers }));
+        }
+    };
+
+    const setCustomerSpam = async (customerId, isSpam) => {
+        if (!supabase || !customerId) return false;
+        // Optimistic state update
+        setState(prev => ({
+            ...prev,
+            customers: prev.customers.map(c => c.id === customerId ? { ...c, is_spam: isSpam } : c)
+        }));
+        try {
+            const { error } = await supabase.from('customers').update({ is_spam: isSpam }).eq('id', customerId);
+            if (error) {
+                console.error("setCustomerSpam DB Error:", error);
+                showToast(`فشل تحديث حالة السبام: ${error.message}`, "error");
+                // Rollback
+                setState(prev => ({
+                    ...prev,
+                    customers: prev.customers.map(c => c.id === customerId ? { ...c, is_spam: !isSpam } : c)
+                }));
+                return false;
+            }
+            console.log(`✅ Customer ${customerId} spam flag set to ${isSpam} in DB`);
+            return true;
+        } catch (e) {
+            console.error("setCustomerSpam Exception:", e);
+            showToast(`خطأ غير متوقع: ${e.message}`, "error");
+            setState(prev => ({
+                ...prev,
+                customers: prev.customers.map(c => c.id === customerId ? { ...c, is_spam: !isSpam } : c)
+            }));
+            return false;
         }
     };
 
@@ -743,7 +855,8 @@ export const AppProvider = ({ children }) => {
                         unit: product.unit,
                         image: product.image,
                         created_date: product.createdDate,
-                        description: product.description
+                        description: product.description,
+                        shopify_collection_id: product.shopifyCollectionId || null
                     }]);
                     if (product.variants && product.variants.length > 0) {
                         const vars = product.variants.map(v => ({
@@ -764,7 +877,10 @@ export const AppProvider = ({ children }) => {
                     try {
                         console.log("Syncing to Shopify...");
                         const { data: shopifyData, error: shopifyError } = await supabase.functions.invoke('swift-processor', {
-                            body: product
+                            body: {
+                                ...product,
+                                collection_id: product.shopifyCollectionId || null
+                            }
                         });
                         
                         if (shopifyError) {
@@ -829,7 +945,8 @@ export const AppProvider = ({ children }) => {
                         category: updatedProduct.category,
                         unit: updatedProduct.unit,
                         image: updatedProduct.image,
-                        description: updatedProduct.description
+                        description: updatedProduct.description,
+                        shopify_collection_id: updatedProduct.shopifyCollectionId || null
                     }).eq('id', updatedProduct.id);
 
                     if (updatedProduct.variants) {
@@ -854,7 +971,8 @@ export const AppProvider = ({ children }) => {
                             console.log("Syncing update to Shopify...");
                             const shopifyUpdatePayload = {
                                 ...updatedProduct,
-                                action: 'update'
+                                action: 'update',
+                                collection_id: updatedProduct.shopifyCollectionId || null
                             };
                             const { data: shopifyData, error: shopifyError } = await supabase.functions.invoke('swift-processor', {
                                 body: shopifyUpdatePayload
@@ -1039,7 +1157,11 @@ export const AppProvider = ({ children }) => {
         }
 
         logActivity("order", `New Order ${enrichedOrder.id} registered.`);
-        showToast(`Order ${enrichedOrder.id} recorded.`);
+        showToast(
+            language === 'ar'
+                ? (enrichedOrder.status === 'Pending' ? `تم تسجيل الطلب ${enrichedOrder.id} وهو قيد الانتظار للمراجعة` : `تم تسجيل الطلب ${enrichedOrder.id} بنجاح`)
+                : `Order ${enrichedOrder.id} recorded successfully.`
+        );
 
         if (supabase) {
             (async () => {
@@ -1082,6 +1204,7 @@ export const AppProvider = ({ children }) => {
                             if (vData) {
                                 const newStock = Math.max(0, vData.stock_sulur - item.quantity);
                                 await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', item.variantSku);
+                                syncVariantStockToShopify(item.variantSku);
                                 
                                 await supabase.from('stock_ledger').insert([{
                                     date: order.date,
@@ -1102,7 +1225,7 @@ export const AppProvider = ({ children }) => {
         }
     };
 
-    const updateOrderStatus = (orderId, newStatus) => {
+    const updateOrderStatus = (orderId, newStatus, newAddress = null) => {
         let oldStatus = "";
         let orderTotal = 0;
         let customerId = null;
@@ -1204,7 +1327,19 @@ export const AppProvider = ({ children }) => {
                 ...prev,
                 products,
                 stockLedger: newLedger,
-                orders: prev.orders.map(o => o.id === orderId ? (newStatus === 'Completed' ? { ...o, status: newStatus, deposit: o.totalValue } : { ...o, status: newStatus }) : o)
+                orders: prev.orders.map(o => {
+                    if (o.id === orderId) {
+                        const updatedOrder = { ...o, status: newStatus };
+                        if (newStatus === 'Completed') {
+                            updatedOrder.deposit = o.totalValue;
+                        }
+                        if (newAddress) {
+                            updatedOrder.address = newAddress;
+                        }
+                        return updatedOrder;
+                    }
+                    return o;
+                })
             };
         });
 
@@ -1241,6 +1376,7 @@ export const AppProvider = ({ children }) => {
                                 if (vData) {
                                     const newStock = Math.max(0, vData.stock_sulur - item.quantity);
                                     await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', item.variant_sku);
+                                    syncVariantStockToShopify(item.variant_sku);
                                     
                                     await supabase.from('stock_ledger').insert([{
                                         date: new Date().toISOString().split('T')[0],
@@ -1259,6 +1395,7 @@ export const AppProvider = ({ children }) => {
                                 if (vData) {
                                     const newStock = vData.stock_sulur + item.quantity;
                                     await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', item.variant_sku);
+                                    syncVariantStockToShopify(item.variant_sku);
                                     
                                     await supabase.from('stock_ledger').insert([{
                                         date: new Date().toISOString().split('T')[0],
@@ -1270,6 +1407,10 @@ export const AppProvider = ({ children }) => {
                                         balance_after: newStock
                                     }]);
                                 }
+                            }
+                        } else if (newStatus === 'Cancelled') {
+                            for (const item of items) {
+                                adjustVariantStockOnShopify(item.variant_sku, item.quantity);
                             }
                         }
                     }
@@ -1496,6 +1637,7 @@ export const AppProvider = ({ children }) => {
                                 return currState;
                             });
                             await supabase.from('product_variants').update({ stock_sulur: stockQty }).eq('sku', sku);
+                            syncVariantStockToShopify(sku);
                         }
                     }, 500);
 
@@ -1636,6 +1778,7 @@ export const AppProvider = ({ children }) => {
                     if (vData) {
                         const newStock = Math.max(0, vData.stock_sulur - waste.quantity);
                         await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', waste.variantSku);
+                        syncVariantStockToShopify(waste.variantSku);
                         
                         await supabase.from('wastes').insert([{
                             date: waste.date,
@@ -1741,6 +1884,7 @@ export const AppProvider = ({ children }) => {
                         const amt = parseInt(quantity) || 0;
                         const newStock = Math.max(0, vData.stock_sulur + (type === 'increase' ? amt : -amt));
                         await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', variantSku);
+                        syncVariantStockToShopify(variantSku);
                         
                         await supabase.from('stock_ledger').insert([{
                             date: getLocalDateString(),
@@ -1948,7 +2092,7 @@ export const AppProvider = ({ children }) => {
 
             // The Edge Function has already updated the order address with Bosta tracking code in DB.
             // Now, we update status to 'Completed' locally and in DB, which deducts stock and records WAC.
-            updateOrderStatus(orderId, 'Shipped');
+            updateOrderStatus(orderId, 'Shipped', data.updatedAddress);
             
             showToast(
                 language === 'ar' 
@@ -1962,7 +2106,91 @@ export const AppProvider = ({ children }) => {
             showToast(language === 'ar' ? `خطأ في النظام: ${err.message}` : `System Error: ${err.message}`, "error");
         }
     };
+    const syncShopifyCollections = async () => {
+        if (!supabase) return false;
+        try {
+            const { data, error } = await supabase.functions.invoke('swift-processor', {
+                body: { action: 'fetch_collections' }
+            });
+            if (error || !data || !data.success) {
+                showToast(error ? error.message : (data ? data.error : "Unknown error"), "error");
+                return false;
+            }
 
+            const collectionsList = data.collections || [];
+            
+            // Insert/Upsert collections to local Supabase shopify_collections table
+            for (const col of collectionsList) {
+                await supabase.from('shopify_collections').upsert({
+                    id: col.id,
+                    title: col.title,
+                    handle: col.handle,
+                    updated_at: new Date().toISOString()
+                });
+            }
+
+            // Fetch the updated list from database to ensure state matches DB
+            const { data: dbCollections } = await supabase.from('shopify_collections').select('*');
+            setState(prev => ({
+                ...prev,
+                collections: dbCollections || []
+            }));
+            showToast("تم تحديث المجموعات من شوبيفاي بنجاح", "success");
+            return true;
+        } catch (err) {
+            console.error("Collections sync error:", err);
+            showToast("حدث خطأ أثناء مزامنة المجموعات: " + err.message, "error");
+            return false;
+        }
+    };
+
+    const syncVariantStockToShopify = async (variantSku) => {
+        if (!supabase) return;
+        try {
+            const { data: variant } = await supabase
+                .from('product_variants')
+                .select('shopify_id, stock_sulur')
+                .eq('sku', variantSku)
+                .single();
+
+            if (variant && variant.shopify_id) {
+                console.log(`Syncing stock for SKU ${variantSku} to Shopify: ${variant.stock_sulur}`);
+                await supabase.functions.invoke('swift-processor', {
+                    body: {
+                        action: 'update_stock',
+                        shopify_variant_id: variant.shopify_id,
+                        stock: variant.stock_sulur
+                    }
+                });
+            }
+        } catch (e) {
+            console.error("Failed to sync variant stock to Shopify:", e);
+        }
+    };
+
+    const adjustVariantStockOnShopify = async (variantSku, adjustment) => {
+        if (!supabase) return;
+        try {
+            const { data: variant } = await supabase
+                .from('product_variants')
+                .select('shopify_id')
+                .eq('sku', variantSku)
+                .single();
+
+            if (variant && variant.shopify_id) {
+                console.log(`Adjusting stock for SKU ${variantSku} on Shopify: ${adjustment}`);
+                await supabase.functions.invoke('swift-processor', {
+                    body: {
+                        action: 'adjust_stock',
+                        shopify_variant_id: variant.shopify_id,
+                        adjustment: adjustment
+                    }
+                });
+            }
+        } catch (e) {
+            console.error("Failed to adjust variant stock to Shopify:", e);
+        }
+    };
     return (
         <AppContext.Provider value={{
             state,
@@ -1981,6 +2209,7 @@ export const AppProvider = ({ children }) => {
             authLogout,
             addProduct,
             editProduct,
+            syncShopifyCollections,
             deleteProduct,
             deleteMultipleProducts,
             addOrder,
@@ -1995,6 +2224,7 @@ export const AppProvider = ({ children }) => {
             saveStoreConfig,
             addCustomer,
             editCustomer,
+            setCustomerSpam,
             getOrCreateCustomer,
             addCoupon,
             editCoupon,
@@ -2007,9 +2237,188 @@ export const AppProvider = ({ children }) => {
             setLanguage,
             theme,
             setTheme,
-            t
+            t,
+            showConfirm,
+            showAlert
         }}>
             {children}
+
+            {confirmModal.isOpen && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'rgba(0, 0, 0, 0.65)',
+                    backdropFilter: 'blur(8px)',
+                    WebkitBackdropFilter: 'blur(8px)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    zIndex: 99999,
+                    animation: 'fadeIn 0.2s ease-out'
+                }} onClick={confirmModal.onCancel || closeConfirmModal}>
+                    <div className="glass-card" style={{
+                        width: '420px',
+                        maxWidth: '95%',
+                        background: 'rgba(18, 18, 22, 0.85)',
+                        border: '1px solid var(--glass-border)',
+                        borderRadius: '12px',
+                        boxShadow: '0 20px 50px rgba(0,0,0,0.6)',
+                        padding: '24px',
+                        textAlign: 'center',
+                        animation: 'scaleIn 0.2s cubic-bezier(0.34, 1.56, 0.64, 1)'
+                    }} onClick={(e) => e.stopPropagation()}>
+                        <div style={{
+                            width: '56px',
+                            height: '56px',
+                            borderRadius: '50%',
+                            background: confirmModal.type === 'confirm' ? 'rgba(212, 175, 55, 0.1)' : 'rgba(231, 76, 60, 0.1)',
+                            border: `1px solid ${confirmModal.type === 'confirm' ? 'rgba(212, 175, 55, 0.25)' : 'rgba(231, 76, 60, 0.25)'}`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            margin: '0 auto 16px auto',
+                            fontSize: '24px',
+                            color: confirmModal.type === 'confirm' ? 'var(--gold-primary)' : '#e74c3c'
+                        }}>
+                            {confirmModal.type === 'confirm' ? (
+                                <i className="fa-solid fa-circle-question"></i>
+                            ) : (
+                                <i className="fa-solid fa-circle-exclamation"></i>
+                            )}
+                        </div>
+                        <h3 style={{
+                            fontSize: '18px',
+                            fontWeight: 'bold',
+                            color: 'var(--text-primary)',
+                            marginBottom: '12px'
+                        }}>
+                            {confirmModal.title}
+                        </h3>
+                        <p style={{
+                            fontSize: '14px',
+                            color: 'var(--text-secondary)',
+                            lineHeight: '1.6',
+                            marginBottom: '24px',
+                            whiteSpace: 'pre-line'
+                        }}>
+                            {confirmModal.message}
+                        </p>
+                        {confirmModal.showSpamToggle && (
+                            <div 
+                                onClick={() => toggleSpamFlag(!confirmSpamToggle)}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '12px',
+                                    marginTop: '-12px',
+                                    marginBottom: '20px',
+                                    background: confirmSpamToggle ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.05)',
+                                    border: confirmSpamToggle ? '1px solid rgba(239, 68, 68, 0.5)' : '1px solid rgba(239, 68, 68, 0.15)',
+                                    padding: '12px 16px',
+                                    borderRadius: '10px',
+                                    cursor: 'pointer',
+                                    userSelect: 'none',
+                                    transition: 'all 0.25s ease'
+                                }}
+                            >
+                                {/* Toggle Switch */}
+                                <div style={{
+                                    width: '44px',
+                                    height: '24px',
+                                    borderRadius: '12px',
+                                    background: confirmSpamToggle 
+                                        ? 'linear-gradient(135deg, #ef4444, #dc2626)' 
+                                        : 'rgba(255,255,255,0.1)',
+                                    border: confirmSpamToggle ? 'none' : '1px solid rgba(255,255,255,0.2)',
+                                    position: 'relative',
+                                    transition: 'all 0.25s ease',
+                                    flexShrink: 0,
+                                    boxShadow: confirmSpamToggle ? '0 0 12px rgba(239, 68, 68, 0.4)' : 'none'
+                                }}>
+                                    <div style={{
+                                        width: '18px',
+                                        height: '18px',
+                                        borderRadius: '50%',
+                                        background: '#fff',
+                                        position: 'absolute',
+                                        top: '3px',
+                                        left: confirmSpamToggle ? '23px' : '3px',
+                                        transition: 'left 0.25s ease',
+                                        boxShadow: '0 1px 3px rgba(0,0,0,0.3)'
+                                    }} />
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                    <i className="fa-solid fa-ban" style={{ 
+                                        fontSize: '14px', 
+                                        color: confirmSpamToggle ? '#ef4444' : 'var(--text-muted)',
+                                        transition: 'color 0.25s ease'
+                                    }} />
+                                    <span style={{ 
+                                        fontSize: '13px', 
+                                        color: confirmSpamToggle ? '#ef4444' : 'var(--text-secondary)', 
+                                        fontWeight: 600,
+                                        transition: 'color 0.25s ease'
+                                    }}>
+                                        تعيين كعميل مزعج (سبام)
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+                        <div style={{
+                            display: 'flex',
+                            gap: '12px',
+                            justifyContent: 'center'
+                        }}>
+                            {confirmModal.type === 'confirm' && (
+                                <button 
+                                    className="btn btn-secondary"
+                                    onClick={confirmModal.onCancel || closeConfirmModal}
+                                    style={{
+                                        padding: '8px 24px',
+                                        fontSize: '13px',
+                                        borderRadius: '6px',
+                                        background: 'var(--glass-bg)',
+                                        border: '1px solid var(--glass-border)',
+                                        color: 'var(--text-primary)',
+                                        cursor: 'pointer',
+                                        minWidth: '100px'
+                                    }}
+                                >
+                                    {language === 'ar' ? 'إلغاء' : 'Cancel'}
+                                </button>
+                            )}
+                            <button 
+                                className="btn"
+                                onClick={() => {
+                                    if (confirmModal.onConfirm) {
+                                        confirmModal.onConfirm(confirmSpamToggleRef.current);
+                                    } else {
+                                        closeConfirmModal();
+                                    }
+                                }}
+                                style={{
+                                    padding: '8px 24px',
+                                    fontSize: '13px',
+                                    borderRadius: '6px',
+                                    background: confirmModal.type === 'confirm' ? 'var(--gold-gradient)' : 'linear-gradient(135deg, #e74c3c, #c0392b)',
+                                    color: confirmModal.type === 'confirm' ? '#000' : '#fff',
+                                    border: 'none',
+                                    fontWeight: 'bold',
+                                    cursor: 'pointer',
+                                    minWidth: '100px',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                                }}
+                            >
+                                {language === 'ar' ? 'موافق' : 'OK'}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </AppContext.Provider>
     );
 };

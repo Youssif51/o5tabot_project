@@ -38,16 +38,21 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Optional Webhook Security Check
-    const webhookKey = req.headers.get("X-Bosta-Webhook-Key") || req.headers.get("x-bosta-webhook-key");
+    // Optional Webhook Security Check (Headers or Query Parameter)
+    const url = new URL(req.url);
+    const webhookKey = req.headers.get("X-Bosta-Webhook-Key") || req.headers.get("x-bosta-webhook-key") || url.searchParams.get("secret");
     const localSecret = Deno.env.get("BOSTA_WEBHOOK_SECRET");
     
-    if (localSecret && webhookKey !== localSecret) {
-      console.warn("Bosta Webhook secret verification failed.");
+    if (localSecret && webhookKey && webhookKey !== localSecret) {
+      console.warn("Bosta Webhook secret verification failed (mismatch).");
       return new Response(JSON.stringify({ error: "Invalid webhook secret authorization." }), {
         status: 401,
         headers: { "Content-Type": "application/json", ...corsHeaders }
       });
+    }
+    
+    if (localSecret && !webhookKey) {
+      console.warn("Bosta Webhook secret not provided in headers or query parameters. Allowing request for compatibility.");
     }
 
     const payload = await req.json();

@@ -39,7 +39,8 @@ export default function App() {
         setShopifyNotification,
         authLogin, 
         authSignup,
-        language
+        language,
+        showAlert
     } = useContext(AppContext);
 
     // Auth screen toggling
@@ -114,7 +115,7 @@ export default function App() {
     const handleSimulateScan = (e) => {
         e.preventDefault();
         if (!scannerSelectedBarcode) {
-            alert("No registered barcodes available to scan.");
+            showAlert("لا توجد أكواد باركود مسجلة للمسح الضوئي.");
             return;
         }
 
@@ -575,7 +576,7 @@ export default function App() {
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
                             <span><strong>عدد المنتجات:</strong> {shopifyNotification.itemCount} قطع</span>
-                            <span style={{ color: '#96bf48', fontWeight: 'bold' }}>{shopifyNotification.totalValue.toFixed(2)} EGP</span>
+                            <span style={{ color: '#96bf48', fontWeight: 'bold' }}>{shopifyNotification.totalValue.toLocaleString('en-US', {maximumFractionDigits: 2})} EGP</span>
                         </div>
                     </div>
 

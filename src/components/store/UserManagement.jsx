@@ -12,7 +12,7 @@ const PERMISSIONS_LIST = [
 ];
 
 export default function UserManagement() {
-    const { state, authSignup, toggleUserStatus, deleteUser, updateUserPermissions, t } = useContext(AppContext);
+    const { state, authSignup, toggleUserStatus, deleteUser, updateUserPermissions, t, showConfirm } = useContext(AppContext);
     
     if (!state.currentUser || !['Admin', 'SuperAdmin'].includes(state.currentUser.role)) {
         return null;
@@ -66,15 +66,15 @@ export default function UserManagement() {
     };
 
     const handleToggleStatus = async (id, currentStatus) => {
-        if(window.confirm(`هل أنت متأكد من ${currentStatus ? 'إيقاف' : 'تفعيل'} هذا الحساب؟`)) {
+        showConfirm(`هل أنت متأكد من ${currentStatus ? 'إيقاف' : 'تفعيل'} هذا الحساب؟`, async () => {
             await toggleUserStatus(id, !currentStatus);
-        }
+        });
     };
 
     const handleDelete = async (id) => {
-        if(window.confirm('هل أنت متأكد من حذف هذا الحساب نهائياً؟ لا يمكن التراجع عن هذا الإجراء.')) {
+        showConfirm('هل أنت متأكد من حذف هذا الحساب نهائياً؟ لا يمكن التراجع عن هذا الإجراء.', async () => {
             await deleteUser(id);
-        }
+        });
     };
 
     const usersList = (state.users || []).filter(u => {

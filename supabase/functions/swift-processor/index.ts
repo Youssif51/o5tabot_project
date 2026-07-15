@@ -84,7 +84,211 @@ Deno.serve(async (req) => {
 
     // 2. استقبال البيانات القادمة من الفرونت اند
     const body = await req.json();
-    const { action, shopify_id, name, variants, images, vendor, tags, category, description, status } = body;
+    const { action, shopify_id, name, variants, images, vendor, tags, category, description, status, collection_id } = body;
+
+    // معالجة جلب المجموعات (Fetch Collections)
+    if (action === 'fetch_collections') {
+      try {
+        const customRes = await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/custom_collections.json`, {
+          method: "GET",
+          headers: { "X-Shopify-Access-Token": accessToken }
+        });
+        const smartRes = await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/smart_collections.json`, {
+          method: "GET",
+          headers: { "X-Shopify-Access-Token": accessToken }
+        });
+
+        const customData = customRes.ok ? await customRes.json() : { custom_collections: [] };
+        const smartData = smartRes.ok ? await smartRes.json() : { smart_collections: [] };
+
+        const collections = [
+          ...(customData.custom_collections || []).map((c: any) => ({ id: String(c.id), title: c.title, handle: c.handle, type: 'custom' })),
+          ...(smartData.smart_collections || []).map((c: any) => ({ id: String(c.id), title: c.title, handle: c.handle, type: 'smart' }))
+        ];
+
+        return new Response(JSON.stringify({ success: true, collections }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "فشل جلب المجموعات من شوبيفاي", details: err.message }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+    }
+
+    // معالجة تحديث المخزون فقط (Update Stock Only)
+    if (action === 'update_stock') {
+      const { shopify_variant_id, stock } = body;
+      if (!shopify_variant_id) {
+        return new Response(JSON.stringify({ error: "Missing shopify_variant_id" }), {
+          status: 400,
+          headers: corsHeaders
+        });
+      }
+      try {
+        const variantRes = await fetch(
+          `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/variants/${shopify_variant_id}.json`,
+          {
+            method: "GET",
+            headers: { "X-Shopify-Access-Token": accessToken }
+          }
+        );
+        if (!variantRes.ok) {
+          const err = await variantRes.json();
+          return new Response(JSON.stringify({ error: "Failed to fetch variant details from Shopify", details: err }), {
+            status: 400,
+            headers: corsHeaders
+          });
+        }
+        const variantData = await variantRes.json();
+        const inventoryItemId = variantData?.variant?.inventory_item_id;
+
+        if (!inventoryItemId) {
+          return new Response(JSON.stringify({ error: "No inventory_item_id found for variant" }), {
+            status: 400,
+            headers: corsHeaders
+          });
+        }
+
+        const locationRes = await fetch(
+          `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/locations.json`,
+          {
+            method: "GET",
+            headers: { "X-Shopify-Access-Token": accessToken }
+          }
+        );
+        const locationData = await locationRes.json();
+        const primaryLocationId = locationData?.locations?.[0]?.id;
+
+        if (!primaryLocationId) {
+          return new Response(JSON.stringify({ error: "No primary location found on Shopify" }), {
+            status: 400,
+            headers: corsHeaders
+          });
+        }
+
+        const inventoryRes = await fetch(
+          `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/inventory_levels/set.json`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shopify-Access-Token": accessToken
+            },
+            body: JSON.stringify({
+              location_id: primaryLocationId,
+              inventory_item_id: inventoryItemId,
+              available: parseInt(stock)
+            })
+          }
+        );
+        const invData = await inventoryRes.json();
+        if (!inventoryRes.ok) {
+          return new Response(JSON.stringify({ error: "Failed to set inventory level on Shopify", details: invData }), {
+            status: 400,
+            headers: corsHeaders
+          });
+        }
+
+        return new Response(JSON.stringify({ success: true, message: "Stock updated successfully on Shopify" }), {
+          status: 200,
+          headers: corsHeaders
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "Error updating stock on Shopify", details: err.message }), {
+          status: 500,
+          headers: corsHeaders
+        });
+      }
+    }
+ 
+    // معالجة تعديل المخزون نسبياً (Adjust Stock relatively)
+    if (action === 'adjust_stock') {
+      const { shopify_variant_id, adjustment } = body;
+      if (!shopify_variant_id) {
+        return new Response(JSON.stringify({ error: "Missing shopify_variant_id" }), {
+          status: 400,
+          headers: corsHeaders
+        });
+      }
+      try {
+        const variantRes = await fetch(
+          `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/variants/${shopify_variant_id}.json`,
+          {
+            method: "GET",
+            headers: { "X-Shopify-Access-Token": accessToken }
+          }
+        );
+        if (!variantRes.ok) {
+          const err = await variantRes.json();
+          return new Response(JSON.stringify({ error: "Failed to fetch variant details from Shopify", details: err }), {
+            status: 400,
+            headers: corsHeaders
+          });
+        }
+        const variantData = await variantRes.json();
+        const inventoryItemId = variantData?.variant?.inventory_item_id;
+ 
+        if (!inventoryItemId) {
+          return new Response(JSON.stringify({ error: "No inventory_item_id found for variant" }), {
+            status: 400,
+            headers: corsHeaders
+          });
+        }
+ 
+        const locationRes = await fetch(
+          `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/locations.json`,
+          {
+            method: "GET",
+            headers: { "X-Shopify-Access-Token": accessToken }
+          }
+        );
+        const locationData = await locationRes.json();
+        const primaryLocationId = locationData?.locations?.[0]?.id;
+ 
+        if (!primaryLocationId) {
+          return new Response(JSON.stringify({ error: "No primary location found on Shopify" }), {
+            status: 400,
+            headers: corsHeaders
+          });
+        }
+ 
+        const inventoryRes = await fetch(
+          `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/inventory_levels/adjust.json`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shopify-Access-Token": accessToken
+            },
+            body: JSON.stringify({
+              location_id: primaryLocationId,
+              inventory_item_id: inventoryItemId,
+              available_adjustment: parseInt(adjustment)
+            })
+          }
+        );
+        const invData = await inventoryRes.json();
+        if (!inventoryRes.ok) {
+          return new Response(JSON.stringify({ error: "Failed to adjust inventory level on Shopify", details: invData }), {
+            status: 400,
+            headers: corsHeaders
+          });
+        }
+ 
+        return new Response(JSON.stringify({ success: true, message: "Stock adjusted successfully on Shopify" }), {
+          status: 200,
+          headers: corsHeaders
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "Error adjusting stock on Shopify", details: err.message }), {
+          status: 500,
+          headers: corsHeaders
+        });
+      }
+    }
 
     // معالجة الحذف (Delete)
     if (action === 'delete' && shopify_id) {
@@ -238,6 +442,63 @@ Deno.serve(async (req) => {
     } catch (stockError) {
       console.error("خطأ أثناء مزامنة المخزون:", stockError);
       inventoryWarnings.push("حدث خطأ أثناء مزامنة المخزون: " + stockError.message);
+    }
+
+    // ==========================================
+    // 5.3 ربط المنتج بالمجموعة (Collection Sync)
+    // ==========================================
+    const shopify_product_id = shopifyData?.product?.id;
+    if (shopify_product_id && (action === 'update' || collection_id)) {
+      try {
+        // جلب الروابط الحالية للمنتج وحذفها لتجنب التكرار
+        const checkCollectsRes = await fetch(
+          `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/collects.json?product_id=${shopify_product_id}`,
+          {
+            method: "GET",
+            headers: { "X-Shopify-Access-Token": accessToken }
+          }
+        );
+        if (checkCollectsRes.ok) {
+          const collectsData = await checkCollectsRes.json();
+          const collects = collectsData.collects || [];
+          for (const col of collects) {
+            await fetch(
+              `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/collects/${col.id}.json`,
+              {
+                method: "DELETE",
+                headers: { "X-Shopify-Access-Token": accessToken }
+              }
+            );
+          }
+        }
+
+        // إذا تم تحديد مجموعة جديدة، نربط المنتج بها
+        if (collection_id) {
+          const createCollectRes = await fetch(
+            `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/collects.json`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Shopify-Access-Token": accessToken
+              },
+              body: JSON.stringify({
+                collect: {
+                  product_id: shopify_product_id,
+                  collection_id: parseInt(collection_id)
+                }
+              })
+            }
+          );
+          if (!createCollectRes.ok) {
+            const errData = await createCollectRes.json();
+            inventoryWarnings.push(`Failed to link product to collection: ${JSON.stringify(errData)}`);
+          }
+        }
+      } catch (colErr: any) {
+        console.error("خطأ أثناء مزامنة المجموعة:", colErr);
+        inventoryWarnings.push("حدث خطأ أثناء ربط المنتج بالمجموعة: " + colErr.message);
+      }
     }
 
     // 6. الرد بالنجاح وإرجاع البيانات

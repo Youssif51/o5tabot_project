@@ -10,7 +10,7 @@ export default function InventoryList({
     onOpenEditProduct,
     onOpenScanner 
 }) {
-    const { state, showToast, t, deleteProduct } = useContext(AppContext);
+    const { state, showToast, t, deleteProduct, showConfirm } = useContext(AppContext);
     
     // View mode: 'list' or 'inspect'
     const [viewMode, setViewMode] = useState('list');
@@ -23,6 +23,7 @@ export default function InventoryList({
     const [showFilters, setShowFilters] = useState(false);
     const [categoryFilter, setCategoryFilter] = useState('all');
     const [warehouseFilter, setWarehouseFilter] = useState('all');
+    const [stockFilter, setStockFilter] = useState('all'); // 'all', 'low'
     // Using globalSearch instead of local searchVal
 
     // Pagination
@@ -39,6 +40,17 @@ export default function InventoryList({
     let filteredList = [];
     state.products.forEach(prod => {
         if (categoryFilter !== 'all' && prod.category !== categoryFilter) return;
+
+        let hasLow = false;
+        let hasOut = false;
+        prod.variants.forEach(vr => {
+            const qty = Number(vr.stock?.Sulur || 0);
+            const limit = vr.reorderLimit !== undefined && vr.reorderLimit !== null && vr.reorderLimit !== "" ? Number(vr.reorderLimit) : 5;
+            if (qty === 0) hasOut = true;
+            else if (qty <= limit) hasLow = true;
+        });
+
+        if (stockFilter === 'low' && !hasLow && !hasOut) return;
 
         const query = activeSearch.toLowerCase();
         const nameMatches = (prod.name || '').toLowerCase().includes(query);
@@ -102,10 +114,11 @@ export default function InventoryList({
     let outOfStockCount = 0;
     state.products.forEach(p => {
         p.variants.forEach(v => {
-            const qty = (v.stock.Sulur || 0);
+            const qty = Number(v.stock?.Sulur || 0);
+            const limit = v.reorderLimit !== undefined && v.reorderLimit !== null && v.reorderLimit !== "" ? Number(v.reorderLimit) : 5;
             if (qty === 0) {
                 outOfStockCount++;
-            } else if (qty <= v.reorderLimit) {
+            } else if (qty <= limit) {
                 lowStocksCount++;
             }
         });
@@ -182,7 +195,7 @@ export default function InventoryList({
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '20px' }}>
                             <div className="metric-value">{totalProductsCount}</div>
                             <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                                {currency}{totalInvValue.toFixed(0)} <span style={{ color: 'var(--text-muted)' }}>{t('revenue')}</span>
+                                {currency} {totalInvValue.toLocaleString('en-US', {maximumFractionDigits: 0})} <span style={{ color: 'var(--text-muted)' }}>{t('revenue')}</span>
                             </div>
                         </div>
                         <div className="metric-change" style={{ color: 'var(--text-muted)' }}>Last 7 days</div>
@@ -197,7 +210,7 @@ export default function InventoryList({
                         <div style={{ display: 'flex', alignItems: 'baseline', gap: '20px' }}>
                             <div className="metric-value">{topSellingCount}</div>
                             <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                                {currency}{topSellingCost.toFixed(0)} <span style={{ color: 'var(--text-muted)' }}>{t('cost')}</span>
+                                {currency} {topSellingCost.toLocaleString('en-US', {maximumFractionDigits: 0})} <span style={{ color: 'var(--text-muted)' }}>{t('cost')}</span>
                             </div>
                         </div>
                         <div className="metric-change" style={{ color: 'var(--text-muted)' }}>Last 7 days</div>
@@ -205,7 +218,11 @@ export default function InventoryList({
                 </div>
 
                 {/* Low Stocks */}
-                <div className="glass-card metric-card">
+                <div 
+                    className="glass-card metric-card" 
+                    onClick={() => { setStockFilter(stockFilter === 'low' ? 'all' : 'low'); setCurrentPage(1); }}
+                    style={{ cursor: 'pointer', border: stockFilter === 'low' ? '1px solid var(--color-danger)' : '1px solid transparent', transition: 'border 0.3s ease' }}
+                >
                     <div className="metric-glow-decor"></div>
                     <div className="metric-info">
                         <h3 style={{ color: 'var(--color-danger)' }}>{t('lowStocks')}</h3>
@@ -349,10 +366,20 @@ export default function InventoryList({
                                         // Availability status
                                         let statusText = t('inStock');
                                         let badgeClass = "badge-success";
-                                        if (totalQty === 0) {
+                                        let hasOutOfStock = false;
+                                        let hasLowStock = false;
+
+                                        prod.variants.forEach(vr => {
+                                            const qty = Number(vr.stock?.Sulur || 0);
+                                            const limit = vr.reorderLimit !== undefined && vr.reorderLimit !== null && vr.reorderLimit !== "" ? Number(vr.reorderLimit) : 5;
+                                            if (qty === 0) hasOutOfStock = true;
+                                            else if (qty <= limit) hasLowStock = true;
+                                        });
+
+                                        if (hasOutOfStock) {
                                             statusText = t('outOfStock');
                                             badgeClass = "badge-danger";
-                                        } else if (totalQty <= threshold) {
+                                        } else if (hasLowStock) {
                                             statusText = t('lowStock');
                                             badgeClass = "badge-warning";
                                         }
@@ -370,7 +397,7 @@ export default function InventoryList({
                                                         {prod.category}
                                                     </div>
                                                 </td>
-                                                 <td style={{ fontWeight: 600 }}>{currency}{buyingPrice.toFixed(2)}</td>
+                                                 <td style={{ fontWeight: 600 }}>{currency} {buyingPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                  <td>{totalQty} {t('packets')}</td>
                                                  <td>{threshold} {t('packets')}</td>
                                                  <td>{prod.createdDate || "2026-06-30"}</td>
@@ -408,9 +435,9 @@ export default function InventoryList({
                                                             title="Delete Product"
                                                             style={{ color: 'var(--color-danger)' }}
                                                             onClick={() => {
-                                                                if (window.confirm('هل أنت متأكد من مسح هذا المنتج من المتجر ومن شوبيفاي؟')) {
+                                                                showConfirm('هل أنت متأكد من مسح هذا المنتج من المتجر ومن شوبيفاي؟', () => {
                                                                     deleteProduct(prod.id);
-                                                                }
+                                                                });
                                                             }}
                                                         >
                                                             <i className="fa-solid fa-trash"></i>

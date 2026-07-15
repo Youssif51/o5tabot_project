@@ -1,6 +1,7 @@
 import React, { useContext, useState } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
+import Modal from '../common/Modal';
 
 export default function ReportsView() {
     const { state, t } = useContext(AppContext);
@@ -8,6 +9,8 @@ export default function ReportsView() {
 
     // Interactive Chart State
     const [hoveredMonthIdx, setHoveredMonthIdx] = useState(5); // Default to today (index 5)
+    const [isCatModalOpen, setIsCatModalOpen] = useState(false);
+    const [isProdModalOpen, setIsProdModalOpen] = useState(false);
 
     // Calculate last 6 days
     const getDays = () => {
@@ -74,7 +77,7 @@ export default function ReportsView() {
             profY,
             revenue: d.revenue,
             profit: d.profit,
-            display: d.revenue.toLocaleString()
+            display: d.revenue.toLocaleString('en-US')
         };
     });
 
@@ -169,15 +172,15 @@ export default function ReportsView() {
                     {/* Row 1 Metrics */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '28px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '20px' }}>
                         <div>
-                            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>{currency}{netProfit.toLocaleString(undefined, {maximumFractionDigits:0})}</div>
+                            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>{currency} {netProfit.toLocaleString('en-US', {maximumFractionDigits:0})}</div>
                             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>{t('totalProfit')}</div>
                         </div>
                         <div>
-                            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--gold-primary)' }}>{currency}{(totalSalesVal * 0.85).toLocaleString(undefined, {maximumFractionDigits:0})}</div>
+                            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--gold-primary)' }}>{currency} {(totalSalesVal * 0.85).toLocaleString('en-US', {maximumFractionDigits:0})}</div>
                             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>{t('revenue')}</div>
                         </div>
                         <div>
-                            <div style={{ fontSize: '20px', fontWeight: 700, color: '#a084dc' }}>{currency}{totalSalesVal.toLocaleString(undefined, {maximumFractionDigits:0})}</div>
+                            <div style={{ fontSize: '20px', fontWeight: 700, color: '#a084dc' }}>{currency} {totalSalesVal.toLocaleString('en-US', {maximumFractionDigits:0})}</div>
                             <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>{t('sales')}</div>
                         </div>
                     </div>
@@ -185,19 +188,19 @@ export default function ReportsView() {
                     {/* Row 2 Metrics */}
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '14px', fontSize: '13px' }}>
                         <div>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency}{totalPurchaseVal.toLocaleString(undefined, {maximumFractionDigits:0})}</div>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency} {totalPurchaseVal.toLocaleString('en-US', {maximumFractionDigits:0})}</div>
                             <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{t('purchaseValue')}</div>
                         </div>
                         <div>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency}{totalSalesVal.toLocaleString(undefined, {maximumFractionDigits:0})}</div>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency} {totalSalesVal.toLocaleString('en-US', {maximumFractionDigits:0})}</div>
                             <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{t('salesValue')}</div>
                         </div>
                         <div>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency}{(netProfit * 0.15).toLocaleString(undefined, {maximumFractionDigits:0})}</div>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency} {(netProfit * 0.15).toLocaleString('en-US', {maximumFractionDigits:0})}</div>
                             <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{t('momProfit')}</div>
                         </div>
                         <div>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency}{(netProfit * 1.8).toLocaleString(undefined, {maximumFractionDigits:0})}</div>
+                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency} {(netProfit * 1.8).toLocaleString('en-US', {maximumFractionDigits:0})}</div>
                             <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{t('yoyProfit')}</div>
                         </div>
                     </div>
@@ -207,7 +210,7 @@ export default function ReportsView() {
                 <div className="glass-card" style={{ padding: '24px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <h3 style={{ fontSize: '16px', color: 'var(--text-primary)' }}>{t('bestSellingCategory')}</h3>
-                        <a href="#" onClick={(e) => e.preventDefault()} style={{ fontSize: '12px', color: 'var(--gold-primary)', fontWeight: 600 }}>{t('seeAll')}</a>
+                        <a href="#" onClick={(e) => { e.preventDefault(); setIsCatModalOpen(true); }} style={{ fontSize: '12px', color: 'var(--gold-primary)', fontWeight: 600 }}>{t('seeAll')}</a>
                     </div>
                     <div className="table-wrapper">
                         <table className="custom-table" style={{ fontSize: '12px' }}>
@@ -222,7 +225,7 @@ export default function ReportsView() {
                                 {bestCategories.slice(0, 3).map((cat, idx) => (
                                     <tr key={`best-cat-${idx}`}>
                                         <td style={{ fontWeight: 500 }}>{cat.name}</td>
-                                        <td>{currency}{cat.turnover.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+                                        <td>{currency} {cat.turnover.toLocaleString('en-US', {maximumFractionDigits:0})}</td>
                                         <td style={{ textAlign: 'right', color: 'var(--color-success)', fontWeight: 600 }}>{cat.increase}</td>
                                     </tr>
                                 ))}
@@ -252,10 +255,10 @@ export default function ReportsView() {
                         <line x1="50" y1="220" x2="950" y2="220" className="grid-line" strokeWidth="1.5" />
 
                         {/* Y-Axis scale text */}
-                        <text x="15" y="45" fill="var(--text-muted)" fontSize="11">{(scaleMax * 1.0).toLocaleString(undefined, {maximumFractionDigits:0})}</text>
-                        <text x="15" y="105" fill="var(--text-muted)" fontSize="11">{(scaleMax * 0.75).toLocaleString(undefined, {maximumFractionDigits:0})}</text>
-                        <text x="15" y="165" fill="var(--text-muted)" fontSize="11">{(scaleMax * 0.5).toLocaleString(undefined, {maximumFractionDigits:0})}</text>
-                        <text x="15" y="225" fill="var(--text-muted)" fontSize="11">{(scaleMax * 0.25).toLocaleString(undefined, {maximumFractionDigits:0})}</text>
+                        <text x="15" y="45" fill="var(--text-muted)" fontSize="11">{(scaleMax * 1.0).toLocaleString('en-US', {maximumFractionDigits:0})}</text>
+                        <text x="15" y="105" fill="var(--text-muted)" fontSize="11">{(scaleMax * 0.75).toLocaleString('en-US', {maximumFractionDigits:0})}</text>
+                        <text x="15" y="165" fill="var(--text-muted)" fontSize="11">{(scaleMax * 0.5).toLocaleString('en-US', {maximumFractionDigits:0})}</text>
+                        <text x="15" y="225" fill="var(--text-muted)" fontSize="11">{(scaleMax * 0.25).toLocaleString('en-US', {maximumFractionDigits:0})}</text>
 
                         {/* Chart Line 1: Revenue (Blue line/curve) */}
                         <path 
@@ -367,11 +370,11 @@ export default function ReportsView() {
                             <div style={{ color: 'var(--gold-primary)', fontSize: '11px', fontWeight: 600 }}>{hoveredData.name}</div>
                             <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between', marginTop: '4px', fontSize: '11px' }}>
                                 <span style={{ color: 'rgba(46, 122, 243, 0.85)' }}>{t('revenue')}:</span>
-                                <strong style={{ color: 'var(--text-primary)' }}>{currency}{hoveredData.revenue.toLocaleString()}</strong>
+                                <strong style={{ color: 'var(--text-primary)' }}>{currency} {hoveredData.revenue.toLocaleString('en-US')}</strong>
                             </div>
                             <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between', fontSize: '11px' }}>
                                 <span style={{ color: 'var(--gold-primary)' }}>{t('profit')}:</span>
-                                <strong style={{ color: 'var(--text-primary)' }}>{currency}{hoveredData.profit.toLocaleString()}</strong>
+                                <strong style={{ color: 'var(--text-primary)' }}>{currency} {hoveredData.profit.toLocaleString('en-US')}</strong>
                             </div>
                         </div>
                     )}
@@ -394,10 +397,10 @@ export default function ReportsView() {
             <div className="glass-card" style={{ padding: '24px', overflow: 'hidden' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                     <h3 style={{ fontSize: '16px', color: 'var(--text-primary)' }}>{t('bestSellingProduct')}</h3>
-                    <a href="#" onClick={(e) => e.preventDefault()} style={{ fontSize: '12px', color: 'var(--gold-primary)', fontWeight: 600 }}>{t('seeAll')}</a>
+                    <a href="#" onClick={(e) => { e.preventDefault(); setIsProdModalOpen(true); }} style={{ fontSize: '12px', color: 'var(--gold-primary)', fontWeight: 600 }}>{t('seeAll')}</a>
                 </div>
-                <div className="table-wrapper">
-                    <table className="custom-table" style={{ fontSize: '13px' }}>
+                <div className="table-wrapper" style={{ overflowX: 'auto' }}>
+                    <table className="custom-table" style={{ fontSize: '13px', whiteSpace: 'nowrap', textAlign: 'right' }}>
                         <thead>
                             <tr>
                                 <th>{t('products')}</th>
@@ -416,7 +419,7 @@ export default function ReportsView() {
                                     <td style={{ fontFamily: 'monospace' }}>{p.id}</td>
                                     <td>{p.category}</td>
                                     <td>{p.qty}</td>
-                                    <td style={{ fontWeight: 600 }}>{currency}{p.turnover.toLocaleString(undefined, {maximumFractionDigits:0})}</td>
+                                    <td style={{ fontWeight: 600 }}>{currency} {p.turnover.toLocaleString('en-US', {maximumFractionDigits:0})}</td>
                                     <td><span className="badge badge-success">{p.margin}</span></td>
                                     <td style={{ color: 'var(--color-success)', fontWeight: 600 }}>{p.increase}</td>
                                 </tr>
@@ -425,7 +428,60 @@ export default function ReportsView() {
                     </table>
                 </div>
             </div>
+            {/* Modals for See All */}
+            <Modal isOpen={isCatModalOpen} onClose={() => setIsCatModalOpen(false)} title={t('bestSellingCategory')} width="600px">
+                <div className="table-wrapper" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                    <table className="custom-table" style={{ fontSize: '12px' }}>
+                        <thead>
+                            <tr>
+                                <th>{t('categories')}</th>
+                                <th>{t('turnover')}</th>
+                                <th style={{ textAlign: 'right' }}>{t('increase')}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {bestCategories.slice(0, 15).map((cat, idx) => (
+                                <tr key={`modal-cat-${idx}`}>
+                                    <td style={{ fontWeight: 500 }}>{cat.name}</td>
+                                    <td>{currency} {cat.turnover.toLocaleString('en-US', {maximumFractionDigits:0})}</td>
+                                    <td style={{ textAlign: 'right', color: 'var(--color-success)', fontWeight: 600 }}>{cat.increase}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </Modal>
 
+            <Modal isOpen={isProdModalOpen} onClose={() => setIsProdModalOpen(false)} title={t('bestSellingProduct')} width="1000px">
+                <div className="table-wrapper" style={{ maxHeight: '60vh', overflowY: 'auto', overflowX: 'auto' }}>
+                    <table className="custom-table" style={{ fontSize: '13px', whiteSpace: 'nowrap', textAlign: 'right' }}>
+                        <thead>
+                            <tr>
+                                <th>{t('products')}</th>
+                                <th>{t('productId')}</th>
+                                <th>{t('categories')}</th>
+                                <th>{t('quantityInHand')}</th>
+                                <th>{t('turnover')}</th>
+                                <th>{t('margin')}</th>
+                                <th>{t('increase')}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {displayProducts.slice(0, 15).map((p, idx) => (
+                                <tr key={`modal-prod-${idx}`}>
+                                    <td style={{ fontWeight: 600, color: 'var(--gold-primary)' }}>{p.name}</td>
+                                    <td style={{ fontFamily: 'monospace' }}>{p.id}</td>
+                                    <td>{p.category}</td>
+                                    <td>{p.qty}</td>
+                                    <td style={{ fontWeight: 600 }}>{currency} {p.turnover.toLocaleString('en-US', {maximumFractionDigits:0})}</td>
+                                    <td><span className="badge badge-success">{p.margin}</span></td>
+                                    <td style={{ color: 'var(--color-success)', fontWeight: 600 }}>{p.increase}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </Modal>
         </div>
     );
 }

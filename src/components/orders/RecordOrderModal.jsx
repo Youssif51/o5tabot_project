@@ -422,7 +422,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
             price: item.price * (1 - (item.discountPercent || 0) / 100)
         }));
 
-        const finalStatus = isDraftSave ? 'Draft' : 'Completed'; // Draft = مسودة, Completed = مؤكد/مكتمل
+        const finalStatus = isDraftSave ? 'Draft' : (state.currentUser?.role === 'Staff' ? 'Pending' : 'Completed'); // Draft = مسودة, Pending = قيد المراجعة, Completed = مؤكد/مكتمل
 
         
         // Ensure we have a valid customer_id in DB
@@ -597,6 +597,18 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         maxLength={11}
                                         required 
                                     />
+                                    {(() => {
+                                        const cust = state.customers.find(c => phone && c.phone === phone);
+                                        if (cust && cust.is_spam) {
+                                            return (
+                                                <div className="glass-card" style={{ fontSize: '11px', color: 'var(--color-danger)', border: '1px solid rgba(239, 68, 68, 0.4)', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '6px 12px', borderRadius: '8px', marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <i className="fa-solid fa-triangle-exclamation animate-pulse"></i>
+                                                    <strong>تنبيه: هذا العميل مسجل في قائمة المزعجين!</strong>
+                                                </div>
+                                            );
+                                        }
+                                        return null;
+                                    })()}
                                     {phone && phone.length < 11 && (
                                         <div style={{ fontSize: '10px', color: 'var(--color-warning)', marginTop: '4px' }}>
                                             يجب إدخال 11 رقماً (المتبقي: {11 - phone.length})
@@ -613,7 +625,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     >
                                         <option value="">اختر المحافظة...</option>
                                         {Object.keys(shippingFees).map(gov => (
-                                            <option key={gov} value={gov}>{gov} ({currency}{shippingFees[gov]})</option>
+                                            <option key={gov} value={gov}>{gov} ({currency} {shippingFees[gov]})</option>
                                         ))}
                                     </select>
                                 </div>
@@ -800,7 +812,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                         <input 
                                                             type="text"
                                                             className="form-input"
-                                                            value={item.variantSku ? `${currency}${item.price.toFixed(2)}` : ''}
+                                                            value={item.variantSku ? `${currency} ${item.price.toLocaleString('en-US', {maximumFractionDigits: 2})}` : ''}
                                                             placeholder={`${currency}0.00`}
                                                             readOnly
                                                             style={{ textAlign: 'center', background: 'var(--glass-bg)', color: 'rgba(255,255,255,0.8)' }}
@@ -819,7 +831,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                         />
                                                     </td>
                                                     <td style={{ padding: '8px 10px', verticalAlign: 'middle', textAlign: 'center', fontWeight: 'bold' }}>
-                                                        {item.variantSku ? `${currency}${subtotal.toFixed(2)}` : `${currency}0.00`}
+                                                        {item.variantSku ? `${currency} ${subtotal.toLocaleString('en-US', {maximumFractionDigits: 2})}` : `${currency}0.00`}
                                                     </td>
                                                     <td style={{ padding: '8px 10px', verticalAlign: 'middle', textAlign: 'center' }}>
                                                         <button 
@@ -953,32 +965,32 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px 24px', fontSize: '13px' }}>
                                     <div>
                                         <span style={{ color: 'var(--text-secondary)' }}>مجموع المنتجات:</span>
-                                        <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px' }}>{currency}{totalProductsSubtotal.toFixed(2)}</strong>
+                                        <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px' }}>{currency} {totalProductsSubtotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
                                     </div>
                                     <div>
                                         <span style={{ color: 'var(--text-secondary)' }}>خصم الأوردر:</span>
                                         <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px', color: 'var(--color-danger)' }}>
-                                            -{currency}{orderDiscountAmount.toFixed(2)} ({orderDiscountPercent}%)
+                                            -{currency} {orderDiscountAmount.toLocaleString('en-US', {maximumFractionDigits: 2})} ({orderDiscountPercent}%)
                                         </strong>
                                     </div>
                                     <div>
                                         <span style={{ color: 'var(--text-secondary)' }}>ضريبة القيمة المضافة (14%):</span>
-                                        <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px' }}>{currency}{vatAmount.toFixed(2)}</strong>
+                                        <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px' }}>{currency} {vatAmount.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
                                     </div>
                                     <div>
                                         <span style={{ color: 'var(--text-secondary)' }}>سعر الشحن ({governorate || 'لم تحدد'}):</span>
-                                        <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px' }}>+{currency}{shippingFeeVal.toFixed(2)}</strong>
+                                        <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px' }}>+{currency} {shippingFeeVal.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
                                     </div>
                                     <div>
                                         <span style={{ color: 'var(--text-secondary)' }}>العربون المستلم:</span>
                                         <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px', color: 'var(--color-success)' }}>
-                                            -{currency}{depositVal.toFixed(2)}
+                                            -{currency} {depositVal.toLocaleString('en-US', {maximumFractionDigits: 2})}
                                         </strong>
                                     </div>
                                     <div style={{ borderLeft: '1px dashed var(--glass-border-hover)', paddingRight: '12px' }}>
                                         <span style={{ color: 'var(--gold-primary)', fontWeight: 600 }}>المتبقي للتحصيل:</span>
                                         <strong style={{ display: 'block', marginTop: '4px', fontSize: '18px', color: 'var(--gold-primary)', fontWeight: 'bold' }}>
-                                            {currency}{remainingToCollect.toFixed(2)}
+                                            {currency} {remainingToCollect.toLocaleString('en-US', {maximumFractionDigits: 2})}
                                         </strong>
                                     </div>
                                 </div>
@@ -1012,33 +1024,33 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                             <span>مجموع المنتجات:</span>
-                                            <span>{currency}{totalProductsSubtotal.toFixed(2)}</span>
+                                            <span>{currency} {totalProductsSubtotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                         </div>
                                         {orderDiscountPercent > 0 && (
                                             <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-danger)' }}>
                                                 <span>خصم إضافي للأوردر ({orderDiscountPercent}%):</span>
-                                                <span>-{currency}{orderDiscountAmount.toFixed(2)}</span>
+                                                <span>-{currency} {orderDiscountAmount.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                             </div>
                                         )}
                                         {vatEnabled && (
                                             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                 <span>ضريبة القيمة المضافة (14%):</span>
-                                                <span>{currency}{vatAmount.toFixed(2)}</span>
+                                                <span>{currency} {vatAmount.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                             </div>
                                         )}
                                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                             <span>مصاريف الشحن:</span>
-                                            <span>+{currency}{shippingFeeVal.toFixed(2)}</span>
+                                            <span>+{currency} {shippingFeeVal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                         </div>
                                         {deposit > 0 && (
                                             <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-success)' }}>
                                                 <span>عربون مستلم (Deposit):</span>
-                                                <span>-{currency}{depositVal.toFixed(2)}</span>
+                                                <span>-{currency} {depositVal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                             </div>
                                         )}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '15px', fontWeight: 'bold', borderTop: '1px dashed var(--glass-border-hover)', paddingTop: '8px', marginTop: '4px', color: 'var(--gold-primary)' }}>
                                             <span>المتبقي للتحصيل:</span>
-                                            <span>{currency}{remainingToCollect.toFixed(2)}</span>
+                                            <span>{currency} {remainingToCollect.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                         </div>
                                     </div>
                                 </div>
@@ -1066,9 +1078,9 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                 <tr key={`review-item-${i}`} style={{ borderBottom: '1px solid var(--glass-bg-hover)' }}>
                                                     <td style={{ padding: '6px 4px' }}>{item.productName} {item.variantName && item.variantName !== 'Standard Option' && <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>({item.variantName})</span>}</td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>{item.quantity}</td>
-                                                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>{currency}{item.price.toFixed(2)}</td>
+                                                    <td style={{ textAlign: 'center', padding: '6px 4px' }}>{currency} {item.price.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px', color: 'var(--color-danger)' }}>{item.discountPercent > 0 ? `${item.discountPercent}%` : '-'}</td>
-                                                    <td style={{ textAlign: 'left', padding: '6px 4px', fontWeight: 'bold' }}>{currency}{sub.toFixed(2)}</td>
+                                                    <td style={{ textAlign: 'left', padding: '6px 4px', fontWeight: 'bold' }}>{currency} {sub.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                 </tr>
                                             );
                                         })}

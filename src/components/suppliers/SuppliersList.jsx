@@ -4,7 +4,7 @@ import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
 
 export default function SuppliersList({ globalSearch, setGlobalSearch }) {
-    const { state, addSupplier, recordSupplierPayment, recordPurchaseOrder, showToast, logActivity, t } = useContext(AppContext);
+    const { state, addSupplier, recordSupplierPayment, recordPurchaseOrder, showToast, logActivity, t, showConfirm, showAlert } = useContext(AppContext);
     
     // View state tab: 'suppliers' or 'purchases'
     const [activeTab, setActiveTab] = useState('suppliers');
@@ -91,7 +91,7 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
     const handleSubmitForm = (e) => {
         e.preventDefault();
         if (!formName || !formEmail) {
-            alert("Supplier Name and email are required fields.");
+            showAlert("اسم المورد والبريد الإلكتروني مطلوبان لتسجيل المورد.");
             return;
         }
 
@@ -133,12 +133,12 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
     };
 
     const handleDeleteSupplier = (id) => {
-        if (window.confirm("Permanently delete this supplier profile? This will not remove their products.")) {
+        showConfirm("هل أنت متأكد من حذف ملف هذا المورد نهائياً؟ هذا الإجراء لن يحذف المنتجات التابعة له.", () => {
             const supName = state.suppliers.find(s => s.id === id)?.name;
             state.suppliers = state.suppliers.filter(s => s.id !== id);
             logActivity("supplier", `Supplier profile ${supName} deleted.`);
             showToast(`Supplier deleted successfully.`);
-        }
+        });
     };
 
     // Purchase Order Actions
@@ -179,12 +179,12 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
     const handleConfirmPO = (e) => {
         e.preventDefault();
         if (!poSupplierId) {
-            alert("Please select a supplier.");
+            showAlert("يرجى اختيار مورد لتسجيل فاتورة التوريد.");
             return;
         }
         const invalid = poItems.some(i => !i.variantSku || i.quantity <= 0);
         if (invalid) {
-            alert("Please verify all items have a selected option and positive quantity.");
+            showAlert("يرجى التأكد من اختيار الصنف وإدخال كمية صحيحة لكل الأصناف المضافة.");
             return;
         }
 
@@ -259,7 +259,7 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
                     <div className="metric-glow-decor"></div>
                     <div className="metric-info">
                         <h3>{t('outstandingLiabilities')}</h3>
-                        <div className="metric-value" style={{ color: 'var(--color-danger)' }}>{currency}{totalDebt.toFixed(0)}</div>
+                        <div className="metric-value" style={{ color: 'var(--color-danger)' }}>{currency} {totalDebt.toLocaleString('en-US', {maximumFractionDigits: 0})}</div>
                     </div>
                     <div className="metric-icon-box"><i className="fa-solid fa-receipt"></i></div>
                 </div>
@@ -267,7 +267,7 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
                     <div className="metric-glow-decor"></div>
                     <div className="metric-info">
                         <h3>{t('totalPaidAssets')}</h3>
-                        <div className="metric-value" style={{ color: 'var(--color-success)' }}>{currency}{totalPaid.toFixed(0)}</div>
+                        <div className="metric-value" style={{ color: 'var(--color-success)' }}>{currency} {totalPaid.toLocaleString('en-US', {maximumFractionDigits: 0})}</div>
                     </div>
                     <div className="metric-icon-box"><i className="fa-solid fa-circle-check"></i></div>
                 </div>
@@ -334,9 +334,9 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
                                                     <td>{sup.email || sup.contact || 'N/A'}</td>
                                                     <td>{sup.phone || 'N/A'}</td>
                                                     <td><span className="badge badge-grey">{sup.suppliedVariants?.length || 0} {t('catalogItems')}</span></td>
-                                                    <td>{currency}{(sup.paid || 0).toFixed(2)}</td>
+                                                    <td>{currency} {(sup.paid || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                     <td style={{ fontWeight: 600, color: sup.debt > 0 ? 'var(--color-danger)' : 'inherit' }}>
-                                                        {currency}{(sup.debt || 0).toFixed(2)}
+                                                        {currency} {(sup.debt || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}
                                                     </td>
                                                     <td style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{sup.createdBy || 'sfsf'}</td>
                                                     <td>{statusBadge}</td>
@@ -412,13 +412,13 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                                         {po.items.map((it, idx) => (
                                                             <div key={idx} style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
-                                                                • {it.variantSku} (x{it.quantity}) @ {currency}{it.cost}
+                                                                • {it.variantSku} (x{it.quantity}) @ {currency} {it.cost}
                                                             </div>
                                                         ))}
                                                     </div>
                                                 </td>
                                                 <td style={{ fontWeight: 500, color: 'var(--text-secondary)' }}>{po.createdBy || 'sfsf'}</td>
-                                                <td style={{ fontWeight: 600 }}>{currency}{po.totalCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                                                <td style={{ fontWeight: 600 }}>{currency} {po.totalCost.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
                                             </tr>
                                         );
                                     })
@@ -512,7 +512,7 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
                             <input 
                                 type="text" 
                                 className="form-input" 
-                                value={`${currency}${state.suppliers.find(s => s.id === paySupplierId)?.debt}`}
+                                value={`${currency} ${state.suppliers.find(s => s.id === paySupplierId)?.debt}`}
                                 disabled 
                             />
                         </div>
@@ -631,7 +631,7 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
 
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', borderTop: '1px solid var(--glass-border)', paddingTop: '12px' }}>
                         <div style={{ fontSize: '14px', fontWeight: 600 }}>
-                            {t('total')}: <span style={{ color: 'var(--gold-primary)' }}>{currency}{totalPoCost.toLocaleString(undefined, {minimumFractionDigits:2})}</span>
+                            {t('total')}: <span style={{ color: 'var(--gold-primary)' }}>{currency} {totalPoCost.toLocaleString('en-US', {minimumFractionDigits:2})}</span>
                         </div>
                         <div style={{ display: 'flex', gap: '12px' }}>
                             <button type="button" className="btn btn-secondary" onClick={() => setIsPoOpen(false)}>{t('discard')}</button>

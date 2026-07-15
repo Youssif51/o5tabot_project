@@ -210,9 +210,9 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                             return (
                                                 <tr key={v.sku}>
                                                     <td style={{ fontWeight: 600 }}>{v.name === 'Standard Option' ? (t('defaultOption') || 'المنتج الأساسي') : v.name}</td>
-                                                    <td>{currency}{v.wholesalePrice.toFixed(2)}</td>
-                                                    <td style={{ fontWeight: 600, color: 'var(--color-warning)' }}>{currency}{costVal.toFixed(2)}</td>
-                                                    <td style={{ color: 'var(--gold-primary)', fontWeight: 600 }}>{currency}{v.retailPrice.toFixed(2)}</td>
+                                                    <td>{currency} {v.wholesalePrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                    <td style={{ fontWeight: 600, color: 'var(--color-warning)' }}>{currency} {costVal.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                    <td style={{ color: 'var(--gold-primary)', fontWeight: 600 }}>{currency} {v.retailPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                     <td><span className="badge badge-success">{profitMargin}%</span></td>
                                                     <td>{vQty} {t('packets')}</td>
                                                 </tr>
@@ -333,16 +333,16 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
                                  <span style={{ color: 'var(--text-secondary)' }}>{t('buyingPrice')}</span>
-                                 <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency}{mainWholesalePrice.toFixed(2)}</span>
+                                 <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency} {mainWholesalePrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                              </div>
                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
                                  <span style={{ color: 'var(--text-secondary)' }}>متوسط التكلفة (WAC)</span>
-                                 <span style={{ fontWeight: 600, color: 'var(--color-warning)' }}>{currency}{mainAverageCost.toFixed(2)}</span>
+                                 <span style={{ fontWeight: 600, color: 'var(--color-warning)' }}>{currency} {mainAverageCost.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                              </div>
                              <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
                                 <span style={{ color: 'var(--text-secondary)' }}>{t('markup')}</span>
                                 <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>
-                                    {mainRetailPrice > 0 ? ((mainRetailPrice - mainAverageCost) / mainAverageCost * 100).toFixed(0) : 0}%
+                                    {mainRetailPrice > 0 ? ((mainRetailPrice - mainAverageCost) / mainAverageCost * 100).toLocaleString('en-US', {maximumFractionDigits: 0}) : 0}%
                                 </span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
@@ -419,7 +419,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                     <td>{item.variantName === 'Standard Option' ? 'الأساسي' : item.variantName}</td>
                                                     <td>{item.quantity} قطعة</td>
                                                     <td style={{ fontWeight: 600, color: 'var(--gold-primary)' }}>
-                                                        {currency}{item.cost.toFixed(2)}
+                                                        {currency} {item.cost.toLocaleString('en-US', {maximumFractionDigits: 2})}
                                                     </td>
                                                 </tr>
                                             ))}
@@ -724,7 +724,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                             </div>
 
                             <div style={{ fontSize: '18px', fontWeight: 800, color: 'var(--gold-primary)' }}>
-                                {currency}{printVariant.retailPrice.toLocaleString(undefined, {minimumFractionDigits:2})}
+                                {currency} {printVariant.retailPrice.toLocaleString('en-US', {minimumFractionDigits:2})}
                             </div>
                         </div>
 

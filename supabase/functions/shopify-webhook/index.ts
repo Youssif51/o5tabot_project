@@ -150,6 +150,57 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+    const topic = req.headers.get("X-Shopify-Topic") || req.headers.get("x-shopify-topic") || "";
+    console.log("Received Shopify Webhook Topic:", topic);
+
+    // Handle Collection Webhooks
+    if (topic.includes("collection")) {
+      const collectionId = String(payload.id);
+
+      if (topic.includes("delete")) {
+        console.log(`Deleting collection: ${collectionId}`);
+        const { error } = await supabase
+          .from("shopify_collections")
+          .delete()
+          .eq("id", collectionId);
+        
+        if (error) {
+          console.error("Error deleting collection from DB:", error);
+          return new Response(JSON.stringify({ error: "Failed to delete collection" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json", ...corsHeaders }
+          });
+        }
+        return new Response(JSON.stringify({ success: true, message: "Collection deleted successfully" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      } else {
+        // Create or Update
+        console.log(`Upserting collection: ${collectionId} - ${payload.title}`);
+        const { error } = await supabase
+          .from("shopify_collections")
+          .upsert({
+            id: collectionId,
+            title: payload.title,
+            handle: payload.handle,
+            updated_at: new Date().toISOString()
+          });
+
+        if (error) {
+          console.error("Error upserting collection to DB:", error);
+          return new Response(JSON.stringify({ error: "Failed to upsert collection" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json", ...corsHeaders }
+          });
+        }
+        return new Response(JSON.stringify({ success: true, message: "Collection upserted successfully" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+    }
+
     const shopifyOrderId = String(payload.id);
 
     // 1. Prevent duplicates

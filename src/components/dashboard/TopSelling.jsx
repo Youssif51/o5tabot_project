@@ -1,9 +1,11 @@
-import React, { useContext } from 'react';
+import React, { useContext, useState } from 'react';
 import { AppContext } from '../../context/AppContext';
+import Modal from '../common/Modal';
 
 export default function TopSelling() {
-    const { state, setCurrentView, t } = useContext(AppContext);
+    const { state, t } = useContext(AppContext);
     const currency = state.storeSettings.currency || '$';
+    const [isModalOpen, setIsModalOpen] = useState(false);
 
     let variantSales = {};
     state.orders.forEach(ord => {
@@ -39,7 +41,7 @@ export default function TopSelling() {
                 <a 
                     href="#" 
                     className="see-all-link" 
-                    onClick={(e) => { e.preventDefault(); setCurrentView('reports'); }}
+                    onClick={(e) => { e.preventDefault(); setIsModalOpen(true); }}
                 >
                     {t('seeAll')}
                 </a>
@@ -68,7 +70,7 @@ export default function TopSelling() {
                                     <td>{item.soldQty} {t('units')}</td>
                                     <td>{item.remainingQty} {t('left')}</td>
                                     <td style={{ fontWeight: '600', color: 'var(--gold-primary)' }}>
-                                        {currency}{item.price.toFixed(2)}
+                                        {currency} {item.price.toLocaleString('en-US', {maximumFractionDigits: 2})}
                                     </td>
                                 </tr>
                             ))
@@ -76,6 +78,40 @@ export default function TopSelling() {
                     </tbody>
                 </table>
             </div>
+            <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={t('topSellingStock')} width="900px">
+                <div className="table-wrapper" style={{ maxHeight: '60vh', overflowY: 'auto', overflowX: 'auto' }}>
+                    <table className="custom-table" style={{ fontSize: '13px', whiteSpace: 'nowrap', textAlign: 'right' }}>
+                        <thead>
+                            <tr>
+                                <th>{t('name')}</th>
+                                <th>{t('soldQuantity')}</th>
+                                <th>{t('remainingQuantity')}</th>
+                                <th>{t('price')}</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {topSelling.slice(0, 15).length === 0 ? (
+                                <tr>
+                                    <td colSpan="4" style={{ textAlign: 'center', padding: '18px', color: 'var(--text-muted)' }}>
+                                        {t('noItemsSold')}
+                                    </td>
+                                </tr>
+                            ) : (
+                                topSelling.slice(0, 15).map((item, idx) => (
+                                    <tr key={`modal-top-sell-${idx}`}>
+                                        <td style={{ fontWeight: '600' }}>{item.name}</td>
+                                        <td>{item.soldQty} {t('units')}</td>
+                                        <td>{item.remainingQty} {t('left')}</td>
+                                        <td style={{ fontWeight: '600', color: 'var(--gold-primary)' }}>
+                                            {currency} {item.price.toLocaleString('en-US', {maximumFractionDigits: 2})}
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </Modal>
         </div>
     );
 }

@@ -40,10 +40,10 @@ export default function Sidebar() {
                         <a href="#" onClick={(e) => { e.preventDefault(); setCurrentView(item.id); }}>
                             {item.id === 'shopifyPending' ? (
                                 <i className="fa-brands fa-shopify" style={{ 
-                                    fontSize: '18px', 
+                                    fontSize: '22px', 
                                     color: '#96bf48',
-                                    width: '20px',
-                                    height: '20px',
+                                    width: '24px',
+                                    height: '24px',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center'
@@ -53,8 +53,8 @@ export default function Sidebar() {
                                     src={`/icons/${item.icon}`} 
                                     alt={item.name} 
                                     style={{ 
-                                        width: '20px', 
-                                        height: '20px', 
+                                        width: '24px', 
+                                        height: '24px', 
                                         objectFit: 'contain',
                                         ...(item.id === 'supabaseTasks' ? { filter: 'brightness(0) saturate(100%) invert(26%) sepia(85%) saturate(7403%) hue-rotate(352deg) brightness(96%) contrast(106%)' } : {})
                                     }}
@@ -90,14 +90,14 @@ export default function Sidebar() {
                     {checkPermission('manage_settings') && (
                         <li className={`nav-item ${currentView === 'store' ? 'active' : ''}`}>
                             <a href="#" onClick={(e) => { e.preventDefault(); setCurrentView('store'); }}>
-                                <img src="/icons/Settings.png" alt="Settings" style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
+                                <img src="/icons/Settings.png" alt="Settings" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
                                 <span>{t('settings')}</span>
                             </a>
                         </li>
                     )}
                     <li className="nav-item">
                         <a href="#" onClick={(e) => { e.preventDefault(); authLogout(); }}>
-                            <img src="/icons/Log Out.png" alt="Log Out" style={{ width: '20px', height: '20px', objectFit: 'contain' }} />
+                            <img src="/icons/Log Out.png" alt="Log Out" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
                             <span style={{ color: 'var(--color-danger)' }}>{t('logout')}</span>
                         </a>
                     </li>

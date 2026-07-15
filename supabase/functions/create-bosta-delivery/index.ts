@@ -305,7 +305,8 @@ Deno.serve(async (req) => {
     return new Response(JSON.stringify({
       success: true,
       trackingNumber: bostaData.data.trackingNumber,
-      deliveryId: bostaData.data._id
+      deliveryId: bostaData.data._id,
+      updatedAddress: JSON.stringify(updatedAddressObj)
     }), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders }

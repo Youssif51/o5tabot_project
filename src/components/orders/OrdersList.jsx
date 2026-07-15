@@ -3,7 +3,7 @@ import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 
 export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrder, onOpenEditOrder }) {
-    const { state, updateOrderStatus, deleteOrder, showToast, logActivity, setCurrentView, t } = useContext(AppContext);
+    const { state, updateOrderStatus, deleteOrder, showToast, logActivity, setCurrentView, t, showConfirm, addCustomer, setCustomerSpam } = useContext(AppContext);
     
     // Expanded rows state (keeps track of order IDs that are expanded)
     const [expandedOrderIds, setExpandedOrderIds] = useState({});
@@ -81,6 +81,23 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode, bostaStateName, bostaStateCode, bostaTrackingNumber, bostaExceptionReason };
     };
 
+    const normalizePhoneNumber = (phoneStr) => {
+        if (!phoneStr) return '';
+        let clean = phoneStr.replace(/\D/g, '');
+        if (clean.startsWith('20') && clean.length > 10) {
+            clean = clean.substring(2);
+        } else if (clean.startsWith('2') && clean.length > 10) {
+            clean = clean.substring(1);
+        }
+        if (clean.length === 10 && (clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15'))) {
+            clean = '0' + clean;
+        }
+        if (!clean.startsWith('0') && clean.length === 10) {
+            clean = '0' + clean;
+        }
+        return clean;
+    };
+
     // Helper to get the display badge text and class for an order
     const getOrderStatusBadge = (ord) => {
         const { bostaStateCode, bostaStateName } = parseAddressData(ord.address);
@@ -139,7 +156,6 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
 
     // Payment Status helpers
     const getPaymentStatus = (ord) => {
-        if (ord.status === 'Cancelled') return 'غير مدفوع';
         const dep = parseFloat(ord.deposit) || 0;
         const tot = parseFloat(ord.totalValue) || 0;
         if (dep <= 0) return 'غير مدفوع';
@@ -173,7 +189,11 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         // 1. Search
         const clientMatches = (ord.client || '').toLowerCase().includes(activeSearch.toLowerCase());
         const idMatches = (ord.id || '').toLowerCase().includes(activeSearch.toLowerCase());
-        if (!clientMatches && !idMatches) return false;
+        const { phone, bostaTrackingNumber } = parseAddressData(ord.address);
+        const phoneMatches = (phone || '').includes(activeSearch);
+        const trackingMatches = (bostaTrackingNumber || '').toLowerCase().includes(activeSearch.toLowerCase());
+        
+        if (!clientMatches && !idMatches && !phoneMatches && !trackingMatches) return false;
 
         // 2. Delivery Status
         if (deliveryStatusFilter !== 'all') {
@@ -241,10 +261,10 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
     // Row Delete confirmation
     const handleDeleteOrder = (e, id) => {
         e.stopPropagation(); // prevent expanding row on delete click
-        if (window.confirm(`هل أنت متأكد من حذف السجل الخاص بالطلب ${id} نهائياً؟`)) {
+        showConfirm(`هل أنت متأكد من حذف السجل الخاص بالطلب ${id} نهائياً؟`, () => {
             deleteOrder(id);
             showToast(`تم حذف الطلب ${id} بنجاح`, "success");
-        }
+        });
     };
 
     // CSV Excel Exporter
@@ -317,11 +337,11 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                 </div>
                 <div className="glass-card" style={{ padding: '16px', borderRight: '4px solid #2ecc71', background: 'var(--glass-bg)' }}>
                     <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>قيمة المبيعات (المؤكدة)</span>
-                    <strong style={{ fontSize: '20px', color: '#2ecc71' }}>{currency} {salesValue.toFixed(2)}</strong>
+                    <strong style={{ fontSize: '20px', color: '#2ecc71' }}>{currency} {salesValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
                 </div>
                 <div className="glass-card" style={{ padding: '16px', borderRight: '4px solid #e74c3c', background: 'var(--glass-bg)' }}>
                     <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>المتبقي للتحصيل</span>
-                    <strong style={{ fontSize: '20px', color: '#e74c3c' }}>{currency} {remainingToCollectTotal.toFixed(2)}</strong>
+                    <strong style={{ fontSize: '20px', color: '#e74c3c' }}>{currency} {remainingToCollectTotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
                 </div>
                 <div className="glass-card" style={{ padding: '16px', borderRight: '4px solid #3498db', background: 'var(--glass-bg)' }}>
                     <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>طلبات اليوم</span>
@@ -595,7 +615,20 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                     </div>
                                                 </td>
                                                 <td style={{ padding: '14px 16px', textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                                                    <div style={{ fontWeight: 500 }}>{ord.client}</div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                        <div style={{ fontWeight: 500 }}>{ord.client}</div>
+                                                        {(() => {
+                                                             const cust = (state.customers || []).find(c => c.id === ord.customer_id || (phone && normalizePhoneNumber(c.phone) === normalizePhoneNumber(phone)));
+                                                            if (cust && cust.is_spam) {
+                                                                return (
+                                                                    <span className="badge badge-danger animate-pulse" style={{ fontSize: '10px', padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: '4px', boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)' }} title="عميل مزعج">
+                                                                        <i className="fa-solid fa-triangle-exclamation"></i>
+                                                                    </span>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
+                                                    </div>
                                                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', fontFamily: 'monospace' }}>{phone || 'بدون هاتف'}</div>
                                                 </td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
@@ -608,9 +641,9 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                     )}
                                                 </td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>{totalQty} قطع</td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, verticalAlign: 'middle', whiteSpace: 'nowrap' }}>{currency} {ord.totalValue.toFixed(2)}</td>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, verticalAlign: 'middle', whiteSpace: 'nowrap' }}>{currency} {ord.totalValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, color: remaining > 0 ? '#e74c3c' : '#2ecc71', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                                                    {remaining > 0 ? `${currency} ${remaining.toFixed(2)}` : 'خالص'}
+                                                    {remaining > 0 ? `${currency} ${remaining.toLocaleString('en-US', {maximumFractionDigits: 2})}` : 'خالص'}
                                                 </td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', color: 'var(--text-primary)', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>{ord.createdBy || 'الآدمن'}</td>
                                                 
@@ -743,7 +776,20 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                 </h4>
                                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
                                                                     <div><strong>كود العميل:</strong> {getCustomerCode(ord.client)}</div>
-                                                                    <div><strong>اسم العميل:</strong> {ord.client}</div>
+                                                                    <div>
+                                                                        <strong>اسم العميل:</strong> {ord.client}
+                                                                        {(() => {
+                                                                            const cust = (state.customers || []).find(c => c.id === ord.customer_id || (phone && normalizePhoneNumber(c.phone) === normalizePhoneNumber(phone)));
+                                                                            if (cust && cust.is_spam) {
+                                                                                return (
+                                                                                    <span className="badge badge-danger animate-pulse" style={{ fontSize: '10px', padding: '2px 6px', marginRight: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px', boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)' }}>
+                                                                                        <i className="fa-solid fa-triangle-exclamation"></i> عميل مزعج (سبام)
+                                                                                    </span>
+                                                                                );
+                                                                            }
+                                                                            return null;
+                                                                        })()}
+                                                                    </div>
                                                                     <div><strong>رقم الهاتف:</strong> {phone || 'غير مسجل'}</div>
                                                                     {ord.source === 'shopify' && (
                                                                         <>
@@ -777,8 +823,8 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                             <tr key={idx} style={{ borderBottom: '1px solid var(--glass-bg)' }}>
                                                                                 <td style={{ padding: '8px 4px' }}>{getProductNameBySku(item.variantSku)}</td>
                                                                                 <td style={{ textAlign: 'center', padding: '8px 4px' }}>{item.quantity}</td>
-                                                                                <td style={{ textAlign: 'center', padding: '8px 4px' }}>{currency} {item.price.toFixed(2)}</td>
-                                                                                <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold' }}>{currency} {(item.quantity * item.price).toFixed(2)}</td>
+                                                                                <td style={{ textAlign: 'center', padding: '8px 4px' }}>{currency} {item.price.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                                                <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold' }}>{currency} {(item.quantity * item.price).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                                             </tr>
                                                                         ))}
                                                                     </tbody>
@@ -793,19 +839,19 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
                                                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                                         <span>إجمالي المنتجات:</span>
-                                                                        <span>{currency} {ord.totalValue.toFixed(2)}</span>
+                                                                        <span>{currency} {ord.totalValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                     </div>
                                                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                                         <span>مصاريف الشحن:</span>
-                                                                        <span>+{currency} {(ord.shipping_fee || 0).toFixed(2)}</span>
+                                                                        <span>+{currency} {(ord.shipping_fee || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                     </div>
                                                                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
                                                                         <span>العربون المدفوع (Deposit):</span>
-                                                                        <span>-{currency} {(ord.deposit || 0).toFixed(2)}</span>
+                                                                        <span>-{currency} {(ord.deposit || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                     </div>
                                                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: 'var(--gold-primary)', borderTop: '1px dashed var(--glass-border-hover)', paddingTop: '8px', marginTop: '4px', fontSize: '13px' }}>
                                                                         <span>المتبقي للتحصيل:</span>
-                                                                        <span>{currency} {remaining > 0 ? remaining.toFixed(2) : '0.00'}</span>
+                                                                        <span>{currency} {remaining > 0 ? remaining.toLocaleString('en-US', {maximumFractionDigits: 2}) : '0.00'}</span>
                                                                     </div>
                                                                 </div>
                                                             </div>
@@ -835,10 +881,10 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                     <button
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
-                                                                            if (window.confirm('هل أنت متأكد من الموافقة على هذا الطلب وتأكيده للخصم من المخزون؟')) {
+                                                                            showConfirm('هل أنت متأكد من الموافقة على هذا الطلب وتأكيده للخصم من المخزون؟', () => {
                                                                                 updateOrderStatus(ord.id, 'Shipped');
                                                                                 showToast('تمت الموافقة على الطلب وتأكيده وخصم الكميات بنجاح!', 'success');
-                                                                            }
+                                                                            });
                                                                         }}
                                                                         className="btn"
                                                                         style={{
@@ -864,10 +910,35 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                     <button
                                                                         onClick={(e) => {
                                                                             e.stopPropagation();
-                                                                            if (window.confirm('هل أنت متأكد من رفض وإلغاء هذا الطلب؟')) {
+                                                                            showConfirm('هل أنت متأكد من رفض وإلغاء هذا الطلب؟', (flagAsSpam) => {
                                                                                 updateOrderStatus(ord.id, 'Cancelled');
                                                                                 showToast('تم إلغاء الطلب بنجاح', 'warning');
-                                                                            }
+                                                                                if (flagAsSpam) {
+                                                                                    console.log('🚨 Spam flag enabled for order', ord.id);
+                                                                                    const { phone } = parseAddressData(ord.address);
+                                                                                    const normPhone = normalizePhoneNumber(phone);
+                                                                                    const cust = (state.customers || []).find(c => c.id === ord.customer_id || (normPhone && normalizePhoneNumber(c.phone) === normPhone));
+                                                                                    if (cust) {
+                                                                                        console.log('🔍 Found existing customer:', cust.id, cust.name);
+                                                                                        setCustomerSpam(cust.id, true);
+                                                                                        logActivity("customer", `Flagged customer ${cust.name} as spam upon order rejection.`);
+                                                                                    } else {
+                                                                                        console.log('➕ Creating new spam customer for:', ord.client, normPhone);
+                                                                                        const newCust = {
+                                                                                            id: crypto.randomUUID(),
+                                                                                            name: ord.client || "عميل جديد",
+                                                                                            phone: normPhone || "00000000000",
+                                                                                            governorate: ord.governorate || "",
+                                                                                            customer_type: 'Regular',
+                                                                                            total_purchases: 0,
+                                                                                            orders_count: 0,
+                                                                                            is_spam: true
+                                                                                        };
+                                                                                        addCustomer(newCust);
+                                                                                        logActivity("customer", `Created spam customer profile for ${newCust.name} (${newCust.phone}) upon order rejection.`);
+                                                                                    }
+                                                                                }
+                                                                            }, null, { showSpamToggle: true });
                                                                         }}
                                                                         className="btn"
                                                                         style={{

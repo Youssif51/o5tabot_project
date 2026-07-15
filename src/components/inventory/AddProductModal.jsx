@@ -4,7 +4,11 @@ import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
 
 export default function AddProductModal({ isOpen, onClose, editProductId }) {
-    const { state, addProduct, editProduct, t } = useContext(AppContext);
+    const { state, addProduct, editProduct, syncShopifyCollections, t, showAlert } = useContext(AppContext);
+
+    // Form states
+    const [shopifyCollectionId, setShopifyCollectionId] = useState('');
+    const [syncingCollections, setSyncingCollections] = useState(false);
 
     // Dynamic categories calculation
     const existingCategories = [...new Set((state.products || []).map(p => p.category))].filter(Boolean);
@@ -34,6 +38,10 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
 
     useEffect(() => {
         if (!isOpen) return;
+
+        if (!state.collections || state.collections.length === 0) {
+            syncShopifyCollections();
+        }
         
         if (editProductId) {
             const prod = state.products.find(p => p.id === editProductId);
@@ -71,6 +79,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 setTags(prod.tags || '');
                 setDescription(prod.description || '');
                 setStatus(prod.status || 'active');
+                setShopifyCollectionId(prod.shopifyCollectionId || '');
                 setShowNewCategoryInput(false);
                 setNewCategoryName('');
                 
@@ -100,6 +109,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
             setTags('');
             setDescription('');
             setStatus('active');
+            setShopifyCollectionId('');
             setShowNewCategoryInput(false);
             setNewCategoryName('');
             setHasVariants(false);
@@ -165,6 +175,12 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
         setImages(images.filter((_, idx) => idx !== indexToRemove));
     };
 
+    const handleSyncCollections = async () => {
+        setSyncingCollections(true);
+        await syncShopifyCollections();
+        setSyncingCollections(false);
+    };
+
     const handlePlaceholderClick = () => {
         document.getElementById('product-image-uploader-input').click();
     };
@@ -172,7 +188,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
     const handleSubmit = (e) => {
         e.preventDefault();
         if (!name || !productId) {
-            alert("Product Name and Product ID are required.");
+            showAlert("اسم المنتج وكود المنتج مطلوبان لحفظ الصنف.");
             return;
         }
 
@@ -226,6 +242,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
             createdBy: originalProduct ? (originalProduct.createdBy || 'sfsf') : (state.currentUser ? state.currentUser.name : 'sfsf'),
             description: description,
             status: status,
+            shopifyCollectionId: shopifyCollectionId || null,
             variants: mappedVariants,
             batches: mappedBatches,
             suppliers: originalProduct ? (originalProduct.suppliers || []) : [],
@@ -406,6 +423,35 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                             <option value="active" style={{ background: '#1d1d21', color: '#fff' }}>Active</option>
                             <option value="draft" style={{ background: '#1d1d21', color: '#fff' }}>Draft</option>
                             <option value="archived" style={{ background: '#1d1d21', color: '#fff' }}>Unlisted / Archived</option>
+                        </select>
+                    </div>
+                    
+                    <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                        <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>مجموعة شوبيفاي (Shopify Collection)</span>
+                            <button 
+                                type="button" 
+                                className="btn btn-secondary" 
+                                onClick={handleSyncCollections}
+                                disabled={syncingCollections}
+                                style={{ padding: '2px 8px', fontSize: '11px', height: '24px', display: 'flex', alignItems: 'center', gap: '4px', border: 'none', background: 'rgba(255,255,255,0.05)' }}
+                            >
+                                <i className={`fa-solid fa-arrows-rotate ${syncingCollections ? 'fa-spin' : ''}`}></i>
+                                {syncingCollections ? 'جاري التحديث...' : 'تحديث المجموعات 🔄'}
+                            </button>
+                        </label>
+                        <select 
+                            className="form-select"
+                            value={shopifyCollectionId}
+                            onChange={(e) => setShopifyCollectionId(e.target.value)}
+                            style={{ height: '38px', padding: '0 10px' }}
+                        >
+                            <option value="" style={{ background: '#1d1d21', color: '#fff' }}>لا يوجد مجموعة (None)</option>
+                            {(state.collections || []).map(col => (
+                                <option key={col.id} value={col.id} style={{ background: '#1d1d21', color: '#fff' }}>
+                                    {col.title} ({col.type === 'smart' ? 'ذكية' : 'يدوية'})
+                                </option>
+                            ))}
                         </select>
                     </div>
                 </div>

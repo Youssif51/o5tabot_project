@@ -179,7 +179,7 @@ export default function ChartsSection({ timeFilter = 'all' }) {
                             return (
                                 <g key={`grid-bar-${i}`}>
                                     <line x1={paddingX} y1={y} x2={svgWidth - paddingX} y2={y} className="grid-line" strokeDasharray="3" />
-                                    <text x={paddingX - 8} y={y + 4} fill="var(--text-muted)" fontSize="9" textAnchor="end">{val.toLocaleString()}</text>
+                                    <text x={paddingX - 8} y={y + 4} fill="var(--text-muted)" fontSize="9" textAnchor="end">{val.toLocaleString('en-US')}</text>
                                 </g>
                             );
                         })}
@@ -281,11 +281,11 @@ export default function ChartsSection({ timeFilter = 'all' }) {
                         <div style={{ fontWeight: 700, color: 'var(--text-primary)', marginBottom: '4px' }}>{labels[hoveredBarIdx]} {t('details')}</div>
                         <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
                             <span style={{ color: '#27AE60' }}>{t('sales')}:</span>
-                            <strong style={{ color: 'var(--text-primary)' }}>{currency}{salesData[hoveredBarIdx].toLocaleString()}</strong>
+                            <strong style={{ color: 'var(--text-primary)' }}>{currency} {salesData[hoveredBarIdx].toLocaleString('en-US')}</strong>
                         </div>
                         <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
                             <span style={{ color: '#2F80ED' }}>{t('purchase')}:</span>
-                            <strong style={{ color: 'var(--text-primary)' }}>{currency}{purchaseData[hoveredBarIdx].toLocaleString()}</strong>
+                            <strong style={{ color: 'var(--text-primary)' }}>{currency} {purchaseData[hoveredBarIdx].toLocaleString('en-US')}</strong>
                         </div>
                     </div>
                 )}

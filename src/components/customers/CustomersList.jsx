@@ -5,12 +5,13 @@ import { getLocalDateString } from '../../utils/dateUtils';
 import CustomerProfileDrawer from './CustomerProfileDrawer';
 
 export default function CustomersList({ globalSearch, setGlobalSearch }) {
-    const { state, addCustomer, editCustomer, showToast, logActivity, t } = useContext(AppContext);
+    const { state, addCustomer, editCustomer, showToast, logActivity, t, showConfirm, showAlert, setCustomerSpam } = useContext(AppContext);
     
     // Modal state
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [selectedProfileCustomer, setSelectedProfileCustomer] = useState(null);
+    const [activeTab, setActiveTab] = useState('all'); // 'all', 'vip', 'spam'
     
     const [formId, setFormId] = useState('');
     const [formName, setFormName] = useState('');
@@ -22,6 +23,15 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
 
     // Filtered customers
     const filteredCustomers = (state.customers || []).filter(c => {
+        // Tab check
+        if (activeTab === 'vip' && c.customer_type !== 'VIP') return false;
+        if (activeTab === 'spam' && !c.is_spam) return false;
+        
+        // Hide spam-only records from the 'all' tab (customers created purely for blacklisting)
+        if (activeTab === 'all' && c.is_spam && (!c.orders_count || c.orders_count === 0) && (!c.total_purchases || c.total_purchases == 0)) {
+            return false;
+        }
+
         const nameMatches = (c.name || '').toLowerCase().includes(activeSearch.toLowerCase());
         const phoneMatches = (c.phone || '').includes(activeSearch);
         return nameMatches || phoneMatches;
@@ -51,7 +61,7 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
     const handleSubmitForm = (e) => {
         e.preventDefault();
         if (!formName || !formPhone) {
-            alert("Name and phone are required.");
+            showAlert("الاسم ورقم الهاتف مطلوبان لتسجيل العميل.");
             return;
         }
 
@@ -82,10 +92,22 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
     const handleToggleVip = (customer) => {
         const isVip = customer.customer_type === 'VIP';
         const newType = isVip ? 'Regular' : 'VIP';
-        if (window.confirm(`Are you sure you want to change ${customer.name}'s status to ${newType}?`)) {
+        showConfirm(`هل أنت متأكد من تغيير فئة العميل ${customer.name} إلى ${newType === 'VIP' ? 'مميز (VIP)' : 'عادي'}؟`, () => {
             editCustomer({ ...customer, customer_type: newType });
             logActivity("customer", `Changed ${customer.name} status to ${newType}`);
-        }
+        });
+    };
+
+    const handleToggleSpam = (customer) => {
+        const isSpam = !!customer.is_spam;
+        const confirmMsg = isSpam 
+            ? `هل أنت متأكد من إزالة العميل ${customer.name} من قائمة المزعجين؟` 
+            : `هل أنت متأكد من إضافة العميل ${customer.name} إلى قائمة المزعجين؟ سيتم إظهار تنبيه أحمر عند وروده في الطلبات الجديدة.`;
+        
+        showConfirm(confirmMsg, () => {
+            setCustomerSpam(customer.id, !isSpam);
+            logActivity("customer", `${isSpam ? 'Removed' : 'Added'} customer ${customer.name} ${isSpam ? 'from' : 'to'} spam list.`);
+        });
     };
 
     return (
@@ -125,14 +147,74 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
                     <div className="metric-glow-decor"></div>
                     <div className="metric-info">
                         <h3>{t('totalPurchases')}</h3>
-                        <div className="metric-value" style={{ color: 'var(--color-success)' }}>{currency}{totalPurchases.toLocaleString(undefined, {minimumFractionDigits: 0})}</div>
+                        <div className="metric-value" style={{ color: 'var(--color-success)' }}>{currency} {totalPurchases.toLocaleString('en-US', {minimumFractionDigits: 0})}</div>
                     </div>
                     <div className="metric-icon-box"><i className="fa-solid fa-chart-line"></i></div>
                 </div>
             </div>
 
+            {/* Filter Tabs */}
+            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px', marginTop: '24px' }}>
+                <button 
+                    onClick={() => setActiveTab('all')}
+                    style={{
+                        padding: '8px 16px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        borderRadius: '8px',
+                        border: '1px solid var(--glass-border)',
+                        background: activeTab === 'all' ? 'var(--gold-gradient)' : 'var(--glass-bg)',
+                        color: activeTab === 'all' ? '#000' : 'var(--text-primary)',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                    }}
+                >
+                    الكل ({(state.customers || []).length})
+                </button>
+                <button 
+                    onClick={() => setActiveTab('vip')}
+                    style={{
+                        padding: '8px 16px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        borderRadius: '8px',
+                        border: '1px solid var(--glass-border)',
+                        background: activeTab === 'vip' ? 'linear-gradient(135deg, #d4af37, #aa7c11)' : 'var(--glass-bg)',
+                        color: activeTab === 'vip' ? '#000' : 'var(--text-primary)',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                    }}
+                >
+                    <i className="fa-solid fa-crown" style={{ fontSize: '11px' }}></i>
+                    المميزين VIP ({vipCount})
+                </button>
+                <button 
+                    onClick={() => setActiveTab('spam')}
+                    style={{
+                        padding: '8px 16px',
+                        fontSize: '13px',
+                        fontWeight: 600,
+                        borderRadius: '8px',
+                        border: '1px solid var(--glass-border)',
+                        background: activeTab === 'spam' ? 'linear-gradient(135deg, #e74c3c, #c0392b)' : 'var(--glass-bg)',
+                        color: activeTab === 'spam' ? '#fff' : 'var(--text-primary)',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                    }}
+                >
+                    <i className="fa-solid fa-circle-exclamation" style={{ fontSize: '12px' }}></i>
+                    المزعجين / سبام ({(state.customers || []).filter(c => c.is_spam).length})
+                </button>
+            </div>
+
             {/* Filter Bar */}
-            <div className="glass-card filter-bar" style={{ marginTop: '24px' }}>
+            <div className="glass-card filter-bar" style={{ marginTop: '0px' }}>
                 <div className="filter-controls">
                     <div className="search-input-wrapper">
                         <i className="fa-solid fa-magnifying-glass search-icon"></i>
@@ -173,8 +255,9 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
                                     const isVip = c.customer_type === 'VIP';
                                     return (
                                         <tr key={c.id}>
-                                            <td style={{ fontWeight: 600, color: isVip ? 'var(--gold-primary)' : 'inherit' }}>
+                                            <td style={{ fontWeight: 600, color: c.is_spam ? 'var(--color-danger)' : (isVip ? 'var(--gold-primary)' : 'inherit') }}>
                                                 {c.name}
+                                                {c.is_spam && <span className="badge badge-danger" style={{ marginRight: '6px', fontSize: '9px', padding: '2px 6px' }}>⚠️ مزعج</span>}
                                                 {isVip && <i className="fa-solid fa-crown" style={{ marginLeft: '6px', fontSize: '10px' }}></i>}
                                             </td>
                                             <td style={{ fontFamily: 'monospace' }}>{c.phone}</td>
@@ -185,7 +268,7 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
                                                 </span>
                                             </td>
                                             <td><span className="badge badge-info">{c.orders_count || 0}</span></td>
-                                            <td style={{ fontWeight: 600 }}>{currency}{(parseFloat(c.total_purchases) || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                            <td style={{ fontWeight: 600 }}>{currency} {(parseFloat(c.total_purchases) || 0).toLocaleString('en-US', {minimumFractionDigits: 2})}</td>
                                             <td style={{ textAlign: 'right' }}>
                                                 <div className="table-actions-cell">
                                                     <button 
@@ -201,6 +284,14 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
                                                         title={isVip ? "Remove VIP" : "Make VIP"}
                                                     >
                                                         <i className="fa-solid fa-crown" style={{ color: isVip ? 'var(--text-muted)' : 'var(--gold-primary)' }}></i>
+                                                    </button>
+                                                    <button 
+                                                        className="action-btn-circle" 
+                                                        onClick={() => handleToggleSpam(c)}
+                                                        title={c.is_spam ? "إزالة من قائمة المزعجين" : "تحديد كـ مزعج"}
+                                                        style={c.is_spam ? { color: 'var(--color-danger)', backgroundColor: 'rgba(239, 68, 68, 0.15)' } : {}}
+                                                    >
+                                                        <i className="fa-solid fa-circle-exclamation" style={{ color: c.is_spam ? 'var(--color-danger)' : 'var(--text-secondary)' }}></i>
                                                     </button>
                                                     <button 
                                                         className="action-btn-circle" 

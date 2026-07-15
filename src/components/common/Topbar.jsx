@@ -26,13 +26,14 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
     const lowStockItems = [];
     (state.products || []).forEach(p => {
         (p.variants || []).forEach(v => {
-            const limit = v.reorder_limit !== undefined ? v.reorder_limit : 5;
-            if (v.stock_sulur !== undefined && v.stock_sulur <= limit) {
+            const limit = v.reorderLimit || 5;
+            const stockQty = v.stock?.Sulur || 0;
+            if (stockQty <= limit) {
                 lowStockItems.push({
                     productId: p.id,
                     sku: v.sku,
                     name: v.name === 'Standard Option' ? p.name : `${p.name} (${v.name})`,
-                    stock: v.stock_sulur
+                    stock: stockQty
                 });
             }
         });
@@ -45,8 +46,8 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
             type: 'shopify',
             title: language === 'en' ? 'New Shopify Order' : 'طلب شوبيفاي معلق جديد',
             text: language === 'en' 
-                ? `Order ${o.id} for ${o.client} (${o.totalValue.toFixed(2)} EGP)`
-                : `طلب جديد بقيمة ${o.totalValue.toFixed(2)} ج.م للعميل ${o.client}`,
+                ? `Order ${o.id} for ${o.client} (${o.totalValue.toLocaleString('en-US', {maximumFractionDigits: 2})} EGP)`
+                : `طلب جديد بقيمة ${o.totalValue.toLocaleString('en-US', {maximumFractionDigits: 2})} ج.م للعميل ${o.client}`,
             targetView: 'shopifyPending'
         })),
         ...lowStockItems.map(item => ({

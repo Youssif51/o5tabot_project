@@ -36,7 +36,7 @@ const isDateInPeriod = (dateStr, period) => {
 
 
 export default function MetricsRow({ timeFilter = 'all' }) {
-    const { state, t } = useContext(AppContext);
+    const { state, t, theme } = useContext(AppContext);
     const currency = state.storeSettings.currency || '$';
 
     // 1. Sales Overview calculations
@@ -103,7 +103,7 @@ export default function MetricsRow({ timeFilter = 'all' }) {
                     <div className="widget-metrics-horizontal">
                         <div className="sub-metric-item">
                             <div className="sub-metric-icon" style={{ background: 'rgba(46, 122, 243, 0.1)' }}>
-                                <img src="/icons/Sales.png" alt="Sales" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                                <img src="/icons/Sales.png" alt="Sales" style={{ width: '34px', height: '34px', objectFit: 'contain', imageRendering: '-webkit-optimize-contrast', filter: 'contrast(1.15) brightness(1.05)' }} />
                             </div>
                             <div className="sub-metric-info">
                                 <h4 id="dash-sales-count">{salesCount}</h4>
@@ -112,28 +112,28 @@ export default function MetricsRow({ timeFilter = 'all' }) {
                         </div>
                         <div className="sub-metric-item">
                             <div className="sub-metric-icon" style={{ background: 'rgba(160, 132, 220, 0.1)' }}>
-                                <img src="/icons/Revenue.png" alt="Revenue" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                                <img src="/icons/Revenue.png" alt="Revenue" style={{ width: '34px', height: '34px', objectFit: 'contain', imageRendering: '-webkit-optimize-contrast', filter: 'contrast(1.15) brightness(1.05)' }} />
                             </div>
                             <div className="sub-metric-info">
-                                <h4 id="dash-sales-revenue">{currency}{salesRevenue.toFixed(0)}</h4>
+                                <h4 id="dash-sales-revenue">{currency} {salesRevenue.toLocaleString('en-US', {maximumFractionDigits: 0})}</h4>
                                 <span>{t('revenue')}</span>
                             </div>
                         </div>
                         <div className="sub-metric-item">
                             <div className="sub-metric-icon" style={{ background: 'rgba(242, 153, 74, 0.1)' }}>
-                                <img src="/icons/Profit.png" alt="Profit" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                                <img src="/icons/Profit.png" alt="Profit" style={{ width: '34px', height: '34px', objectFit: 'contain', imageRendering: '-webkit-optimize-contrast', filter: 'contrast(1.15) brightness(1.05)' }} />
                             </div>
                             <div className="sub-metric-info">
-                                <h4 id="dash-sales-profit">{currency}{salesProfit.toFixed(0)}</h4>
+                                <h4 id="dash-sales-profit">{currency} {salesProfit.toLocaleString('en-US', {maximumFractionDigits: 0})}</h4>
                                 <span>{t('profit')}</span>
                             </div>
                         </div>
                         <div className="sub-metric-item">
                             <div className="sub-metric-icon" style={{ background: 'rgba(39, 174, 96, 0.1)' }}>
-                                <img src="/icons/Cost (1).png" alt="Cost" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                                <img src="/icons/Cost (1).png" alt="Cost" style={{ width: '34px', height: '34px', objectFit: 'contain', imageRendering: '-webkit-optimize-contrast', filter: 'contrast(1.15) brightness(1.05)' }} />
                             </div>
                             <div className="sub-metric-info">
-                                <h4 id="dash-sales-cost">{currency}{salesCost.toFixed(0)}</h4>
+                                <h4 id="dash-sales-cost">{currency} {salesCost.toLocaleString('en-US', {maximumFractionDigits: 0})}</h4>
                                 <span>{t('cost')}</span>
                             </div>
                         </div>
@@ -147,8 +147,8 @@ export default function MetricsRow({ timeFilter = 'all' }) {
                     </div>
                     <div className="widget-metrics-horizontal columns-2">
                         <div className="sub-metric-item">
-                            <div className="sub-metric-icon" style={{ background: 'rgba(242, 153, 74, 0.1)' }}>
-                                <img src="/icons/Group 20.png" alt="Qty in Hand" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                            <div className="sub-metric-icon" style={{ background: theme === 'dark' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(239, 68, 68, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <img src="/icons/icons8-goods-64.png" alt="Qty in Hand" style={{ width: '38px', height: '38px', objectFit: 'contain', imageRendering: '-webkit-optimize-contrast', filter: 'brightness(0) invert(40%) sepia(100%) saturate(5000%) hue-rotate(345deg) brightness(1.1)' }} />
                             </div>
                             <div className="sub-metric-info">
                                 <h4 id="dash-inv-qty">{invQty}</h4>
@@ -157,7 +157,7 @@ export default function MetricsRow({ timeFilter = 'all' }) {
                         </div>
                         <div className="sub-metric-item">
                             <div className="sub-metric-icon" style={{ background: 'rgba(160, 132, 220, 0.1)' }}>
-                                <img src="/icons/On the way.png" alt="To be received" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                                <img src="/icons/On the way.png" alt="To be received" style={{ width: '34px', height: '34px', objectFit: 'contain', imageRendering: '-webkit-optimize-contrast', filter: 'contrast(1.15) brightness(1.05)' }} />
                             </div>
                             <div className="sub-metric-info">
                                 <h4 id="dash-inv-received">{invReceived}</h4>
@@ -178,7 +178,7 @@ export default function MetricsRow({ timeFilter = 'all' }) {
                     <div className="widget-metrics-horizontal">
                         <div className="sub-metric-item">
                             <div className="sub-metric-icon" style={{ background: 'rgba(46, 122, 243, 0.1)' }}>
-                                <img src="/icons/Purchase bag.png" alt="Purchase" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                                <img src="/icons/Purchase bag.png" alt="Purchase" style={{ width: '34px', height: '34px', objectFit: 'contain', imageRendering: '-webkit-optimize-contrast', filter: 'contrast(1.15) brightness(1.05)' }} />
                             </div>
                             <div className="sub-metric-info">
                                 <h4 id="dash-pur-count">{purCount}</h4>
@@ -187,16 +187,16 @@ export default function MetricsRow({ timeFilter = 'all' }) {
                         </div>
                         <div className="sub-metric-item">
                             <div className="sub-metric-icon" style={{ background: 'rgba(39, 174, 96, 0.1)' }}>
-                                <img src="/icons/Cost (1).png" alt="Cost" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                                <img src="/icons/Cost (1).png" alt="Cost" style={{ width: '34px', height: '34px', objectFit: 'contain', imageRendering: '-webkit-optimize-contrast', filter: 'contrast(1.15) brightness(1.05)' }} />
                             </div>
                             <div className="sub-metric-info">
-                                <h4 id="dash-pur-cost">{currency}{purCost.toFixed(0)}</h4>
+                                <h4 id="dash-pur-cost">{currency} {purCost.toLocaleString('en-US', {maximumFractionDigits: 0})}</h4>
                                 <span>{t('cost')}</span>
                             </div>
                         </div>
                         <div className="sub-metric-item">
                             <div className="sub-metric-icon" style={{ background: 'rgba(160, 132, 220, 0.1)' }}>
-                                <img src="/icons/Group 33.png" alt="Cancel" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                                <img src="/icons/Group 33.png" alt="Cancel" style={{ width: '34px', height: '34px', objectFit: 'contain', imageRendering: '-webkit-optimize-contrast', filter: 'contrast(1.15) brightness(1.05)' }} />
                             </div>
                             <div className="sub-metric-info">
                                 <h4 id="dash-pur-cancelled">{purCancelled}</h4>
@@ -205,7 +205,7 @@ export default function MetricsRow({ timeFilter = 'all' }) {
                         </div>
                         <div className="sub-metric-item">
                             <div className="sub-metric-icon" style={{ background: 'rgba(242, 153, 74, 0.1)' }}>
-                                <img src="/icons/Group 34.png" alt="Return" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                                <img src="/icons/Group 34.png" alt="Return" style={{ width: '34px', height: '34px', objectFit: 'contain', imageRendering: '-webkit-optimize-contrast', filter: 'contrast(1.15) brightness(1.05)' }} />
                             </div>
                             <div className="sub-metric-info">
                                 <h4 id="dash-pur-returns">{purReturns}</h4>
@@ -223,7 +223,7 @@ export default function MetricsRow({ timeFilter = 'all' }) {
                     <div className="widget-metrics-horizontal columns-2">
                         <div className="sub-metric-item">
                             <div className="sub-metric-icon" style={{ background: 'rgba(46, 122, 243, 0.1)' }}>
-                                <img src="/icons/Vector.png" alt="Suppliers" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                                <img src="/icons/Vector.png" alt="Suppliers" style={{ width: '34px', height: '34px', objectFit: 'contain', imageRendering: '-webkit-optimize-contrast', filter: 'contrast(1.15) brightness(1.05)' }} />
                             </div>
                             <div className="sub-metric-info">
                                 <h4 id="dash-prod-suppliers">{state.suppliers.length}</h4>
@@ -232,7 +232,7 @@ export default function MetricsRow({ timeFilter = 'all' }) {
                         </div>
                         <div className="sub-metric-item">
                             <div className="sub-metric-icon" style={{ background: 'rgba(160, 132, 220, 0.1)' }}>
-                                <img src="/icons/Categories.png" alt="Categories" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                                <img src="/icons/Categories.png" alt="Categories" style={{ width: '34px', height: '34px', objectFit: 'contain', imageRendering: '-webkit-optimize-contrast', filter: 'contrast(1.15) brightness(1.05)' }} />
                             </div>
                             <div className="sub-metric-info">
                                 <h4 id="dash-prod-categories">{categories.length}</h4>

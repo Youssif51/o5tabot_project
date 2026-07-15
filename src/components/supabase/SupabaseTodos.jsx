@@ -3,7 +3,7 @@ import { supabase } from '../../utils/supabase';
 import { AppContext } from '../../context/AppContext';
 
 export default function SupabaseTodos() {
-    const { t, showToast } = useContext(AppContext);
+    const { t, showToast, showConfirm } = useContext(AppContext);
     const [todos, setTodos] = useState([]);
     const [loading, setLoading] = useState(true);
     const [newTodoName, setNewTodoName] = useState('');
@@ -95,21 +95,22 @@ export default function SupabaseTodos() {
     };
 
     // Delete todo
-    const handleDeleteTodo = async (id) => {
-        if (!window.confirm('Delete this task permanently from Supabase?')) return;
-        try {
-            const { error } = await supabase
-                .from('todos')
-                .delete()
-                .eq('id', id);
+    const handleDeleteTodo = (id) => {
+        showConfirm('هل أنت متأكد من حذف هذه الملاحظة نهائياً من قاعدة البيانات؟', async () => {
+            try {
+                const { error } = await supabase
+                    .from('todos')
+                    .delete()
+                    .eq('id', id);
 
-            if (error) throw error;
-            showToast('Task deleted from Supabase!');
-            setTodos(todos.filter(t => t.id !== id));
-        } catch (err) {
-            console.error('Error deleting todo:', err.message);
-            showToast(`Failed to delete task: ${err.message}`, 'error');
-        }
+                if (error) throw error;
+                showToast('Task deleted from Supabase!');
+                setTodos(todos.filter(t => t.id !== id));
+            } catch (err) {
+                console.error('Error deleting todo:', err.message);
+                showToast(`Failed to delete task: ${err.message}`, 'error');
+            }
+        });
     };
 
     return (

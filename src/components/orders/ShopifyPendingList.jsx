@@ -4,7 +4,7 @@ import { getLocalDateString } from '../../utils/dateUtils';
 import bostaData from '../../../محافظات/المناطق التابعه لكل محافظة.json';
 
 export default function ShopifyPendingList() {
-    const { state, updateOrderStatus, approveOrderWithBosta, showToast } = useContext(AppContext);
+    const { state, updateOrderStatus, approveOrderWithBosta, showToast, showConfirm, addCustomer, setCustomerSpam, logActivity } = useContext(AppContext);
     const [globalSearch, setGlobalSearch] = useState('');
     const [expandedOrderIds, setExpandedOrderIds] = useState({});
     
@@ -60,6 +60,23 @@ export default function ShopifyPendingList() {
             } catch(e) {}
         }
         return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode };
+    };
+
+    const normalizePhoneNumber = (phoneStr) => {
+        if (!phoneStr) return '';
+        let clean = phoneStr.replace(/\D/g, '');
+        if (clean.startsWith('20') && clean.length > 10) {
+            clean = clean.substring(2);
+        } else if (clean.startsWith('2') && clean.length > 10) {
+            clean = clean.substring(1);
+        }
+        if (clean.length === 10 && (clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15'))) {
+            clean = '0' + clean;
+        }
+        if (!clean.startsWith('0') && clean.length === 10) {
+            clean = '0' + clean;
+        }
+        return clean;
     };
 
     // Filter Logic: only pending Shopify orders
@@ -168,9 +185,9 @@ export default function ShopifyPendingList() {
         }
 
         const depositAmount = customDeposits[ordId] !== undefined ? (parseFloat(customDeposits[ordId]) || 0) : (pendingOrders.find(o => o.id === ordId)?.deposit || 0);
-        const allowToOpen = allowToOpenMap[ordId] !== undefined ? allowToOpenMap[ordId] : true;
+        const allowToOpen = allowToOpenMap[ordId] !== undefined ? allowToOpenMap[ordId] : false;
 
-        if (window.confirm('هل أنت متأكد من الموافقة على هذا الطلب وتأكيده للخصم من المخزون؟')) {
+        showConfirm('هل أنت متأكد من الموافقة على هذا الطلب وتأكيده للخصم من المخزون؟', () => {
             approveOrderWithBosta(ordId, {
                 bostaCityCode: city.cityCode,
                 bostaCityName: city.cityOtherName,
@@ -180,16 +197,44 @@ export default function ShopifyPendingList() {
                 allowToOpenPackage: allowToOpen
             }, depositAmount);
             showToast('تمت الموافقة على الطلب وتأكيده للتحويل لبوسطة وخصم الكميات بنجاح!', 'success');
-        }
+        });
     };
 
     // Cancel Action
     const handleCancel = (e, ordId) => {
         e.stopPropagation();
-        if (window.confirm('هل أنت متأكد من رفض وإلغاء هذا الطلب؟')) {
+        showConfirm('هل أنت متأكد من رفض وإلغاء هذا الطلب؟', (flagAsSpam) => {
             updateOrderStatus(ordId, 'Cancelled');
             showToast('تم إلغاء الطلب بنجاح', 'warning');
-        }
+            if (flagAsSpam) {
+                console.log('🚨 Spam flag enabled for Shopify order', ordId);
+                const ord = state.orders.find(o => o.id === ordId);
+                if (ord) {
+                    const { phone } = parseAddressData(ord.address);
+                    const normPhone = normalizePhoneNumber(phone);
+                    const cust = (state.customers || []).find(c => c.id === ord.customer_id || (normPhone && normalizePhoneNumber(c.phone) === normPhone));
+                    if (cust) {
+                        console.log('🔍 Found existing customer:', cust.id, cust.name);
+                        setCustomerSpam(cust.id, true);
+                        logActivity("customer", `Flagged customer ${cust.name} as spam upon order rejection.`);
+                    } else {
+                        console.log('➕ Creating new spam customer for:', ord.client, normPhone);
+                        const newCust = {
+                            id: crypto.randomUUID(),
+                            name: ord.client || "عميل شوبيفاي جديد",
+                            phone: normPhone || "00000000000",
+                            governorate: ord.governorate || "",
+                            customer_type: 'Regular',
+                            total_purchases: 0,
+                            orders_count: 0,
+                            is_spam: true
+                        };
+                        addCustomer(newCust);
+                        logActivity("customer", `Created spam customer profile for ${newCust.name} (${newCust.phone}) upon order rejection.`);
+                    }
+                }
+            }
+        }, null, { showSpamToggle: true });
     };
 
     return (
@@ -230,14 +275,14 @@ export default function ShopifyPendingList() {
                 </div>
                 <div className="glass-card" style={{ padding: '18px', borderRight: '4px solid var(--gold-primary)', background: 'var(--glass-bg)', position: 'relative', overflow: 'hidden' }}>
                     <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>إجمالي القيمة المعلقة</span>
-                    <strong style={{ fontSize: '24px', color: 'var(--gold-primary)' }}>{currency} {pendingValue.toFixed(2)}</strong>
+                    <strong style={{ fontSize: '24px', color: 'var(--gold-primary)' }}>{currency} {pendingValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
                     <div style={{ position: 'absolute', top: '16px', left: '16px', fontSize: '28px', color: 'rgba(212,175,55,0.1)' }}>
                         <i className="fa-solid fa-coins"></i>
                     </div>
                 </div>
                 <div className="glass-card" style={{ padding: '18px', borderRight: '4px solid #3498db', background: 'var(--glass-bg)', position: 'relative', overflow: 'hidden' }}>
                     <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>متوسط قيمة الطلب المعلق</span>
-                    <strong style={{ fontSize: '24px', color: '#3498db' }}>{currency} {avgPendingValue.toFixed(2)}</strong>
+                    <strong style={{ fontSize: '24px', color: '#3498db' }}>{currency} {avgPendingValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
                     <div style={{ position: 'absolute', top: '16px', left: '16px', fontSize: '28px', color: 'rgba(52,152,219,0.1)' }}>
                         <i className="fa-solid fa-calculator"></i>
                     </div>
@@ -347,7 +392,20 @@ export default function ShopifyPendingList() {
                                                     </div>
                                                 </td>
                                                 <td style={{ padding: '14px 16px' }}>
-                                                    <div style={{ fontWeight: 500 }}>{ord.client}</div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <div style={{ fontWeight: 500 }}>{ord.client}</div>
+                                                        {(() => {
+                                                            const cust = (state.customers || []).find(c => c.id === ord.customer_id || (phone && normalizePhoneNumber(c.phone) === normalizePhoneNumber(phone)));
+                                                            if (cust && cust.is_spam) {
+                                                                return (
+                                                                    <span className="badge badge-danger animate-pulse" style={{ fontSize: '10px', padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: '4px', boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)' }} title="عميل مزعج">
+                                                                        <i className="fa-solid fa-triangle-exclamation"></i>
+                                                                    </span>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
+                                                    </div>
                                                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{phone || 'بدون هاتف'}</div>
                                                 </td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px' }}>
@@ -360,7 +418,7 @@ export default function ShopifyPendingList() {
                                                     )}
                                                 </td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px' }}>{totalQty} قطع</td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, color: 'var(--gold-primary)' }}>{currency} {ord.totalValue.toFixed(2)}</td>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, color: 'var(--gold-primary)' }}>{currency} {ord.totalValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '12px' }}>
                                                     <span style={{ background: 'rgba(255,255,255,0.04)', padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--glass-border)' }}>
                                                         {ord.paymentMethod || 'COD'}
@@ -591,7 +649,7 @@ export default function ShopifyPendingList() {
                                                                         <input 
                                                                             type="checkbox" 
                                                                             id={`allow-open-${ord.id}`}
-                                                                            checked={allowToOpenMap[ord.id] !== undefined ? allowToOpenMap[ord.id] : true}
+                                                                            checked={allowToOpenMap[ord.id] !== undefined ? allowToOpenMap[ord.id] : false}
                                                                             onChange={(e) => {
                                                                                 setAllowToOpenMap({
                                                                                     ...allowToOpenMap,
@@ -636,8 +694,8 @@ export default function ShopifyPendingList() {
                                                                             <tr key={idx} style={{ borderBottom: '1px solid var(--glass-bg)' }}>
                                                                                 <td style={{ padding: '8px 4px' }}>{getProductNameBySku(item.variantSku)}</td>
                                                                                 <td style={{ textAlign: 'center', padding: '8px 4px' }}>{item.quantity}</td>
-                                                                                <td style={{ textAlign: 'center', padding: '8px 4px' }}>{currency} {item.price.toFixed(2)}</td>
-                                                                                <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold' }}>{currency} {(item.quantity * item.price).toFixed(2)}</td>
+                                                                                <td style={{ textAlign: 'center', padding: '8px 4px' }}>{currency} {item.price.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                                                <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold' }}>{currency} {(item.quantity * item.price).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                                             </tr>
                                                                         ))}
                                                                     </tbody>
@@ -649,7 +707,20 @@ export default function ShopifyPendingList() {
                                                                 {/* Customer Details */}
                                                                 <div className="glass-card" style={{ padding: '14px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
                                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11.5px' }}>
-                                                                        <div><strong>اسم العميل:</strong> {ord.client}</div>
+                                                                        <div>
+                                                                            <strong>اسم العميل:</strong> {ord.client}
+                                                                            {(() => {
+                                                                                const cust = (state.customers || []).find(c => c.id === ord.customer_id || (phone && normalizePhoneNumber(c.phone) === normalizePhoneNumber(phone)));
+                                                                                if (cust && cust.is_spam) {
+                                                                                    return (
+                                                                                        <span className="badge badge-danger animate-pulse" style={{ fontSize: '10px', padding: '2px 6px', marginRight: '8px', display: 'inline-flex', alignItems: 'center', gap: '4px', boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)' }}>
+                                                                                            <i className="fa-solid fa-triangle-exclamation"></i> عميل مزعج (سبام)
+                                                                                        </span>
+                                                                                    );
+                                                                                }
+                                                                                return null;
+                                                                            })()}
+                                                                        </div>
                                                                         <div><strong>رقم الهاتف:</strong> {phone || 'غير مسجل'}</div>
                                                                         <div><strong>البريد الإلكتروني:</strong> {customerEmail || 'غير مسجل'}</div>
                                                                         <div><strong>طريقة الدفع شوبيفاي:</strong> {ord.paymentMethod || 'COD'}</div>
@@ -661,15 +732,15 @@ export default function ShopifyPendingList() {
                                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11.5px' }}>
                                                                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                                             <span>إجمالي المنتجات:</span>
-                                                                            <span>{currency} {(ord.totalValue - (ord.shipping_fee || 0)).toFixed(2)}</span>
+                                                                            <span>{currency} {(ord.totalValue - (ord.shipping_fee || 0)).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                         </div>
                                                                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                                             <span>مصاريف الشحن شوبيفاي:</span>
-                                                                            <span>+{currency} {(ord.shipping_fee || 0).toFixed(2)}</span>
+                                                                            <span>+{currency} {(ord.shipping_fee || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                         </div>
                                                                         <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71', fontWeight: 500 }}>
                                                                             <span>العربون (Deposit):</span>
-                                                                            <span>-{currency} {(customDeposits[ord.id] !== undefined ? (parseFloat(customDeposits[ord.id]) || 0) : (ord.deposit || 0)).toFixed(2)}</span>
+                                                                            <span>-{currency} {(customDeposits[ord.id] !== undefined ? (parseFloat(customDeposits[ord.id]) || 0) : (ord.deposit || 0)).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                         </div>
                                                                         
                                                                         {/* Editable Deposit Input */}
@@ -701,7 +772,7 @@ export default function ShopifyPendingList() {
 
                                                                         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: 'var(--gold-primary)', borderTop: '1px dashed var(--glass-border-hover)', paddingTop: '6px', marginTop: '4px' }}>
                                                                             <span>المتبقي للتحصيل:</span>
-                                                                            <span>{currency} {Math.max(0, ord.totalValue - (customDeposits[ord.id] !== undefined ? (parseFloat(customDeposits[ord.id]) || 0) : (ord.deposit || 0))).toFixed(2)}</span>
+                                                                            <span>{currency} {Math.max(0, ord.totalValue - (customDeposits[ord.id] !== undefined ? (parseFloat(customDeposits[ord.id]) || 0) : (ord.deposit || 0))).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                         </div>
                                                                     </div>
                                                                 </div>
