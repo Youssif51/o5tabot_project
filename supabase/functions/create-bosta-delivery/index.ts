@@ -212,7 +212,8 @@ Deno.serve(async (req) => {
     
     // Calculate COD cash to collect
     // Total value includes shipping fees. Subtract deposit amount.
-    const codAmount = Math.max(0, (parseFloat(order.total_value) || 0) - (parseFloat(depositAmount) || 0));
+    const orderTotalForSurcharge = parseFloat(order.total_value) || 0;
+    const codAmount = Math.max(0, orderTotalForSurcharge - (parseFloat(depositAmount) || 0));
 
     // Ensure address line 1 is at least 5 characters
     let firstLine = detailAddress.trim();
@@ -220,15 +221,20 @@ Deno.serve(async (req) => {
       firstLine = `${firstLine} - العنوان بالتفصيل`;
     }
 
+    const productValueAmount = orderTotalForSurcharge < 1000 ? orderTotalForSurcharge + 100 : orderTotalForSurcharge;
+
     const bostaPayload = {
       type: 10, // Send / Deliver
       specs: {
-        packageType: "Parcel",
-        size: "SMALL",
+        packageType: "Small",
         packageDetails: {
           itemsCount: totalQty,
           description: itemsDescription.substring(0, 120)
         }
+      },
+      goodsInfo: {
+        amount: productValueAmount,
+        notes: itemsDescription.substring(0, 120)
       },
       cod: codAmount,
       allowToOpenPackage: bostaMetadata.allowToOpenPackage !== undefined ? bostaMetadata.allowToOpenPackage : true,

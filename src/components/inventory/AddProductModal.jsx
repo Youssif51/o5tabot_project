@@ -7,7 +7,8 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
     const { state, addProduct, editProduct, syncShopifyCollections, t, showAlert } = useContext(AppContext);
 
     // Form states
-    const [shopifyCollectionId, setShopifyCollectionId] = useState('');
+    const [shopifyCollectionIds, setShopifyCollectionIds] = useState([]);
+    const [showCollectionDropdown, setShowCollectionDropdown] = useState(false);
     const [syncingCollections, setSyncingCollections] = useState(false);
 
     // Dynamic categories calculation
@@ -79,7 +80,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 setTags(prod.tags || '');
                 setDescription(prod.description || '');
                 setStatus(prod.status || 'active');
-                setShopifyCollectionId(prod.shopifyCollectionId || '');
+                setShopifyCollectionIds(prod.shopifyCollectionIds || []);
                 setShowNewCategoryInput(false);
                 setNewCategoryName('');
                 
@@ -109,7 +110,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
             setTags('');
             setDescription('');
             setStatus('active');
-            setShopifyCollectionId('');
+            setShopifyCollectionIds([]);
             setShowNewCategoryInput(false);
             setNewCategoryName('');
             setHasVariants(false);
@@ -242,7 +243,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
             createdBy: originalProduct ? (originalProduct.createdBy || 'sfsf') : (state.currentUser ? state.currentUser.name : 'sfsf'),
             description: description,
             status: status,
-            shopifyCollectionId: shopifyCollectionId || null,
+            shopifyCollectionIds: shopifyCollectionIds,
             variants: mappedVariants,
             batches: mappedBatches,
             suppliers: originalProduct ? (originalProduct.suppliers || []) : [],
@@ -440,19 +441,32 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                                 {syncingCollections ? 'جاري التحديث...' : 'تحديث المجموعات 🔄'}
                             </button>
                         </label>
-                        <select 
-                            className="form-select"
-                            value={shopifyCollectionId}
-                            onChange={(e) => setShopifyCollectionId(e.target.value)}
-                            style={{ height: '38px', padding: '0 10px' }}
-                        >
-                            <option value="" style={{ background: '#1d1d21', color: '#fff' }}>لا يوجد مجموعة (None)</option>
-                            {(state.collections || []).map(col => (
-                                <option key={col.id} value={col.id} style={{ background: '#1d1d21', color: '#fff' }}>
-                                    {col.title} ({col.type === 'smart' ? 'ذكية' : 'يدوية'})
-                                </option>
-                            ))}
-                        </select>
+                        <div className="multi-select-dropdown" style={{ position: 'relative' }}>
+                            <div className="form-select" style={{ minHeight: '38px', padding: '5px 10px', height: 'auto', display: 'flex', flexWrap: 'wrap', gap: '5px', cursor: 'pointer', background: 'transparent', border: '1px solid #333' }} onClick={() => setShowCollectionDropdown(!showCollectionDropdown)}>
+                                {shopifyCollectionIds.length === 0 ? <span style={{ color: '#aaa', padding: '4px 0' }}>لا يوجد كوليكشن (None)</span> : 
+                                    shopifyCollectionIds.map(id => {
+                                        const col = (state.collections || []).find(c => String(c.id) === String(id));
+                                        return col ? <span key={id} style={{ background: 'rgba(46, 122, 243, 0.2)', padding: '2px 8px', borderRadius: '4px', fontSize: '12px', display: 'flex', alignItems: 'center' }}>{col.title}</span> : null;
+                                    })
+                                }
+                            </div>
+                            {showCollectionDropdown && (
+                                <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: '#1d1d21', border: '1px solid #333', zIndex: 100, maxHeight: '200px', overflowY: 'auto', borderRadius: '4px', marginTop: '4px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}>
+                                    {(state.collections || []).map(col => (
+                                        <div key={col.id} style={{ padding: '8px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #2a2a2a' }} onClick={() => {
+                                            if (shopifyCollectionIds.includes(String(col.id))) {
+                                                setShopifyCollectionIds(shopifyCollectionIds.filter(id => id !== String(col.id)));
+                                            } else {
+                                                setShopifyCollectionIds([...shopifyCollectionIds, String(col.id)]);
+                                            }
+                                        }}>
+                                            <input type="checkbox" checked={shopifyCollectionIds.includes(String(col.id))} readOnly style={{ cursor: 'pointer' }} />
+                                            <span>{col.title} <small style={{color: '#888'}}>({col.type === 'smart' ? 'ذكي' : 'عادي'})</small></span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 

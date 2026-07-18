@@ -2,6 +2,7 @@ import React, { useContext, useState, useEffect } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
+import bostaData from '../../../محافظات/المناطق التابعه لكل محافظة.json';
 
 export const shippingFees = {
   "القاهرة": 55,
@@ -33,13 +34,25 @@ export const shippingFees = {
   "مطروح": 120,
 };
 
+const calculateBostaShippingFee = (cityName) => {
+    if (!cityName) return 65;
+    const city = cityName.trim();
+    if (["بور سعيد", "الاسماعيليه", "السويس"].includes(city)) return 75;
+    if (["الفيوم", "بني سويف", "المنيا", "اسيوط", "سوهاج"].includes(city)) return 80;
+    if (["قنا", "الاقصر", "اسوان", "البحر الاحمر", "مرسي مطروح", "الساحل الشمالي"].includes(city)) return 100;
+    if (["شمال سيناء", "جنوب سيناء", "الوادي الجديد"].includes(city)) return 120;
+    return 65;
+};
+
 export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
-    const { state, addOrder, editOrder, showToast, t, validateCoupon, getOrCreateCustomer } = useContext(AppContext);
+    const { state, addOrder, editOrder, showToast, t, validateCoupon, getOrCreateCustomer, approveOrderWithBosta } = useContext(AppContext);
     
     // Order info
     const [orderId, setOrderId] = useState('');
     const [status, setStatus] = useState('Draft'); // 'Draft', 'Pending', 'Completed'
     const [step, setStep] = useState(1); // 1: بيانات العميل, 2: المنتجات, 3: الشحن والدفع, 4: مراجعة
+    const [syncWithBosta, setSyncWithBosta] = useState(false);
+    const [allowToOpenPackage, setAllowToOpenPackage] = useState(false);
     
     // Customer Section
     const [client, setClient] = useState('');
@@ -55,11 +68,17 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     
     // Products Table
     const [items, setItems] = useState([
-        { variantSku: '', quantity: 1, price: 0, discountPercent: 0, maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }
+        { variantSku: '', quantity: 1, price: 0, discountPercent: 0, discountType: 'Percentage', maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }
     ]);
     
     // Financial Summaries
-    const [orderDiscountPercent, setOrderDiscountPercent] = useState('');
+    // Removed global order discount
+    const [citySelected, setCitySelected] = useState(null);
+    const [districtSelected, setDistrictSelected] = useState(null);
+    const [activeCityDropdown, setActiveCityDropdown] = useState(false);
+    const [activeDistrictDropdown, setActiveDistrictDropdown] = useState(false);
+    const [citySearch, setCitySearch] = useState('');
+    const [districtSearch, setDistrictSearch] = useState('');
     const [shippingFee, setShippingFee] = useState('');
     const [vatEnabled, setVatEnabled] = useState(false);
     const [deposit, setDeposit] = useState('');
@@ -71,7 +90,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         let detailAddress = addressStr || '';
         let phone = '';
         let vatEnabled = false;
-        let orderDiscountPercent = 0;
+        // removed orderDiscountPercent
         let customerCode = 'CUS-0000';
         let appliedCoupon = '';
         
@@ -81,12 +100,12 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 detailAddress = parsed.detailAddress || '';
                 phone = parsed.phone || '';
                 vatEnabled = parsed.vatEnabled || false;
-                orderDiscountPercent = parseFloat(parsed.orderDiscountPercent) || 0;
+                
                 customerCode = parsed.customerCode || 'CUS-0000';
                 appliedCoupon = parsed.appliedCoupon || '';
             } catch(e) {}
         }
-        return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode, appliedCoupon };
+        return { detailAddress, phone, vatEnabled, customerCode, appliedCoupon };
     };
 
     // Deterministic Customer Code Generator
@@ -123,7 +142,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     setPhone(parsed.phone);
                     setAddress(parsed.detailAddress || order.address);
                     setVatEnabled(parsed.vatEnabled);
-                    setOrderDiscountPercent(parsed.orderDiscountPercent || '');
+                    
                     setCouponCode(parsed.appliedCoupon || '');
                     setCustomerId(order.customer_id || null);
                     
@@ -158,6 +177,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             quantity: oi.quantity,
                             price: retailPrice,
                             discountPercent: itemDiscount,
+                            discountType: 'Percentage',
                             maxStock: maxStock,
                             searchVal: (variantName && variantName !== 'Standard Option') ? `${productName} | ${variantName}` : productName,
                             isOpen: false,
@@ -178,8 +198,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 setPhone('');
                 setGovernorate('');
                 setAddress('');
-                setItems([{ variantSku: '', quantity: 1, price: 0, discountPercent: 0, maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }]);
-                setOrderDiscountPercent('');
+                setItems([{ variantSku: '', quantity: 1, price: 0, discountPercent: 0, discountType: 'Percentage', maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }]);
+                
                 setShippingFee('');
                 setVatEnabled(false);
                 setDeposit('');
@@ -188,6 +208,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 setCouponValid(false);
                 setCouponDiscountValue(0);
                 setCouponDiscountType('');
+                setSyncWithBosta(false);
             }
         }
     }, [isOpen, editOrderId]);
@@ -223,7 +244,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     setPhone(parsed.phone || '');
                     setAddress(parsed.detailAddress || lastOrder.address);
                     setVatEnabled(parsed.vatEnabled || false);
-                    setOrderDiscountPercent(parsed.orderDiscountPercent || 0);
+                    
                 } catch (e) {
                     setAddress(lastOrder.address);
                 }
@@ -238,7 +259,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
     // Products table actions
     const handleAddItem = () => {
-        setItems(prev => [...prev, { variantSku: '', quantity: 1, price: 0, discountPercent: 0, maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }]);
+        setItems(prev => [...prev, { variantSku: '', quantity: 1, price: 0, discountPercent: 0, discountType: 'Percentage', maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }]);
     };
 
     const handleRemoveItem = (index) => {
@@ -285,11 +306,11 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         }
     };
 
-    const handleDiscountChange = (index, val) => {
+    const handleDiscountChange = (index, val, type) => {
         let disc = parseFloat(val) || 0;
         if (disc < 0) disc = 0;
-        if (disc > 100) disc = 100;
-        setItems(prev => prev.map((item, i) => i === index ? { ...item, discountPercent: disc } : item));
+        if (type === 'Percentage' && disc > 100) disc = 100;
+        setItems(prev => prev.map((item, i) => i === index ? { ...item, discountPercent: disc, discountType: type } : item));
     };
 
     const handleGovernorateChange = (gov) => {
@@ -299,12 +320,12 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     };
 
     // Financial Math calculations (parsed for string safety)
-    const orderDiscountPercentVal = parseFloat(orderDiscountPercent) || 0;
+    
     const shippingFeeVal = parseFloat(shippingFee) || 0;
     const depositVal = parseFloat(deposit) || 0;
 
     const totalProductsSubtotal = items.reduce((sum, item) => {
-        const sub = item.quantity * item.price * (1 - (item.discountPercent || 0) / 100);
+        const sub = item.discountType === 'Percentage' ? (item.quantity * item.price * (1 - (item.discountPercent || 0) / 100)) : Math.max(0, (item.quantity * item.price) - (item.discountPercent || 0));
         return sum + (item.variantSku ? sub : 0);
     }, 0);
 
@@ -316,7 +337,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
             couponDisc = couponDiscountValue;
         }
     }
-    const orderDiscountAmount = (totalProductsSubtotal * (orderDiscountPercentVal / 100)) + couponDisc;
+    const orderDiscountAmount = couponDisc;
     const discountedProductsTotal = totalProductsSubtotal - orderDiscountAmount;
     
     const vatAmount = vatEnabled ? (discountedProductsTotal * 0.14) : 0;
@@ -384,7 +405,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     // Validations
     const isStep1Valid = client.trim() !== '' && phone.trim().length === 11 && governorate !== '' && address.trim() !== '';
     const isStep2Valid = items.length > 0 && items.every(item => item.variantSku !== '' && item.quantity > 0);
-    const isStep3Valid = shippingFeeVal >= 0 && orderDiscountPercentVal >= 0 && orderDiscountPercentVal <= 100 && depositVal >= 0;
+    const isStep3Valid = shippingFeeVal >= 0 && depositVal >= 0;
     
     const canConfirm = isStep1Valid && isStep2Valid && isStep3Valid;
 
@@ -410,6 +431,13 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
             setStep(1);
             return;
         }
+        if (!isDraftSave && syncWithBosta) {
+            if (!citySelected || !districtSelected) {
+                showToast("يرجى اختيار المحافظة والمنطقة الخاصة ببوسطة من الخطوة الأولى لتفعيل المزامنة التلقائية للشحن.", "error");
+                setStep(1);
+                return;
+            }
+        }
         if (!isStep2Valid) {
             showToast("يرجى إدخال أصناف وكميات صالحة في سلة المنتجات", "error");
             setStep(2);
@@ -419,7 +447,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         const orderItems = items.map(item => ({
             variantSku: item.variantSku,
             quantity: item.quantity,
-            price: item.price * (1 - (item.discountPercent || 0) / 100)
+            price: item.discountType === 'Percentage' ? (item.price * (1 - (item.discountPercent || 0) / 100)) : (item.price - (item.discountPercent || 0) / item.quantity)
         }));
 
         const finalStatus = isDraftSave ? 'Draft' : (state.currentUser?.role === 'Staff' ? 'Pending' : 'Completed'); // Draft = مسودة, Pending = قيد المراجعة, Completed = مؤكد/مكتمل
@@ -448,7 +476,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 detailAddress: address,
                 phone: phone,
                 vatEnabled: vatEnabled,
-                orderDiscountPercent: orderDiscountPercentVal,
+                
                 customerCode: customerCode,
                 appliedCoupon: couponValid ? couponCode : ''
             }),
@@ -460,10 +488,27 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
         if (editOrderId) {
             editOrder(newOrderObj);
-            showToast(isDraftSave ? "تم تحديث مسودة الطلب بنجاح" : "تم تعديل وتأكيد الطلب بنجاح", "success");
+            showToast(isDraftSave ? "تم تعديل الطلب كمسودة بنجاح" : "تم تعديل واعتماد الطلب بنجاح", "success");
         } else {
             addOrder(newOrderObj);
-            showToast(isDraftSave ? "تم حفظ الطلب كمسودة بنجاح" : "تم تأكيد طلب المبيعات بنجاح", "success");
+            showToast(isDraftSave ? "تم حفظ الطلب كمسودة بنجاح" : "تم إضافة طلب العميل بنجاح", "success");
+            
+            if (!isDraftSave && syncWithBosta && newOrderObj.status !== 'Draft') {
+                const bostaMetadata = {
+                    customerName: client,
+                    customerPhone: phone,
+                    customerAddress: address,
+                    governorate: governorate,
+                    bostaCityCode: citySelected?.cityCode,
+                    bostaCityName: citySelected?.cityOtherName,
+                    bostaDistrictId: districtSelected?.districtId,
+                    bostaDistrictName: districtSelected?.districtOtherName,
+                    bostaZoneId: districtSelected?.zoneId,
+                    allowToOpenPackage: allowToOpenPackage
+                };
+                // Fire and forget
+                approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit);
+            }
         }
         onClose();
     };
@@ -615,20 +660,102 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         </div>
                                     )}
                                 </div>
-                                <div className="form-group">
-                                    <label className="form-label">المحافظة (الشحن) *</label>
-                                    <select 
-                                        className="form-select" 
-                                        value={governorate}
-                                        onChange={(e) => handleGovernorateChange(e.target.value)}
-                                        required
-                                    >
-                                        <option value="">اختر المحافظة...</option>
-                                        {Object.keys(shippingFees).map(gov => (
-                                            <option key={gov} value={gov}>{gov} ({currency} {shippingFees[gov]})</option>
-                                        ))}
-                                    </select>
-                                </div>
+                                
+<div style={{ display: 'flex', gap: '10px' }}>
+    <div className="form-group" style={{ flex: 1, position: 'relative' }}>
+        <label className="form-label">المحافظة (الشحن) *</label>
+        <div 
+            onClick={() => setActiveCityDropdown(!activeCityDropdown)}
+            style={{ 
+                background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '8px', 
+                padding: '10px 12px', fontSize: '13px', color: citySelected ? '#fff' : '#aaa', cursor: 'pointer',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+            }}
+        >
+            <span>{citySelected ? citySelected.cityOtherName : 'اختر المحافظة...'}</span>
+            <i className="fa-solid fa-chevron-down" style={{ fontSize: '10px' }}></i>
+        </div>
+        
+        {activeCityDropdown && (
+            <div className="glass-card" style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, maxHeight: '200px',
+                overflowY: 'auto', background: '#1e1e24', border: '1px solid var(--glass-border)', borderRadius: '8px',
+                marginTop: '4px', padding: '4px'
+            }}>
+                <input 
+                    type="text" 
+                    placeholder="ابحث عن المحافظة..." 
+                    value={citySearch}
+                    onChange={(e) => setCitySearch(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: '#fff', padding: '6px 10px', fontSize: '12px', borderRadius: '4px', marginBottom: '4px', outline: 'none' }}
+                />
+                {bostaData.data.filter(c => c.cityOtherName.includes(citySearch) || c.cityName.toLowerCase().includes(citySearch.toLowerCase())).map(c => (
+                    <div 
+                        key={c.cityCode}
+                        onClick={() => {
+                            setCitySelected(c);
+                            setGovernorate(c.cityOtherName);
+                            setDistrictSelected(null);
+                            setShippingFee(calculateBostaShippingFee(c.cityOtherName));
+                            setActiveCityDropdown(false);
+                            setCitySearch('');
+                        }}
+                        style={{ padding: '8px', fontSize: '12px', cursor: 'pointer', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                    >
+                        {c.cityOtherName}
+                    </div>
+                ))}
+            </div>
+        )}
+    </div>
+
+    <div className="form-group" style={{ flex: 1, position: 'relative' }}>
+        <label className="form-label">المنطقة (Bosta) *</label>
+        <div 
+            onClick={() => { if(citySelected) setActiveDistrictDropdown(!activeDistrictDropdown) }}
+            style={{ 
+                background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '8px', 
+                padding: '10px 12px', fontSize: '13px', color: districtSelected ? '#fff' : '#aaa', cursor: citySelected ? 'pointer' : 'not-allowed',
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: citySelected ? 1 : 0.5
+            }}
+        >
+            <span>{districtSelected ? districtSelected.districtOtherName : 'اختر المنطقة...'}</span>
+            <i className="fa-solid fa-chevron-down" style={{ fontSize: '10px' }}></i>
+        </div>
+        
+        {activeDistrictDropdown && citySelected && (
+            <div className="glass-card" style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, maxHeight: '200px',
+                overflowY: 'auto', background: '#1e1e24', border: '1px solid var(--glass-border)', borderRadius: '8px',
+                marginTop: '4px', padding: '4px'
+            }}>
+                <input 
+                    type="text" 
+                    placeholder="ابحث عن المنطقة..." 
+                    value={districtSearch}
+                    onChange={(e) => setDistrictSearch(e.target.value)}
+                    onClick={(e) => e.stopPropagation()}
+                    style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: '#fff', padding: '6px 10px', fontSize: '12px', borderRadius: '4px', marginBottom: '4px', outline: 'none' }}
+                />
+                {citySelected.districts.filter(d => d.dropOffAvailability && (d.districtOtherName.includes(districtSearch) || d.districtName.toLowerCase().includes(districtSearch.toLowerCase()))).map(d => (
+                    <div 
+                        key={d.districtId}
+                        onClick={() => {
+                            setDistrictSelected(d);
+                            setActiveDistrictDropdown(false);
+                            setDistrictSearch('');
+                        }}
+                        style={{ padding: '8px', fontSize: '12px', cursor: 'pointer', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                    >
+                        {d.districtOtherName}
+                    </div>
+                ))}
+            </div>
+        )}
+    </div>
+</div>
+
                             </div>
 
                             <div className="form-group">
@@ -661,14 +788,14 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             <th style={{ width: '38%', textAlign: 'right', padding: '10px' }}>المنتج / SKU</th>
                                             <th style={{ width: '15%', textAlign: 'center', padding: '10px' }}>الكمية</th>
                                             <th style={{ width: '15%', textAlign: 'center', padding: '10px' }}>سعر الوحدة</th>
-                                            <th style={{ width: '10%', textAlign: 'center', padding: '10px' }}>خصم %</th>
+                                            <th style={{ width: '14%', textAlign: 'center', padding: '10px' }}>الخصم</th>
                                             <th style={{ width: '14%', textAlign: 'center', padding: '10px' }}>الإجمالي</th>
                                             <th style={{ width: '8%', textAlign: 'center', padding: '10px' }}>حذف</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {items.map((item, idx) => {
-                                            const subtotal = item.quantity * item.price * (1 - (item.discountPercent || 0) / 100);
+                                            const subtotal = item.discountType === 'Percentage' ? (item.quantity * item.price * (1 - (item.discountPercent || 0) / 100)) : Math.max(0, (item.quantity * item.price) - (item.discountPercent || 0));
                                             const rowOptions = getRowOptions(item);
                                             return (
                                                 <tr key={`order-item-${idx}`} style={{ borderBottom: '1px solid var(--glass-border)' }}>
@@ -819,16 +946,44 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                         />
                                                     </td>
                                                     <td style={{ padding: '8px 10px', verticalAlign: 'middle' }}>
-                                                        <input 
-                                                            type="number"
-                                                            className="form-input"
-                                                            min="0"
-                                                            max="100"
-                                                            value={item.discountPercent || 0}
-                                                            onChange={(e) => handleDiscountChange(idx, e.target.value)}
-                                                            disabled={!item.variantSku}
-                                                            style={{ textAlign: 'center' }}
-                                                        />
+                                                        <div style={{ display: 'flex', gap: '4px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '6px', overflow: 'hidden' }}>
+                                                            <input 
+                                                                type="number"
+                                                                min="0"
+                                                                value={item.discountPercent || ''}
+                                                                onChange={(e) => handleDiscountChange(idx, e.target.value, item.discountType || 'Percentage')}
+                                                                disabled={!item.variantSku}
+                                                                placeholder="0"
+                                                                style={{
+                                                                    width: '60px',
+                                                                    background: 'transparent',
+                                                                    border: 'none',
+                                                                    color: 'var(--text-primary)',
+                                                                    textAlign: 'center',
+                                                                    fontSize: '13px',
+                                                                    padding: '8px 4px',
+                                                                    outline: 'none'
+                                                                }}
+                                                            />
+                                                            <select 
+                                                                value={item.discountType || 'Percentage'}
+                                                                onChange={(e) => handleDiscountChange(idx, item.discountPercent, e.target.value)}
+                                                                disabled={!item.variantSku}
+                                                                style={{
+                                                                    background: 'var(--glass-bg-hover)',
+                                                                    border: 'none',
+                                                                    borderLeft: '1px solid var(--glass-border)',
+                                                                    color: 'var(--gold-primary)',
+                                                                    fontSize: '13px',
+                                                                    cursor: 'pointer',
+                                                                    padding: '0 8px',
+                                                                    outline: 'none'
+                                                                }}
+                                                            >
+                                                                <option value="Percentage">%</option>
+                                                                <option value="Fixed">ج</option>
+                                                            </select>
+                                                        </div>
                                                     </td>
                                                     <td style={{ padding: '8px 10px', verticalAlign: 'middle', textAlign: 'center', fontWeight: 'bold' }}>
                                                         {item.variantSku ? `${currency} ${subtotal.toLocaleString('en-US', {maximumFractionDigits: 2})}` : `${currency}0.00`}
@@ -856,23 +1011,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     {step === 3 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                                <div className="form-group">
-                                    <label className="form-label">خصم الأوردر % (خصم إضافي إجمالي)</label>
-                                    <input 
-                                        type="number" 
-                                        className="form-input" 
-                                        min="0" 
-                                        max="100"
-                                        value={orderDiscountPercent}
-                                        onChange={(e) => {
-                                            let val = parseFloat(e.target.value) || 0;
-                                            if (val < 0) val = 0;
-                                            if (val > 100) val = 100;
-                                            setOrderDiscountPercent(val);
-                                        }}
-                                        placeholder="0"
-                                    />
-                                </div>
+
                                 <div className="form-group">
                                     <label className="form-label">كود الخصم (كوبون)</label>
                                     <div style={{ display: 'flex', gap: '8px' }}>
@@ -970,7 +1109,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     <div>
                                         <span style={{ color: 'var(--text-secondary)' }}>خصم الأوردر:</span>
                                         <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px', color: 'var(--color-danger)' }}>
-                                            -{currency} {orderDiscountAmount.toLocaleString('en-US', {maximumFractionDigits: 2})} ({orderDiscountPercent}%)
+                                            -{currency} {orderDiscountAmount.toLocaleString('en-US', {maximumFractionDigits: 2})}
                                         </strong>
                                     </div>
                                     <div>
@@ -1026,9 +1165,9 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             <span>مجموع المنتجات:</span>
                                             <span>{currency} {totalProductsSubtotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                         </div>
-                                        {orderDiscountPercent > 0 && (
+                                        {couponValid && (
                                             <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-danger)' }}>
-                                                <span>خصم إضافي للأوردر ({orderDiscountPercent}%):</span>
+                                                <span>خصم الكوبون:</span>
                                                 <span>-{currency} {orderDiscountAmount.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                             </div>
                                         )}
@@ -1073,13 +1212,13 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     </thead>
                                     <tbody>
                                         {items.map((item, i) => {
-                                            const sub = item.quantity * item.price * (1 - (item.discountPercent || 0) / 100);
+                                            const sub = item.discountType === 'Percentage' ? (item.quantity * item.price * (1 - (item.discountPercent || 0) / 100)) : Math.max(0, (item.quantity * item.price) - (item.discountPercent || 0));
                                             return (
                                                 <tr key={`review-item-${i}`} style={{ borderBottom: '1px solid var(--glass-bg-hover)' }}>
                                                     <td style={{ padding: '6px 4px' }}>{item.productName} {item.variantName && item.variantName !== 'Standard Option' && <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>({item.variantName})</span>}</td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>{item.quantity}</td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>{currency} {item.price.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
-                                                    <td style={{ textAlign: 'center', padding: '6px 4px', color: 'var(--color-danger)' }}>{item.discountPercent > 0 ? `${item.discountPercent}%` : '-'}</td>
+                                                    <td style={{ textAlign: 'center', padding: '6px 4px', color: 'var(--color-danger)' }}>{item.discountPercent > 0 ? (item.discountType === 'Percentage' ? `${item.discountPercent}%` : `${currency} ${item.discountPercent}`) : '-'}</td>
                                                     <td style={{ textAlign: 'left', padding: '6px 4px', fontWeight: 'bold' }}>{currency} {sub.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                 </tr>
                                             );
@@ -1087,6 +1226,105 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     </tbody>
                                 </table>
                             </div>
+                            
+                            {!editOrderId && (
+                                <div style={{ 
+                                    marginTop: '16px',
+                                    padding: '20px', 
+                                    background: syncWithBosta ? 'rgba(227, 0, 15, 0.08)' : 'rgba(255,255,255,0.03)', 
+                                    border: syncWithBosta ? '1px solid rgba(227, 0, 15, 0.3)' : '1px solid var(--glass-border)',
+                                    borderRadius: '12px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '16px',
+                                    transition: 'all 0.3s ease'
+                                }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => setSyncWithBosta(!syncWithBosta)}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                                            <div style={{
+                                                width: '44px',
+                                                height: '44px',
+                                                borderRadius: '10px',
+                                                background: syncWithBosta ? '#E3000F' : 'rgba(255,255,255,0.1)',
+                                                color: '#fff',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                transition: 'all 0.3s ease'
+                                            }}>
+                                                <svg viewBox="0 0 100 100" style={{ width: '26px', height: '26px', stroke: 'currentColor', strokeWidth: 9, fill: 'none', strokeLinejoin: 'round', strokeLinecap: 'round' }}>
+                                                    <polygon points="50,10 90,32 90,68 50,90 10,68 10,32" />
+                                                    <line x1="10" y1="32" x2="90" y2="68" />
+                                                    <line x1="10" y1="68" x2="90" y2="32" />
+                                                </svg>
+                                            </div>
+                                            <div>
+                                                <div style={{ fontSize: '16px', fontWeight: 'bold', color: syncWithBosta ? '#E3000F' : 'var(--text-primary)', transition: 'color 0.3s' }}>
+                                                    بوسطة (Bosta)
+                                                </div>
+                                                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+                                                    إرسال الطلب لشركة الشحن تلقائياً عند التأكيد
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div style={{
+                                            position: 'relative',
+                                            display: 'inline-block',
+                                            width: '44px',
+                                            height: '24px',
+                                            background: syncWithBosta ? '#E3000F' : 'rgba(255,255,255,0.2)',
+                                            borderRadius: '12px',
+                                            transition: '0.3s',
+                                        }}>
+                                            <div style={{
+                                                position: 'absolute',
+                                                top: '2px',
+                                                left: syncWithBosta ? '22px' : '2px',
+                                                width: '20px',
+                                                height: '20px',
+                                                background: '#fff',
+                                                borderRadius: '50%',
+                                                transition: '0.3s',
+                                                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                                            }} />
+                                        </div>
+                                    </div>
+                                    
+                                    {syncWithBosta && (
+                                        <div style={{ 
+                                            display: 'flex', 
+                                            alignItems: 'center', 
+                                            gap: '12px', 
+                                            padding: '12px', 
+                                            background: 'rgba(0,0,0,0.15)', 
+                                            borderRadius: '8px',
+                                            marginTop: '4px',
+                                            cursor: 'pointer'
+                                        }} onClick={(e) => { e.stopPropagation(); setAllowToOpenPackage(!allowToOpenPackage); }}>
+                                            <div style={{
+                                                width: '20px',
+                                                height: '20px',
+                                                borderRadius: '4px',
+                                                border: allowToOpenPackage ? 'none' : '2px solid var(--glass-border-hover)',
+                                                background: allowToOpenPackage ? '#E3000F' : 'transparent',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                color: '#fff',
+                                                transition: '0.2s'
+                                            }}>
+                                                {allowToOpenPackage && <i className="fa-solid fa-check" style={{ fontSize: '12px' }}></i>}
+                                            </div>
+                                            <div style={{ fontSize: '14px', color: '#fff', userSelect: 'none' }}>
+                                                السماح للعميل بفتح الشحنة
+                                                <span style={{ color: 'var(--text-muted)', fontSize: '12px', marginLeft: '6px' }}>(Allow to open package)</span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
                         </div>
                     )}
                 </div>

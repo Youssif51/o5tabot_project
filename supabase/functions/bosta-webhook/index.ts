@@ -114,8 +114,8 @@ Deno.serve(async (req) => {
     if (bostaStateCode === 45) {
       // Delivered
       newStatus = 'Completed';
-    } else if (bostaStateCode === 46 || bostaStateCode === 49 || bostaStateCode === 48 || bostaStateCode === 100 || bostaStateCode === 101) {
-      // Returned / Canceled / Terminated / Lost / Damaged (Delivery failed)
+    } else if ([46, 48, 49, 50].includes(bostaStateCode)) {
+      // Returned/Failed/Cancelled/Terminated
       newStatus = 'Cancelled';
     }
 
@@ -124,7 +124,9 @@ Deno.serve(async (req) => {
     const isDeducted = newStatus === 'Completed' || newStatus === 'Partially Delivered' || newStatus === 'Shipped';
     const isCancelled = newStatus === 'Cancelled';
 
-    if (wasDeducted && isCancelled) {
+    const wasCancelled = previousStatus === 'Cancelled';
+
+    if (isCancelled && !wasCancelled) {
       console.log(`Order ${orderId} returned/cancelled. Reverting stock levels...`);
       
       // Fetch order items to restock
@@ -137,31 +139,41 @@ Deno.serve(async (req) => {
         for (const item of items) {
           const { data: vData } = await supabase
             .from('product_variants')
-            .select('stock_sulur, product_id')
+            .select('stock_sulur, product_id, shopify_id')
             .eq('sku', item.variant_sku)
             .single();
 
           if (vData) {
-            const newStock = (vData.stock_sulur || 0) + (item.quantity || 0);
-            
-            // Revert stock
-            await supabase
-              .from('product_variants')
-              .update({ stock_sulur: newStock })
-              .eq('sku', item.variant_sku);
+            // 1. Shopify Restock
+            if (vData.shopify_id) {
+                 await supabase.functions.invoke('swift-processor', {
+                    body: { action: 'adjust_stock', shopify_variant_id: vData.shopify_id, adjustment: item.quantity }
+                 });
+            }
 
-            // Log inside Stock Ledger
-            await supabase
-              .from('stock_ledger')
-              .insert([{
-                date: new Date().toISOString().split('T')[0],
-                product_id: vData.product_id,
-                variant_sku: item.variant_sku,
-                warehouse: order.warehouse || 'Sulur',
-                type: 'Return',
-                quantity: item.quantity,
-                balance_after: newStock
-              }]);
+            // 2. Local Restock
+            if (wasDeducted) {
+              const newStock = (vData.stock_sulur || 0) + (item.quantity || 0);
+              
+              // Revert stock
+              await supabase
+                .from('product_variants')
+                .update({ stock_sulur: newStock })
+                .eq('sku', item.variant_sku);
+
+              // Log inside Stock Ledger
+              await supabase
+                .from('stock_ledger')
+                .insert([{
+                  date: new Date().toISOString().split('T')[0],
+                  product_id: vData.product_id,
+                  variant_sku: item.variant_sku,
+                  warehouse: order.warehouse || 'Sulur',
+                  type: 'Return',
+                  quantity: item.quantity,
+                  balance_after: newStock
+                }]);
+            }
           }
         }
       }

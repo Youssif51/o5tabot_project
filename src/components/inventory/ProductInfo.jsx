@@ -1,10 +1,12 @@
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
+import RestockModal from './RestockModal';
 
 export default function ProductInfo({ productId, onBack, onEditProduct }) {
     const { state, recordStockAdjustment, showToast, language, t } = useContext(AppContext);
     const [activeTab, setActiveTab] = useState('Overview');
+    const [restockVariantObj, setRestockVariantObj] = useState(null);
 
     // Barcode Printing State
     const [printVariant, setPrintVariant] = useState(null);
@@ -200,6 +202,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                             <th>{t('price')}</th>
                                             <th>{t('margin')}</th>
                                             <th>{t('stock')}</th>
+                                            <th>إجراءات</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -215,6 +218,15 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                     <td style={{ color: 'var(--gold-primary)', fontWeight: 600 }}>{currency} {v.retailPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                     <td><span className="badge badge-success">{profitMargin}%</span></td>
                                                     <td>{vQty} {t('packets')}</td>
+                                                    <td>
+                                                        <button 
+                                                            className="btn btn-primary" 
+                                                            style={{ padding: '4px 10px', fontSize: '11px', minWidth: '80px', display: 'flex', gap: '4px', alignItems: 'center' }} 
+                                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRestockVariantObj(v); }}
+                                                        >
+                                                            <i className="fa-solid fa-plus"></i> اضافة مخزون
+                                                        </button>
+                                                    </td>
                                                 </tr>
                                             );
                                         })}
@@ -582,61 +594,97 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                     </div>
                 </div>
             ) : (
-                <div className="glass-card" style={{ padding: '24px' }}>
-                    <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '18px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
-                        Sales Transaction history
-                    </h3>
-                    {(() => {
-                        const matchingOrders = state.orders.filter(o => 
-                            o.items.some(item => product.variants.some(v => v.sku === item.variantSku))
-                        );
-                        if (matchingOrders.length === 0) {
-                            return <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>No order history found for this product.</p>;
-                        }
-                        return (
-                            <div className="table-wrapper">
-                                <table className="custom-table" style={{ fontSize: '11px' }}>
-                                    <thead>
-                                        <tr>
-                                            <th>Order ID</th>
-                                            <th>Client</th>
-                                            <th>Date</th>
-                                            <th>Branch</th>
-                                            <th style={{ textAlign: 'right' }}>Qty Sold</th>
-                                            <th>Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {matchingOrders.map(order => {
-                                            const itemSold = order.items.find(item => product.variants.some(v => v.sku === item.variantSku));
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+                    <div className="glass-card" style={{ padding: '24px' }}>
+                        <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '18px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
+                            تاريخ الحركات وتتبع التكلفة (Stock & Cost History)
+                        </h3>
+                        <div className="table-wrapper">
+                            <table className="custom-table" style={{ fontSize: '13px' }}>
+                                <thead>
+                                    <tr>
+                                        <th>التاريخ</th>
+                                        <th>النوع</th>
+                                        <th>النوع (Variant)</th>
+                                        <th>التغيير</th>
+                                        <th>تكلفة القطعة (Unit Cost)</th>
+                                        <th>إجمالي التكلفة</th>
+                                        <th>الرصيد بعد الحركة</th>
+                                        <th>ملاحظات</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(() => {
+                                        const productHistory = (state.stockLedger || []).filter(log => log.product_id === productId || log.productId === productId);
+                                        productHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
+                                        
+                                        if (productHistory.length === 0) {
+                                            productHistory.push({
+                                                date: new Date().toISOString(),
+                                                type: 'Restock',
+                                                variant_sku: product.variants[0]?.sku || 'MOCK-SKU',
+                                                quantity: 50,
+                                                unit_cost: 45.5,
+                                                total_cost: 2275,
+                                                balance_after: 150,
+                                                notes: 'دفعة تجريبية (Mock Data)'
+                                            });
+                                            productHistory.push({
+                                                date: new Date(Date.now() - 86400000).toISOString(),
+                                                type: 'Sale',
+                                                variant_sku: product.variants[0]?.sku || 'MOCK-SKU',
+                                                quantity: -2,
+                                                unit_cost: 40,
+                                                total_cost: 80,
+                                                balance_after: 100,
+                                                notes: 'طلب رقم #8291 (Mock Data)'
+                                            });
+                                        }
+                                        
+                                        return productHistory.map((log, idx) => {
+                                            const qty = log.quantity || 0;
+                                            const uCost = log.unit_cost || log.unitCost || 0;
+                                            const tCost = log.total_cost || log.totalCost || 0;
+                                            const isIncrease = qty > 0;
+                                            const typeLabel = {
+                                                'Sale': 'بيع',
+                                                'Return': 'مرتجع',
+                                                'Purchase': 'مشتريات',
+                                                'Restock': 'إضافة مخزون (Restock)',
+                                                'Correction': 'تعديل جرد',
+                                                'Waste': 'هالك'
+                                            }[log.type] || log.type;
+                                            
                                             return (
-                                                <tr key={order.id}>
-                                                    <td style={{ fontWeight: 600, color: '#fff' }}>{order.id}</td>
-                                                    <td>{order.client}</td>
-                                                    <td>{order.date}</td>
-                                                    <td>{t('inSulur')}</td>
-                                                    <td style={{ textAlign: 'right', fontWeight: 600, color: 'var(--gold-primary)' }}>
-                                                        {itemSold ? itemSold.quantity : 0}
+                                                <tr key={idx}>
+                                                    <td>{new Date(log.date).toLocaleDateString('en-GB')}</td>
+                                                    <td><span className={`badge ${isIncrease ? 'badge-success' : 'badge-danger'}`}>{typeLabel}</span></td>
+                                                    <td>{log.variant_sku || log.variantSku}</td>
+                                                    <td style={{ color: isIncrease ? '#4ae290' : '#ff4d4d', fontWeight: 'bold' }}>
+                                                        {isIncrease ? '+' : ''}{qty}
                                                     </td>
-                                                    <td>
-                                                        <span className={`badge ${
-                                                            order.status === 'Completed' ? 'badge-in' : 
-                                                            order.status === 'Draft' ? 'badge-draft' : 
-                                                            order.status === 'Cancelled' ? 'badge-out' : 'badge-low'
-                                                        }`} style={{ fontSize: '10px', padding: '2px 8px' }}>
-                                                            {order.status}
-                                                        </span>
-                                                    </td>
+                                                    <td>{uCost > 0 ? `${parseFloat(uCost).toFixed(2)} ج.م` : '-'}</td>
+                                                    <td>{tCost > 0 ? `${parseFloat(tCost).toFixed(2)} ج.م` : '-'}</td>
+                                                    <td style={{ fontWeight: 'bold' }}>{log.balance_after || log.balanceAfter || 0}</td>
+                                                    <td style={{ color: '#aaa' }}>{log.notes || '-'}</td>
                                                 </tr>
                                             );
-                                        })}
-                                    </tbody>
-                                </table>
-                            </div>
-                        );
-                    })()}
+                                        });
+                                    })()}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
                 </div>
             )}
+
+            {/* Restock Modal */}
+            <RestockModal 
+                isOpen={!!restockVariantObj}
+                onClose={() => setRestockVariantObj(null)}
+                product={product}
+                variant={restockVariantObj}
+            />
 
             {/* Printable Barcode Label Modal */}
             {printVariant && (

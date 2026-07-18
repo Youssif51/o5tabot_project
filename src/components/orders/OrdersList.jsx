@@ -3,7 +3,7 @@ import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 
 export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrder, onOpenEditOrder }) {
-    const { state, updateOrderStatus, deleteOrder, showToast, logActivity, setCurrentView, t, showConfirm, addCustomer, setCustomerSpam } = useContext(AppContext);
+    const { state, updateOrderStatus, deleteOrder, showToast, logActivity, setCurrentView, t, showConfirm, addCustomer, setCustomerSpam, syncBostaStatus } = useContext(AppContext);
     
     // Expanded rows state (keeps track of order IDs that are expanded)
     const [expandedOrderIds, setExpandedOrderIds] = useState({});
@@ -657,9 +657,31 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                     {badge.label}
                                                                 </span>
                                                                 {bostaTrackingNumber && (
-                                                                    <span style={{ fontSize: '10px', opacity: 0.8, fontFamily: 'monospace', color: 'var(--text-secondary)', marginTop: '2px', whiteSpace: 'nowrap' }}>
-                                                                        بوليصة: {bostaTrackingNumber}
-                                                                    </span>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
+                                                                        <span style={{ fontSize: '10px', opacity: 0.8, fontFamily: 'monospace', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                                                                            بوليصة: {bostaTrackingNumber}
+                                                                        </span>
+                                                                        <button
+                                                                            type="button"
+                                                                            title="تحديث حالة التوصيل من بوسطة"
+                                                                            onClick={(e) => { e.stopPropagation(); syncBostaStatus(ord.id, bostaTrackingNumber); }}
+                                                                            style={{
+                                                                                background: 'none',
+                                                                                border: 'none',
+                                                                                cursor: 'pointer',
+                                                                                color: '#E3000F',
+                                                                                fontSize: '11px',
+                                                                                padding: '2px 4px',
+                                                                                borderRadius: '4px',
+                                                                                transition: '0.2s',
+                                                                                opacity: 0.7
+                                                                            }}
+                                                                            onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                                                                            onMouseLeave={(e) => e.currentTarget.style.opacity = '0.7'}
+                                                                        >
+                                                                            <i className="fa-solid fa-arrows-rotate"></i>
+                                                                        </button>
+                                                                    </div>
                                                                 )}
                                                             </div>
                                                         );

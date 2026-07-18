@@ -110,6 +110,18 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
         });
     };
 
+    // Pagination logic
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 15;
+    const totalPages = Math.ceil(filteredCustomers.length / itemsPerPage);
+    
+    // Reset to page 1 if filter changes
+    React.useEffect(() => {
+        setCurrentPage(1);
+    }, [activeSearch, activeTab]);
+
+    const paginatedCustomers = filteredCustomers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
     return (
         <div id="customers-view" className="view-pane active">
             <div className="page-header">
@@ -244,14 +256,14 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredCustomers.length === 0 ? (
+                            {paginatedCustomers.length === 0 ? (
                                 <tr>
                                     <td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
                                         {t('noRecords')}
                                     </td>
                                 </tr>
                             ) : (
-                                filteredCustomers.map(c => {
+                                paginatedCustomers.map(c => {
                                     const isVip = c.customer_type === 'VIP';
                                     return (
                                         <tr key={c.id}>
@@ -309,6 +321,31 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
                         </tbody>
                     </table>
                 </div>
+                
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '16px', borderTop: '1px solid var(--glass-border)', gap: '15px' }}>
+                        <button 
+                            className="btn btn-secondary" 
+                            disabled={currentPage === 1}
+                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            style={{ padding: '6px 12px', fontSize: '12px' }}
+                        >
+                            <i className="fa-solid fa-chevron-right"></i> السابق
+                        </button>
+                        <span style={{ fontSize: '13px', fontWeight: 600 }}>
+                            صفحة {currentPage} من {totalPages}
+                        </span>
+                        <button 
+                            className="btn btn-secondary" 
+                            disabled={currentPage === totalPages}
+                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            style={{ padding: '6px 12px', fontSize: '12px' }}
+                        >
+                            التالي <i className="fa-solid fa-chevron-left"></i>
+                        </button>
+                    </div>
+                )}
             </div>
 
             {/* Modal */}

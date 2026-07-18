@@ -82,9 +82,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // 2. استقبال البيانات القادمة من الفرونت اند
+    // 2. استخراج المتغيرات من الطلب وتجهيز المتغيرات
     const body = await req.json();
-    const { action, shopify_id, name, variants, images, vendor, tags, category, description, status, collection_id } = body;
+    const { action, shopify_id, name, variants, images, vendor, tags, category, description, status, collection_ids } = body;
 
     // معالجة جلب المجموعات (Fetch Collections)
     if (action === 'fetch_collections') {
@@ -445,10 +445,10 @@ Deno.serve(async (req) => {
     }
 
     // ==========================================
-    // 5.3 ربط المنتج بالمجموعة (Collection Sync)
+    // 5.3 ربط المنتج بالمجموعات (Collection Sync)
     // ==========================================
     const shopify_product_id = shopifyData?.product?.id;
-    if (shopify_product_id && (action === 'update' || collection_id)) {
+    if (shopify_product_id && (action === 'update' || (collection_ids && collection_ids.length > 0))) {
       try {
         // جلب الروابط الحالية للمنتج وحذفها لتجنب التكرار
         const checkCollectsRes = await fetch(
@@ -458,6 +458,7 @@ Deno.serve(async (req) => {
             headers: { "X-Shopify-Access-Token": accessToken }
           }
         );
+        
         if (checkCollectsRes.ok) {
           const collectsData = await checkCollectsRes.json();
           const collects = collectsData.collects || [];
@@ -472,32 +473,34 @@ Deno.serve(async (req) => {
           }
         }
 
-        // إذا تم تحديد مجموعة جديدة، نربط المنتج بها
-        if (collection_id) {
-          const createCollectRes = await fetch(
-            `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/collects.json`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Shopify-Access-Token": accessToken
-              },
-              body: JSON.stringify({
-                collect: {
-                  product_id: shopify_product_id,
-                  collection_id: parseInt(collection_id)
-                }
-              })
+        // إضافة إلى كل المجموعات المحددة
+        if (collection_ids && collection_ids.length > 0) {
+          for (const c_id of collection_ids) {
+            const createCollectRes = await fetch(
+              `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/collects.json`,
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Shopify-Access-Token": accessToken
+                },
+                body: JSON.stringify({
+                  collect: {
+                    product_id: shopify_product_id,
+                    collection_id: parseInt(c_id)
+                  }
+                })
+              }
+            );
+            if (!createCollectRes.ok) {
+              const errData = await createCollectRes.json();
+              inventoryWarnings.push(`Failed to link product to collection ${c_id}: ${JSON.stringify(errData)}`);
             }
-          );
-          if (!createCollectRes.ok) {
-            const errData = await createCollectRes.json();
-            inventoryWarnings.push(`Failed to link product to collection: ${JSON.stringify(errData)}`);
           }
         }
       } catch (colErr: any) {
-        console.error("خطأ أثناء مزامنة المجموعة:", colErr);
-        inventoryWarnings.push("حدث خطأ أثناء ربط المنتج بالمجموعة: " + colErr.message);
+        console.error("خطأ أثناء ربط المجموعات:", colErr);
+        inventoryWarnings.push("حدث خطأ أثناء ربط المنتج بالمجموعات: " + colErr.message);
       }
     }
 
