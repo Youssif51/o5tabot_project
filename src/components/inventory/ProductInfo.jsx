@@ -212,7 +212,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                             const profitMargin = v.retailPrice > 0 ? ((v.retailPrice - costVal) / v.retailPrice * 100).toFixed(1) : 0;
                                             return (
                                                 <tr key={v.sku}>
-                                                    <td style={{ fontWeight: 600 }}>{v.name === 'Standard Option' ? (t('defaultOption') || 'المنتج الأساسي') : v.name}</td>
+                                                    <td style={{ fontWeight: 600 }}>{v.name === 'Standard Option' || v.name === 'Default Title' ? `${product.name} (أساسي)` : `${product.name} (${v.name})`}</td>
                                                     <td>{currency} {v.wholesalePrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                     <td style={{ fontWeight: 600, color: 'var(--color-warning)' }}>{currency} {costVal.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                     <td style={{ color: 'var(--gold-primary)', fontWeight: 600 }}>{currency} {v.retailPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
@@ -321,28 +321,40 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                             );
                         })()}
 
-                        {/* Right Summary metrics */}
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '13px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
-                                <span style={{ color: 'var(--text-secondary)' }}>{t('openingStock')}</span>
-                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{product.initialStock !== undefined ? product.initialStock : (totalStock + 6)}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
-                                <span style={{ color: 'var(--text-secondary)' }}>Total Added</span>
-                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{product.totalAdded !== undefined ? product.totalAdded : 0}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
-                                <span style={{ color: 'var(--text-secondary)' }}>Total Consumed</span>
-                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{product.totalConsumed !== undefined ? product.totalConsumed : 0}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
-                                <span style={{ color: 'var(--text-secondary)' }}>{t('remainingQuantity')}</span>
-                                <span style={{ fontWeight: 600, color: 'var(--gold-primary)' }}>{totalStock}</span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
-                                <span style={{ color: 'var(--text-secondary)' }}>Burn Rate</span>
-                                <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{((product.totalConsumed || 0) / 30).toFixed(1)} / day</span>
-                            </div>
+                          {/* Right Summary metrics */}
+                          {(() => {
+                              let calcTotalAdded = 0;
+                              let calcTotalConsumed = 0;
+                              const productLedger = (state.stockLedger || []).filter(l => l.productId === product.id || l.product_id === product.id);
+                              productLedger.forEach(l => {
+                                  const q = parseInt(l.quantity) || 0;
+                                  if (q > 0) calcTotalAdded += q;
+                                  else if (q < 0) calcTotalConsumed += Math.abs(q);
+                              });
+                              const burnRate = (calcTotalConsumed / 30).toFixed(1);
+
+                              return (
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '13px' }}>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                                          <span style={{ color: 'var(--text-secondary)' }}>{t('openingStock') || 'الرصيد الافتتاحي'}</span>
+                                          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{product.initialStock !== undefined ? product.initialStock : (totalStock + calcTotalConsumed - calcTotalAdded)}</span>
+                                      </div>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                                          <span style={{ color: 'var(--text-secondary)' }}>إجمالي الوارد</span>
+                                          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{calcTotalAdded}</span>
+                                      </div>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                                          <span style={{ color: 'var(--text-secondary)' }}>إجمالي المنصرف</span>
+                                          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{calcTotalConsumed}</span>
+                                      </div>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                                          <span style={{ color: 'var(--text-secondary)' }}>{t('remainingQuantity') || 'الكمية المتبقية'}</span>
+                                          <span style={{ fontWeight: 600, color: 'var(--gold-primary)' }}>{totalStock}</span>
+                                      </div>
+                                      <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                                          <span style={{ color: 'var(--text-secondary)' }}>معدل الاستهلاك (Burn Rate)</span>
+                                          <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{burnRate} / يوم</span>
+                                      </div> 
                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
                                  <span style={{ color: 'var(--text-secondary)' }}>{t('buyingPrice')}</span>
                                  <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency} {mainWholesalePrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
@@ -367,7 +379,9 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                 <span style={{ color: 'var(--text-secondary)' }}>{t('thresholdValue')}</span>
                                 <span style={{ fontWeight: 600, color: 'var(--color-danger)' }}>{thresholdValue}</span>
                             </div>
-                        </div>
+                                  </div>
+                              );
+                          })()}
 
                     </div>
 
@@ -428,7 +442,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                     <td>{item.date}</td>
                                                     <td style={{ fontWeight: 600 }}>{item.id}</td>
                                                     <td>{item.supplierName}</td>
-                                                    <td>{item.variantName === 'Standard Option' ? 'الأساسي' : item.variantName}</td>
+                                                    <td>{item.variantName === 'Standard Option' || item.variantName === 'Default Title' ? `${product.name} (أساسي)` : `${product.name} (${item.variantName})`}</td>
                                                     <td>{item.quantity} قطعة</td>
                                                     <td style={{ fontWeight: 600, color: 'var(--gold-primary)' }}>
                                                         {currency} {item.cost.toLocaleString('en-US', {maximumFractionDigits: 2})}
@@ -509,7 +523,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                 >
                                     {product.variants.map(v => (
                                         <option key={v.sku} value={v.sku}>
-                                            {v.name === 'Standard Option' ? (t('defaultOption') || 'المنتج الأساسي') : v.name}
+                                            {v.name === 'Standard Option' || v.name === 'Default Title' ? `${product.name} (أساسي)` : `${product.name} (${v.name})`}
                                         </option>
                                     ))}
                                 </select>
@@ -654,17 +668,26 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                 'Correction': 'تعديل جرد',
                                                 'Waste': 'هالك'
                                             }[log.type] || log.type;
+
+                                            const logSku = log.variant_sku || log.variantSku;
+                                            const variant = product.variants?.find(v => v.sku === logSku);
+                                            const variantLabel = variant ? (variant.name === 'Standard Option' || variant.name === 'Default Title' ? `${product.name} (أساسي)` : `${product.name} (${variant.name})`) : `${product.name} (${logSku})`;
                                             
                                             return (
                                                 <tr key={idx}>
-                                                    <td>{new Date(log.date).toLocaleDateString('en-GB')}</td>
+                                                    <td style={{ whiteSpace: 'nowrap' }}>
+                                                        {new Date(log.date).toLocaleString('en-GB', { 
+                                                            day: '2-digit', month: '2-digit', year: 'numeric', 
+                                                            hour: '2-digit', minute: '2-digit', hour12: true 
+                                                        })}
+                                                    </td>
                                                     <td><span className={`badge ${isIncrease ? 'badge-success' : 'badge-danger'}`}>{typeLabel}</span></td>
-                                                    <td>{log.variant_sku || log.variantSku}</td>
+                                                    <td>{variantLabel}</td>
                                                     <td style={{ color: isIncrease ? '#4ae290' : '#ff4d4d', fontWeight: 'bold' }}>
                                                         {isIncrease ? '+' : ''}{qty}
                                                     </td>
-                                                    <td>{uCost > 0 ? `${parseFloat(uCost).toFixed(2)} ج.م` : '-'}</td>
-                                                    <td>{tCost > 0 ? `${parseFloat(tCost).toFixed(2)} ج.م` : '-'}</td>
+                                                    <td>{uCost !== undefined && uCost !== null ? `${parseFloat(uCost).toFixed(2)} ج.م.` : '0.00 ج.م.'}</td>
+                                                    <td>{tCost !== undefined && tCost !== null ? `${parseFloat(tCost).toFixed(2)} ج.م.` : '0.00 ج.م.'}</td>
                                                     <td style={{ fontWeight: 'bold' }}>{log.balance_after || log.balanceAfter || 0}</td>
                                                     <td style={{ color: '#aaa' }}>{log.notes || '-'}</td>
                                                 </tr>

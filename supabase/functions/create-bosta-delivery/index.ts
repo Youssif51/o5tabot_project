@@ -152,12 +152,14 @@ Deno.serve(async (req) => {
     const lastName = nameParts.slice(1).join(" ") || ".";
 
     let phone = "";
+    let secondPhone = "";
     let customerEmail = "";
     let detailAddress = "";
     if (order.address && order.address.startsWith('{')) {
       try {
         const parsed = JSON.parse(order.address);
         phone = parsed.phone || "";
+        secondPhone = parsed.secondPhone || "";
         detailAddress = parsed.detailAddress || "";
       } catch (e) {}
     } else {
@@ -178,6 +180,8 @@ Deno.serve(async (req) => {
     }
 
     const normalizedPhone = normalizePhone(phone);
+    const normalizedSecondPhone = normalizePhone(secondPhone);
+
     if (!normalizedPhone) {
       return new Response(JSON.stringify({ error: "Missing receiver phone number or invalid format." }), {
         status: 400,
@@ -210,18 +214,20 @@ Deno.serve(async (req) => {
       return `${item.quantity}x ${displayName}`;
     }).join(", ");
     
-    // Calculate COD cash to collect
-    // Total value includes shipping fees. Subtract deposit amount.
-    const orderTotalForSurcharge = parseFloat(order.total_value) || 0;
-    const codAmount = Math.max(0, orderTotalForSurcharge - (parseFloat(depositAmount) || 0));
+    const orderTotal = parseFloat(order.total_value) || 0;
+    const shippingFee = parseFloat(order.shipping_fee) || 0;
+    const codAmount = Math.max(0, orderTotal - (parseFloat(depositAmount) || 0));
+    
+    // Goods Info Amount should be the net product total (without shipping)
+    const netProductsTotal = Math.max(0, orderTotal - shippingFee);
 
     // Ensure address line 1 is at least 5 characters
     let firstLine = detailAddress.trim();
     if (firstLine.length < 5) {
-      firstLine = `${firstLine} - العنوان بالتفصيل`;
+      firstLine = `${firstLine} - المحافظة أو المنطقة`;
     }
 
-    const productValueAmount = orderTotalForSurcharge < 1000 ? orderTotalForSurcharge + 100 : orderTotalForSurcharge;
+    const productValueAmount = netProductsTotal < 1000 ? netProductsTotal + 100 : netProductsTotal;
 
     const bostaPayload = {
       type: 10, // Send / Deliver
@@ -251,6 +257,7 @@ Deno.serve(async (req) => {
         firstName: firstName,
         lastName: lastName,
         phone: normalizedPhone,
+        ...(normalizedSecondPhone && { secondPhone: normalizedSecondPhone }),
         email: customerEmail || undefined
       }
     };

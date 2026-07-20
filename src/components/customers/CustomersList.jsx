@@ -5,7 +5,7 @@ import { getLocalDateString } from '../../utils/dateUtils';
 import CustomerProfileDrawer from './CustomerProfileDrawer';
 
 export default function CustomersList({ globalSearch, setGlobalSearch }) {
-    const { state, addCustomer, editCustomer, showToast, logActivity, t, showConfirm, showAlert, setCustomerSpam } = useContext(AppContext);
+    const { state, addCustomer, editCustomer, deleteCustomer, showToast, logActivity, t, showConfirm, showAlert, setCustomerSpam } = useContext(AppContext);
     
     // Modal state
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -30,6 +30,18 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
         // Hide spam-only records from the 'all' tab (customers created purely for blacklisting)
         if (activeTab === 'all' && c.is_spam && (!c.orders_count || c.orders_count === 0) && (!c.total_purchases || c.total_purchases == 0)) {
             return false;
+        }
+
+        // Hide customers whose ONLY orders are 'Cancelled'
+        // This prevents first-time rejected customers from showing up
+        if (activeTab === 'all' && !c.is_spam && (!c.orders_count || c.orders_count === 0)) {
+            const custOrders = (state.orders || []).filter(o => o.customer_id === c.id);
+            if (custOrders.length > 0) {
+                const hasValidOrder = custOrders.some(o => o.status !== 'Cancelled');
+                if (!hasValidOrder) {
+                    return false;
+                }
+            }
         }
 
         const nameMatches = (c.name || '').toLowerCase().includes(activeSearch.toLowerCase());
@@ -102,11 +114,20 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
         const isSpam = !!customer.is_spam;
         const confirmMsg = isSpam 
             ? `هل أنت متأكد من إزالة العميل ${customer.name} من قائمة المزعجين؟` 
-            : `هل أنت متأكد من إضافة العميل ${customer.name} إلى قائمة المزعجين؟ سيتم إظهار تنبيه أحمر عند وروده في الطلبات الجديدة.`;
+            : `هل أنت متأكد من إضافة العميل ${customer.name} إلى قائمة المزعجين؟ سيتم إخفاء أي أوردر جديد يخصه في المراجعة.`;
         
         showConfirm(confirmMsg, () => {
             setCustomerSpam(customer.id, !isSpam);
             logActivity("customer", `${isSpam ? 'Removed' : 'Added'} customer ${customer.name} ${isSpam ? 'from' : 'to'} spam list.`);
+        });
+    };
+
+    const handleDeleteCustomer = (customer) => {
+        showConfirm(`هل أنت متأكد من حذف العميل "${customer.name}"؟ هذا الإجراء لا يمكن التراجع عنه.`, async () => {
+            const success = await deleteCustomer(customer.id);
+            if (success) {
+                logActivity("customer", `Deleted customer: ${customer.name}`);
+            }
         });
     };
 
@@ -311,6 +332,13 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
                                                         title="Edit Profile"
                                                     >
                                                         <i className="fa-solid fa-pencil"></i>
+                                                    </button>
+                                                    <button 
+                                                        className="action-btn-circle" 
+                                                        onClick={() => handleDeleteCustomer(c)}
+                                                        title="Delete Customer"
+                                                    >
+                                                        <i className="fa-solid fa-trash" style={{ color: 'var(--color-danger)' }}></i>
                                                     </button>
                                                 </div>
                                             </td>

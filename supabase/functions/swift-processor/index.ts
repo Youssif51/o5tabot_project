@@ -86,8 +86,171 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { action, shopify_id, name, variants, images, vendor, tags, category, description, status, collection_ids } = body;
 
+    if (action === 'fetch_all_products') {
+      try {
+        let allProducts = [];
+        let url = `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/products.json?limit=250`;
+        
+        while (url) {
+          const res = await fetch(url, {
+            method: "GET",
+            headers: { "X-Shopify-Access-Token": accessToken }
+          });
+          
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`Failed to fetch products from Shopify: ${errText}`);
+          }
+          
+          const data = await res.json();
+          if (data.products) {
+            allProducts = allProducts.concat(data.products);
+          }
+          
+          // Check for pagination link
+          const linkHeader = res.headers.get('link');
+          let nextUrl = null;
+          if (linkHeader) {
+            const links = linkHeader.split(',').map(part => part.trim());
+            const nextLink = links.find(link => link.includes('rel="next"'));
+            if (nextLink) {
+              const match = nextLink.match(/<([^>]+)>/);
+              if (match) {
+                nextUrl = match[1];
+              }
+            }
+          }
+          url = nextUrl;
+        }
+
+        return new Response(JSON.stringify({ success: true, products: allProducts }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "Failed to fetch products from Shopify", details: err.message }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+    }
+
     // معالجة جلب المجموعات (Fetch Collections)
-    if (action === 'fetch_collections') {
+      // جلب الكوليكشنز (Fetch Collections)
+      if (action === 'fetch_collects') {
+        try {
+          let allCollects = [];
+          let url = `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/collects.json?limit=250`;
+          
+          while (url) {
+            const res = await fetch(url, {
+              method: "GET",
+              headers: { "X-Shopify-Access-Token": accessToken }
+            });
+            if (!res.ok) throw new Error("Failed to fetch collects");
+            
+            const data = await res.json();
+            if (data.collects) allCollects = allCollects.concat(data.collects);
+            
+            const linkHeader = res.headers.get("link");
+            let nextUrl = null;
+            if (linkHeader) {
+              const links = linkHeader.split(",").map(part => part.trim());
+              const nextLink = links.find(link => link.includes('rel="next"'));
+              if (nextLink) {
+                const match = nextLink.match(/<([^>]+)>/);
+                if (match) nextUrl = match[1];
+              }
+            }
+            url = nextUrl;
+          }
+          return new Response(JSON.stringify({ success: true, collects: allCollects }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
+        } catch (err: any) {
+          return new Response(JSON.stringify({ error: "Failed to fetch collects", details: err.message }), { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } });
+        }
+      }
+
+      // --- NEW ACTION: create_discount ---
+      if (action === 'create_discount') {
+        const { code, value, type, endDate, usageLimit, minOrderValue, oncePerCustomer } = body;
+        if (!code || !value || !type) {
+            return new Response(JSON.stringify({ error: "Missing required fields for discount creation" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } });
+        }
+
+        try {
+            // 1. Create Price Rule
+            const priceRulePayload = {
+                title: code,
+                target_type: "line_item",
+                target_selection: "all",
+                allocation_method: "across",
+                value_type: type, // "percentage" or "fixed_amount"
+                value: `-${value}`, // Must be negative
+                customer_selection: "all",
+                starts_at: new Date().toISOString()
+            };
+
+            // Add optional constraints if provided
+            if (endDate) {
+                priceRulePayload.ends_at = new Date(endDate).toISOString();
+            }
+            if (usageLimit && parseInt(usageLimit) > 0) {
+                priceRulePayload.usage_limit = parseInt(usageLimit);
+            }
+            if (minOrderValue && parseFloat(minOrderValue) > 0) {
+                priceRulePayload.prerequisite_subtotal_range = {
+                    greater_than_or_equal_to: parseFloat(minOrderValue).toString()
+                };
+            }
+            if (oncePerCustomer) {
+                priceRulePayload.once_per_customer = true;
+            }
+
+            const priceRuleRes = await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/price_rules.json`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Shopify-Access-Token": accessToken
+                },
+                body: JSON.stringify({
+                    price_rule: priceRulePayload
+                })
+            });
+
+            if (!priceRuleRes.ok) {
+                const errData = await priceRuleRes.json().catch(() => null) || await priceRuleRes.text();
+                throw new Error(`Failed to create Price Rule: ${JSON.stringify(errData)}`);
+            }
+
+            const priceRuleData = await priceRuleRes.json();
+            const priceRuleId = priceRuleData.price_rule.id;
+
+            // 2. Create Discount Code
+            const discountRes = await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/price_rules/${priceRuleId}/discount_codes.json`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "X-Shopify-Access-Token": accessToken
+                },
+                body: JSON.stringify({
+                    discount_code: {
+                        code: code
+                    }
+                })
+            });
+
+            if (!discountRes.ok) {
+                const errData = await discountRes.json().catch(() => null) || await discountRes.text();
+                throw new Error(`Failed to create Discount Code: ${JSON.stringify(errData)}`);
+            }
+
+            return new Response(JSON.stringify({ success: true, message: "Discount code created successfully on Shopify" }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
+        } catch (err: any) {
+            return new Response(JSON.stringify({ error: "Failed to create discount on Shopify", details: err.message }), { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } });
+        }
+      }
+
+      if (action === 'fetch_collections') {
       try {
         const customRes = await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/custom_collections.json`, {
           method: "GET",

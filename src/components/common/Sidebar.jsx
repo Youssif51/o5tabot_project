@@ -20,7 +20,8 @@ export default function Sidebar() {
         { id: 'suppliers', name: t('suppliers'), icon: 'Suppliers.png', perm: 'manage_suppliers' },
         { id: 'customers', name: t('customersList') || 'العملاء', icon: 'Support.png', perm: 'manage_customers' },
         { id: 'orders', name: t('orders'), icon: 'Order.png', perm: 'manage_orders' },
-        { id: 'shopifyPending', name: 'طلبات شوبيفاي معلقة', icon: 'Order.png', perm: 'manage_orders', isShopify: true },
+        { id: 'marketing', name: 'التسويق والمؤثرين', icon: 'promo-code.png', perm: 'view_dashboard' },
+        { id: 'shopifyPending', name: 'طلبات شوبيفاي', icon: 'Cart.png', perm: 'manage_orders', isShopify: true },
         { id: 'supabaseTasks', name: t('supabaseTasks'), icon: 'Calendar.png', perm: 'manage_settings' }
     ].filter(item => checkPermission(item.perm));
 
@@ -104,8 +105,19 @@ export default function Sidebar() {
                 </ul>
 
                 <div className="user-profile" style={{ marginTop: '10px' }}>
-                    <div className="user-avatar" id="user-avatar-lbl">
-                        {state.currentUser.avatar || state.currentUser.name?.charAt(0)?.toUpperCase() || 'U'}
+                    <div 
+                        className="user-avatar" 
+                        id="user-avatar-lbl"
+                        style={{
+                            backgroundImage: (state.userAvatars?.[state.currentUser?.id] || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) ? `url(${state.userAvatars?.[state.currentUser?.id] || state.storeSettings?.adminAvatar})` : 'none',
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            color: (state.userAvatars?.[state.currentUser?.id] || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) ? 'transparent' : 'inherit'
+                        }}
+                    >
+                        {!(state.userAvatars?.[state.currentUser?.id] || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) && 
+                            (state.currentUser.avatar || state.currentUser.name?.charAt(0)?.toUpperCase() || 'U')
+                        }
                     </div>
                     <div className="user-details">
                         <h4 id="user-display-name">{state.currentUser.name}</h4>

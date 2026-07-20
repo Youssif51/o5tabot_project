@@ -1,6 +1,7 @@
 import { supabase } from '../utils/supabase';
 import { getLocalDateString } from '../utils/dateUtils';
 import React, { createContext, useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 export const AppContext = createContext();
 
@@ -14,21 +15,23 @@ const defaultStockLedger = [];
 
 const defaultActivities = [];
 
-const initialState = {
-    products: [],
-    suppliers: [],
-    orders: [],
-    purchaseOrders: [],
-    wastes: [],
-    stockLedger: [],
-    customers: [],
-    coupons: [],
-    users: [],
-    activities: [],
-    collections: [],
-    storeSettings: { name: "o5taboad store", address: "Egypt", currency: "EGP", vipThresholdPurchases: 5000, vipThresholdOrders: 10 },
-    currentUser: null
-};
+    const initialState = {
+        products: [],
+        suppliers: [],
+        orders: [],
+        purchaseOrders: [],
+        wastes: [],
+        stockLedger: [],
+        customers: [],
+        coupons: [],
+        users: [],
+        activities: [],
+        collections: [],
+        storeSettings: { name: "o5taboad store", address: "Egypt", currency: "EGP", vipThresholdPurchases: 5000, vipThresholdOrders: 10 },
+        userAvatars: {},
+        influencers: [],
+        currentUser: null
+    };
 
 export const AppProvider = ({ children }) => {
     const [state, setState] = useState(() => {
@@ -113,18 +116,44 @@ export const AppProvider = ({ children }) => {
                         shopify_id: v.shopify_id || null,
                         averageCost: parseFloat(v.average_cost) || parseFloat(v.wholesale_price) || 0
                     }));
+
+                    let parsedImageStr = p.image;
+                    let parsedImages = [];
+                    let parsedVendor = '';
+                    let parsedTags = '';
+                    let parsedStatus = p.status || 'active';
+
+                    try {
+                        if (p.image && p.image.startsWith('{') && p.image.includes('"images"')) {
+                            const obj = JSON.parse(p.image);
+                            parsedImages = obj.images || [];
+                            parsedVendor = obj.vendor || '';
+                            parsedTags = obj.tags || '';
+                            if (obj.status) parsedStatus = obj.status;
+                            parsedImageStr = JSON.stringify(parsedImages);
+                        } else if (p.image && p.image.startsWith('[')) {
+                            parsedImageStr = p.image;
+                            parsedImages = JSON.parse(p.image);
+                        }
+                    } catch (e) {
+                        parsedImageStr = p.image;
+                    }
+
                     return {
                         id: p.id,
                         name: p.name,
                         category: p.category,
                         unit: p.unit,
-                        image: p.image,
+                        image: parsedImageStr,
+                        images: parsedImages,
+                        vendor: parsedVendor,
+                        tags: parsedTags,
                         createdDate: p.created_date,
                         createdBy: p.created_by,
                         description: p.description,
                         shopify_id: p.shopify_id || null,
                         shopifyCollectionIds: p.shopify_collection_ids || [],
-                        status: p.status || 'active',
+                        status: parsedStatus,
                         variants: pVars
                     };
                 });
@@ -254,7 +283,15 @@ export const AppProvider = ({ children }) => {
     }, [state.currentUser?.id]);
 
 
-    const [currentView, setCurrentView] = useState(() => localStorage.getItem("octabot_view") || "dashboard");
+    const navigate = useNavigate();
+    const location = useLocation();
+    
+    // Derived view from path (default 'dashboard' if root)
+    const currentView = location.pathname === '/' ? 'dashboard' : location.pathname.substring(1).split('/')[0];
+    
+    const setCurrentView = (view) => {
+        navigate(`/${view}`);
+    };
     const [toast, setToast] = useState({ visible: false, message: "", type: "success" });
     const [shopifyNotification, setShopifyNotification] = useState({
         visible: false,
@@ -320,9 +357,7 @@ export const AppProvider = ({ children }) => {
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
     };
 
-    useEffect(() => {
-        localStorage.setItem("octabot_view", currentView);
-    }, [currentView]);
+    // octabot_view localStorage sync removed because URL is now the source of truth
 
     useEffect(() => {
         localStorage.setItem("octabot_lang", language);
@@ -726,6 +761,31 @@ export const AppProvider = ({ children }) => {
         return newCustomer.id;
     };
 
+    const deleteCustomer = async (customerId) => {
+        if (!supabase || !customerId) return;
+        // Optimistic update
+        const originalCustomers = [...state.customers];
+        setState(prev => ({ ...prev, customers: prev.customers.filter(c => c.id !== customerId) }));
+
+        try {
+            const { error } = await supabase.from('customers').delete().eq('id', customerId);
+            if (error) {
+                console.error("Supabase deleteCustomer Error:", error);
+                showToast(`خطأ في حذف العميل: ${error.message}`, "error");
+                // Rollback
+                setState(prev => ({ ...prev, customers: originalCustomers }));
+                return false;
+            }
+            showToast("تم حذف العميل بنجاح.");
+            return true;
+        } catch (e) {
+            console.error("Supabase Exception:", e);
+            showToast(`حدث خطأ غير متوقع: ${e.message}`, "error");
+            setState(prev => ({ ...prev, customers: originalCustomers }));
+            return false;
+        }
+    };
+
     const updateCustomerStats = async (customerId, valueChange, countChange) => {
         if (!supabase || !customerId) return;
         
@@ -771,6 +831,28 @@ export const AppProvider = ({ children }) => {
                 }).eq('id', customerId);
             }
         }, 500);
+    };
+
+    // Influencers CRUD Actions
+    const addInfluencer = async (influencer) => {
+        setState(prev => ({ ...prev, influencers: [influencer, ...(prev.influencers || [])] }));
+        showToast(`Influencer '${influencer.name}' added successfully.`);
+    };
+
+    const editInfluencer = async (updatedInfluencer) => {
+        setState(prev => ({
+            ...prev,
+            influencers: (prev.influencers || []).map(inf => inf.id === updatedInfluencer.id ? updatedInfluencer : inf)
+        }));
+        showToast(`Influencer '${updatedInfluencer.name}' updated successfully.`);
+    };
+
+    const deleteInfluencer = async (id) => {
+        setState(prev => ({
+            ...prev,
+            influencers: (prev.influencers || []).filter(inf => inf.id !== id)
+        }));
+        showToast("Influencer deleted successfully.");
     };
 
     // Coupons CRUD Actions
@@ -848,12 +930,30 @@ export const AppProvider = ({ children }) => {
         if (supabase) {
             (async () => {
                 try {
+                    let finalImageStr = product.image;
+                    try {
+                        let baseImages = [];
+                        if (product.image && product.image.startsWith('[')) {
+                            baseImages = JSON.parse(product.image);
+                        } else if (product.image && typeof product.image === 'string') {
+                            baseImages = [product.image];
+                        }
+                        finalImageStr = JSON.stringify({
+                            images: baseImages,
+                            vendor: product.vendor || '',
+                            tags: product.tags || '',
+                            status: product.status || 'Active'
+                        });
+                    } catch(e) {
+                        finalImageStr = product.image;
+                    }
+
                     await supabase.from('products').insert([{
                         id: product.id,
                         name: product.name,
                         category: product.category,
                         unit: product.unit,
-                        image: product.image,
+                        image: finalImageStr,
                         created_date: product.createdDate,
                         description: product.description,
                         shopify_collection_ids: product.shopifyCollectionIds || []
@@ -1225,17 +1325,53 @@ export const AppProvider = ({ children }) => {
         }
     };
 
-    const updateOrderStatus = (orderId, newStatus, newAddress = null) => {
+    const updateOrderStatus = async (orderId, newStatus, newAddress = null) => {
+        const order = state.orders.find(o => o.id === orderId);
+        if (!order) return;
+        
+        let addressObj = null;
+        try {
+            addressObj = order.address ? JSON.parse(order.address) : null;
+        } catch(e) {}
+
+        if (newStatus === 'Cancelled' && addressObj && addressObj.bostaDeliveryId) {
+            if (addressObj.bostaStateCode === 45 || addressObj.bostaStateName?.includes("توصيل") || addressObj.bostaStateName?.includes("Delivered")) {
+                showAlert("لا يمكن إلغاء الأوردر آلياً لأنه قيد التوصيل (Out for Delivery). يرجى التواصل مع خدمة عملاء بوسطة.", "error");
+                return;
+            }
+            try {
+                showToast("جاري إلغاء الشحنة في بوسطة...", "info");
+                const { data: { session } } = await supabase.auth.getSession();
+                const res = await fetch('https://skvwhgcclmvejmpsgkes.supabase.co/functions/v1/manage-bosta-delivery', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session?.access_token}`
+                    },
+                    body: JSON.stringify({ action: 'cancel', bostaDeliveryId: addressObj.bostaDeliveryId })
+                });
+                if (!res.ok) {
+                    const resData = await res.json().catch(() => ({}));
+                    showAlert(`فشل إلغاء الشحنة في بوسطة: ${resData.error || res.statusText}`, "error");
+                    return;
+                }
+                showToast("تم إلغاء الشحنة في بوسطة بنجاح", "success");
+            } catch (e) {
+                showAlert("حدث خطأ أثناء التواصل مع بوسطة لإلغاء الشحنة.", "error");
+                return;
+            }
+        }
+
         let oldStatus = "";
         let orderTotal = 0;
         let customerId = null;
         
         setState(prev => {
-            const order = prev.orders.find(o => o.id === orderId);
-            if (!order) return prev;
+            const currentOrder = prev.orders.find(o => o.id === orderId);
+            if (!currentOrder) return prev;
             
             let products = [...prev.products];
-            oldStatus = order.status;
+            oldStatus = currentOrder.status;
             orderTotal = order.totalValue;
             customerId = order.customer_id;
             
@@ -1294,7 +1430,7 @@ export const AppProvider = ({ children }) => {
                         const vr = prod.variants.find(v => v.sku === item.variantSku);
                         const currentBal = vr ? (vr.stock[order.warehouse || "Sulur"] || 0) : 0;
                         newLedger = [{
-                            date: new Date().toISOString().split('T')[0],
+                            date: new Date().toISOString(),
                             productId: prod.id,
                             variantSku: item.variantSku,
                             warehouse: order.warehouse || "Sulur",
@@ -1311,7 +1447,7 @@ export const AppProvider = ({ children }) => {
                         const vr = prod.variants.find(v => v.sku === item.variantSku);
                         const currentBal = vr ? (vr.stock[order.warehouse || "Sulur"] || 0) : 0;
                         newLedger = [{
-                            date: new Date().toISOString().split('T')[0],
+                            date: new Date().toISOString(),
                             productId: prod.id,
                             variantSku: item.variantSku,
                             warehouse: order.warehouse || "Sulur",
@@ -1330,9 +1466,6 @@ export const AppProvider = ({ children }) => {
                 orders: prev.orders.map(o => {
                     if (o.id === orderId) {
                         const updatedOrder = { ...o, status: newStatus };
-                        if (newStatus === 'Completed') {
-                            updatedOrder.deposit = o.totalValue;
-                        }
                         if (newAddress) {
                             updatedOrder.address = newAddress;
                         }
@@ -1357,10 +1490,6 @@ export const AppProvider = ({ children }) => {
             (async () => {
                 try {
                     const dbUpdate = { status: newStatus };
-                    if (newStatus === 'Completed') {
-                        const ord = state.orders.find(o => o.id === orderId);
-                        if (ord) dbUpdate.deposit = ord.totalValue;
-                    }
                     await supabase.from('orders').update(dbUpdate).eq('id', orderId);
                     
                     const { data: order } = await supabase.from('orders').select('*').eq('id', orderId).single();
@@ -1379,7 +1508,7 @@ export const AppProvider = ({ children }) => {
                                     syncVariantStockToShopify(item.variant_sku);
                                     
                                     await supabase.from('stock_ledger').insert([{
-                                        date: new Date().toISOString().split('T')[0],
+                                        date: new Date().toISOString(),
                                         product_id: vData.product_id,
                                         variant_sku: item.variant_sku,
                                         warehouse: order.warehouse || 'Sulur',
@@ -1398,7 +1527,7 @@ export const AppProvider = ({ children }) => {
                                     syncVariantStockToShopify(item.variant_sku);
                                     
                                     await supabase.from('stock_ledger').insert([{
-                                        date: new Date().toISOString().split('T')[0],
+                                        date: new Date().toISOString(),
                                         product_id: vData.product_id,
                                         variant_sku: item.variant_sku,
                                         warehouse: order.warehouse || 'Sulur',
@@ -1458,7 +1587,7 @@ export const AppProvider = ({ children }) => {
         }
     };
 
-    const editOrder = (updatedOrder) => {
+    const editOrder = async (updatedOrder) => {
         let oldOrder = null;
         let requiresCustomerUpdate = false;
         let customerStatsDiff = { value: 0, count: 0 };
@@ -1580,6 +1709,86 @@ export const AppProvider = ({ children }) => {
 
         if (requiresCustomerUpdate && enrichedOrder.customer_id) {
             updateCustomerStats(enrichedOrder.customer_id, customerStatsDiff.value, customerStatsDiff.count);
+        }
+
+        // Bosta Update check
+        let addressObj = null;
+        try {
+            addressObj = enrichedOrder.address ? JSON.parse(enrichedOrder.address) : null;
+        } catch(e) {}
+
+        if (addressObj && addressObj.bostaDeliveryId) {
+            try {
+                showToast("جاري تحديث بيانات الشحنة في بوسطة...", "info");
+                const orderTotal = parseFloat(enrichedOrder.totalValue) || 0;
+                const shippingFee = parseFloat(enrichedOrder.shipping_fee) || 0;
+                const depositAmount = parseFloat(enrichedOrder.deposit) || 0;
+                const codAmount = Math.max(0, orderTotal - depositAmount);
+                const netProductsTotal = Math.max(0, orderTotal - shippingFee);
+                const productValueAmount = netProductsTotal < 1000 ? netProductsTotal + 100 : netProductsTotal;
+                
+                const totalQty = enrichedOrder.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
+                const itemsDescription = enrichedOrder.items.map(item => {
+                    const prodName = item.productName || item.variantSku;
+                    const optName = item.variantName || '';
+                    const displayName = (optName && optName !== 'Standard Option' && optName !== 'Default Title')
+                        ? `${prodName} (${optName})`
+                        : `${prodName} (أساسي)`;
+                    return `${item.quantity}x ${displayName}`;
+                }).join(", ").substring(0, 120);
+
+                const fullName = (enrichedOrder.client || "").trim();
+                const nameParts = fullName.split(/\s+/);
+                const firstName = nameParts[0] || "العميل";
+                const lastName = nameParts.slice(1).join(" ") || ".";
+
+                const bostaPayload = {
+                    cod: codAmount,
+                    dropOffAddress: {
+                        city: addressObj.bostaCityName,
+                        districtId: addressObj.bostaDistrictId,
+                        zoneId: addressObj.bostaZoneId,
+                        firstLine: addressObj.detailAddress || addressObj.bostaCityName
+                    },
+                    specs: {
+                        packageType: "Small",
+                        packageDetails: {
+                            itemsCount: totalQty,
+                            description: itemsDescription
+                        }
+                    },
+                    goodsInfo: {
+                        amount: productValueAmount
+                    },
+                    receiver: {
+                        firstName: firstName,
+                        lastName: lastName,
+                        phone: addressObj.phone,
+                        ...(addressObj.secondPhone && { secondPhone: addressObj.secondPhone.replace(/\D/g, '') })
+                    }
+                };
+
+                const { data: { session } } = await supabase.auth.getSession();
+                const res = await fetch('https://skvwhgcclmvejmpsgkes.supabase.co/functions/v1/manage-bosta-delivery', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${session?.access_token}`
+                    },
+                    body: JSON.stringify({ action: 'update', bostaDeliveryId: addressObj.bostaDeliveryId, payload: bostaPayload })
+                });
+
+                if (!res.ok) {
+                    const resData = await res.json().catch(() => ({}));
+                    console.error("BOSTA UPDATE RAW ERROR:", resData);
+                    const bostaErr = resData?.bostaRaw?.message || JSON.stringify(resData?.bostaRaw);
+                    showAlert(`فشل تحديث بيانات الشحنة في بوسطة: ${resData.error || res.statusText} - التفاصيل: ${bostaErr}`, "warning");
+                } else {
+                    showToast("تم تحديث الشحنة في بوسطة بنجاح", "success");
+                }
+            } catch (e) {
+                showAlert("حدث خطأ أثناء التواصل مع بوسطة لتحديث الشحنة.", "warning");
+            }
         }
 
         logActivity("order", `Order ${enrichedOrder.id} updated.`);
@@ -1806,10 +2015,10 @@ export const AppProvider = ({ children }) => {
     };
 
     // Store Configuration
-    const saveStoreConfig = (name, address, currency) => {
+    const saveStoreConfig = (name, address, currency, adminAvatar) => {
         setState(prev => ({
             ...prev,
-            storeSettings: { name, address, currency }
+            storeSettings: { name, address, currency, adminAvatar: adminAvatar !== undefined ? adminAvatar : prev.storeSettings.adminAvatar }
         }));
         logActivity("stock", `Updated configurations. Base currency: ${currency}.`);
         showToast("Store settings saved successfully.");
@@ -1840,7 +2049,7 @@ export const AppProvider = ({ children }) => {
                         return v;
                     });
                     const adjLog = {
-                        date: getLocalDateString(),
+                        date: new Date().toISOString(),
                         variantSku,
                         warehouse,
                         type,
@@ -1859,7 +2068,7 @@ export const AppProvider = ({ children }) => {
                 const vr = prod.variants.find(v => v.sku === variantSku);
                 const currentBal = vr ? (vr.stock[warehouse] || 0) : 0;
                 newLedger = [{
-                    date: getLocalDateString(),
+                    date: new Date().toISOString(),
                     productId: prod.id,
                     variantSku: variantSku,
                     warehouse: warehouse,
@@ -1887,7 +2096,7 @@ export const AppProvider = ({ children }) => {
                         syncVariantStockToShopify(variantSku);
                         
                         await supabase.from('stock_ledger').insert([{
-                            date: getLocalDateString(),
+                            date: new Date().toISOString(),
                             product_id: productId,
                             variant_sku: variantSku,
                             warehouse: warehouse,
@@ -1945,7 +2154,7 @@ export const AppProvider = ({ children }) => {
                 const currentBal = vr ? (vr.stock[warehouse] || 0) : 0;
                 
                 newLedger = [{
-                    date: getLocalDateString(),
+                    date: new Date().toISOString(),
                     productId: prod.id,
                     variantSku: variantSku,
                     warehouse: warehouse,
@@ -1989,7 +2198,7 @@ export const AppProvider = ({ children }) => {
                         syncVariantStockToShopify(variantSku);
                         
                         await supabase.from('stock_ledger').insert([{
-                            date: getLocalDateString(),
+                            date: new Date().toISOString(),
                             product_id: productId,
                             variant_sku: variantSku,
                             warehouse: warehouse,
@@ -2300,7 +2509,7 @@ export const AppProvider = ({ children }) => {
                             const vr = prod.variants.find(v => v.sku === item.variantSku);
                             const currentBal = vr ? (vr.stock[order.warehouse || "Sulur"] || 0) : 0;
                             newLedger = [{
-                                date: new Date().toISOString().split('T')[0],
+                                date: new Date().toISOString(),
                                 productId: prod.id,
                                 variantSku: item.variantSku,
                                 warehouse: order.warehouse || "Sulur",
@@ -2317,7 +2526,7 @@ export const AppProvider = ({ children }) => {
                             const vr = prod.variants.find(v => v.sku === item.variantSku);
                             const currentBal = vr ? (vr.stock[order.warehouse || "Sulur"] || 0) : 0;
                             newLedger = [{
-                                date: new Date().toISOString().split('T')[0],
+                                date: new Date().toISOString(),
                                 productId: prod.id,
                                 variantSku: item.variantSku,
                                 warehouse: order.warehouse || "Sulur",
@@ -2372,9 +2581,6 @@ export const AppProvider = ({ children }) => {
                                 address: data.updatedAddress,
                                 status: newStatus
                             };
-                            if (newStatus === 'Completed') {
-                                updatedOrder.deposit = o.totalValue;
-                            }
                             return updatedOrder;
                         }
                         return o;
@@ -2395,6 +2601,143 @@ export const AppProvider = ({ children }) => {
             return null;
         }
     };
+    const syncProductsFromShopify = async () => {
+        if (!supabase) return false;
+        try {
+            showToast("جاري استيراد المنتجات من شوبيفاي، برجاء الانتظار...");
+            const { data, error } = await supabase.functions.invoke('swift-processor', {
+                body: { action: 'fetch_all_products' }
+            });
+            
+            if (error) throw error;
+            if (data?.success && data.products) {
+                const shopifyProducts = data.products;
+                let addedProductsCount = 0;
+                let addedVariantsCount = 0;
+                
+                // Fetch existing to avoid duplicates
+                const { data: existingProducts } = await supabase.from('products').select('shopify_id');
+                const existingShopifyIds = new Set(existingProducts?.map(p => p.shopify_id) || []);
+
+                // Fetch collects to map collection IDs
+                let productToCollections = {};
+                try {
+                    const { data: collectsData } = await supabase.functions.invoke('swift-processor', {
+                        body: { action: 'fetch_collects' }
+                    });
+                    if (collectsData?.success && collectsData.collects) {
+                        for (const c of collectsData.collects) {
+                            const pIdStr = String(c.product_id);
+                            if (!productToCollections[pIdStr]) {
+                                productToCollections[pIdStr] = [];
+                            }
+                            productToCollections[pIdStr].push(String(c.collection_id));
+                        }
+                    }
+                } catch (e) {
+                    console.error("Failed to fetch collects during sync:", e);
+                }
+
+                for (const sp of shopifyProducts) {
+                    if (existingShopifyIds.has(String(sp.id))) continue;
+
+                    // Parse first image
+                    let imageUrl = '';
+                    let imagesArray = [];
+                    if (sp.images && sp.images.length > 0) {
+                        imageUrl = sp.images[0].src;
+                        imagesArray = sp.images.map(img => img.src);
+                    }
+
+                    // Extract collections and tags
+                    const tagsStr = sp.tags || '';
+                    const tagsArray = tagsStr.split(',').map(t => t.trim()).filter(Boolean);
+                    
+                    // Construct description holding tags and vendor as a fallback
+                    let finalDescription = sp.body_html || '';
+                    if (tagsArray.length > 0 || sp.vendor) {
+                        finalDescription += `<br/><br/><strong>Vendor:</strong> ${sp.vendor || 'N/A'}<br/><strong>Tags:</strong> ${tagsArray.join(', ')}`;
+                    }
+
+                    // Insert Product
+                    const newProductId = crypto.randomUUID();
+                    const newProduct = {
+                        id: newProductId,
+                        name: sp.title || 'بدون اسم',
+                        category: sp.product_type || 'Uncategorized',
+                        shopify_id: String(sp.id),
+                        image: JSON.stringify({
+                            images: imagesArray,
+                            vendor: sp.vendor || '',
+                            tags: tagsArray.join(', '),
+                            status: sp.status === 'active' ? 'Active' : 'Draft'
+                        }),
+                        description: finalDescription,
+                        shopify_collection_ids: productToCollections[String(sp.id)] || [] 
+                    };
+
+                    const { error: prodError } = await supabase.from('products').insert([newProduct]);
+                    if (prodError) {
+                        console.error("Error inserting synced product:", prodError);
+                        continue;
+                    }
+                    addedProductsCount++;
+
+                    // Insert Variants
+                    const variantsToInsert = [];
+                    for (const sv of (sp.variants || [])) {
+                        let sku = sv.sku;
+                        if (!sku) {
+                            sku = `SKU-${Math.random().toString(36).substring(2,8).toUpperCase()}`;
+                        }
+                        
+                        let variantName = sv.title;
+                        if (variantName === 'Default Title') variantName = `${sp.title} (أساسي)`;
+                        else variantName = `${sp.title} (${variantName})`;
+
+                        variantsToInsert.push({
+                            product_id: newProductId,
+                            name: variantName,
+                            sku: sku,
+                            barcode: sv.barcode || '',
+                            retail_price: parseFloat(sv.price) || 0,
+                            wholesale_price: 0, // Set to 0 as requested
+                            stock_sulur: 0, // Set to 0 as requested
+                            shopify_id: String(sv.id)
+                        });
+                    }
+
+                    if (variantsToInsert.length > 0) {
+                        const { error: varError } = await supabase.from('product_variants').insert(variantsToInsert);
+                        if (!varError) {
+                            addedVariantsCount += variantsToInsert.length;
+                        } else {
+                            console.error("Error inserting synced variants:", varError);
+                        }
+                    }
+                }
+                
+                showToast(`تم استيراد ${addedProductsCount} منتج و ${addedVariantsCount} صنف فرعي (Variants) بنجاح.`);
+                
+                // Refresh local state
+                const { data: dbProducts } = await supabase.from('products').select('*');
+                const { data: dbVariants } = await supabase.from('product_variants').select('*');
+                setState(prev => ({
+                    ...prev,
+                    products: dbProducts || [],
+                    productVariants: dbVariants || []
+                }));
+                return true;
+            } else {
+                throw new Error("Invalid response from Shopify sync");
+            }
+        } catch (e) {
+            console.error("Shopify Sync Error:", e);
+            showToast(`فشل استيراد المنتجات: ${e.message}`, "error");
+            return false;
+        }
+    };
+
     const syncShopifyCollections = async () => {
         if (!supabase) return false;
         try {
@@ -2501,6 +2844,7 @@ export const AppProvider = ({ children }) => {
             addProduct,
             editProduct,
             syncShopifyCollections,
+            syncProductsFromShopify,
             deleteProduct,
             deleteMultipleProducts,
             addOrder,
@@ -2513,8 +2857,10 @@ export const AppProvider = ({ children }) => {
             recordWaste,
             recordStockAdjustment,
             saveStoreConfig,
+            saveUserAvatar: (userId, base64) => setState(p => ({ ...p, userAvatars: { ...p.userAvatars, [userId]: base64 } })),
             addCustomer,
             editCustomer,
+            deleteCustomer,
             setCustomerSpam,
             getOrCreateCustomer,
             addCoupon,
@@ -2522,6 +2868,9 @@ export const AppProvider = ({ children }) => {
             deleteCoupon,
             validateCoupon,
             applyCouponUsage,
+            addInfluencer,
+            editInfluencer,
+            deleteInfluencer,
             restoreStoreData,
             logActivity,
             language,

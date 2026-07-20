@@ -1,8 +1,10 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../../context/AppContext';
+import { useNavigate } from 'react-router-dom';
 
 export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar }) {
     const { state, currentView, setCurrentView, language, setLanguage, theme, setTheme, t } = useContext(AppContext);
+    const navigate = useNavigate();
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef(null);
 
@@ -283,9 +285,21 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
                 <div 
                     className="top-profile-avatar" 
                     onClick={() => setCurrentView('store')}
+                    style={{ cursor: 'pointer' }}
                 >
-                    <div className="user-avatar" id="top-avatar-lbl">
-                        {state.currentUser.avatar || 'A'}
+                    <div 
+                        className="user-avatar" 
+                        id="top-avatar-lbl"
+                        style={{
+                            backgroundImage: (state.userAvatars?.[state.currentUser?.id] || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) ? `url(${state.userAvatars?.[state.currentUser?.id] || state.storeSettings?.adminAvatar})` : 'none',
+                            backgroundSize: 'cover',
+                            backgroundPosition: 'center',
+                            color: (state.userAvatars?.[state.currentUser?.id] || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) ? 'transparent' : 'inherit'
+                        }}
+                    >
+                        {!(state.userAvatars?.[state.currentUser?.id] || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) && 
+                            (state.currentUser.avatar || 'A')
+                        }
                     </div>
                 </div>
             </div>

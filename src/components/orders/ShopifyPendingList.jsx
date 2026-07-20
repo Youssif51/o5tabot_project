@@ -167,7 +167,7 @@ export default function ShopifyPendingList() {
         let name = sku;
         state.products.forEach(p => {
             const v = p.variants.find(vr => vr.sku === sku);
-            if (v) name = v.name === 'Standard Option' ? p.name : `${p.name} (${v.name})`;
+            if (v) name = v.name === 'Standard Option' || v.name === 'Default Title' ? `${p.name} (أساسي)` : `${p.name} (${v.name})`;
         });
         return name;
     };

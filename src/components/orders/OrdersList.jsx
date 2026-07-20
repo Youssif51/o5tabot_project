@@ -11,6 +11,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
     // Filters & Search
     const [deliveryStatusFilter, setDeliveryStatusFilter] = useState('all');
     const [paymentStatusFilter, setPaymentStatusFilter] = useState('all');
+    const [sourceFilter, setSourceFilter] = useState('all');
     const [warehouseFilter, setWarehouseFilter] = useState('all');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
@@ -213,7 +214,11 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         const paymentStatus = getPaymentStatus(ord);
         if (paymentStatusFilter !== 'all' && paymentStatus !== paymentStatusFilter) return false;
 
-        // 4. Warehouse
+        // 4. Source Filter
+        const source = ord.source || 'manual';
+        if (sourceFilter !== 'all' && source !== sourceFilter) return false;
+
+        // 5. Warehouse
         const wh = ord.warehouse || 'Sulur';
         if (warehouseFilter !== 'all' && wh !== warehouseFilter) return false;
 
@@ -309,7 +314,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         let name = sku;
         state.products.forEach(p => {
             const v = p.variants.find(vr => vr.sku === sku);
-            if (v) name = v.name === 'Standard Option' ? p.name : `${p.name} (${v.name})`;
+            if (v) name = v.name === 'Standard Option' || v.name === 'Default Title' ? `${p.name} (أساسي)` : `${p.name} (${v.name})`;
         });
         return name;
     };
@@ -415,42 +420,42 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
             )}
 
             {/* 6. FILTER BAR */}
-            <div className="glass-card filter-bar" style={{ padding: '16px', marginBottom: '24px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
-                <div className="filter-controls" style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', flex: 1 }}>
-                        
-                        {/* Search Input */}
-                        <div className="search-input-wrapper" style={{ minWidth: '220px' }}>
-                            <i className="fa-solid fa-magnifying-glass search-icon"></i>
+            <div className="glass-card filter-bar" style={{ padding: '16px', marginBottom: '24px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '12px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    
+                    {/* Top Row: Search & Export */}
+                    <div style={{ display: 'flex', gap: '16px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        <div className="search-input-wrapper" style={{ flex: '1', minWidth: '250px', position: 'relative' }}>
+                            <i className="fa-solid fa-magnifying-glass search-icon" style={{ position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)' }}></i>
                             <input 
                                 type="text" 
                                 placeholder="ابحث برقم الطلب أو العميل..."
                                 value={globalSearch || ''}
                                 onChange={(e) => { setGlobalSearch(e.target.value); setCurrentPage(1); }}
-                                style={{ width: '100%', background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', padding: '8px 12px 8px 36px', borderRadius: '6px' }}
+                                style={{ width: '100%', background: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', padding: '10px 14px 10px 40px', borderRadius: '8px', fontSize: '14px' }}
                             />
                         </div>
+                        <button 
+                            onClick={handleExportCSV} 
+                            className="btn btn-success" 
+                            style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '8px', fontSize: '14px', fontWeight: 'bold' }}
+                        >
+                            <i className="fa-solid fa-file-excel"></i> تصدير Excel
+                        </button>
+                    </div>
+
+                    {/* Bottom Row: Filters */}
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
                         
-                        {/* Delivery Status Filter */}
                         <select 
                             className="form-select" 
-                            style={{ 
-                                width: '220px', 
-                                backgroundColor: 'var(--glass-bg)', 
-                                color: 'var(--text-primary)', 
-                                border: '1px solid var(--glass-border)', 
-                                borderRadius: '6px', 
-                                paddingTop: '8px', 
-                                paddingBottom: '8px' 
-                            }}
-                            value={deliveryStatusFilter}
+                            style={{ flex: '1', minWidth: '180px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '10px' }} 
+                            value={deliveryStatusFilter} 
                             onChange={(e) => { setDeliveryStatusFilter(e.target.value); setCurrentPage(1); }}
                         >
                             <option value="all" style={{ background: 'var(--bg-secondary)' }}>كل حالات التوصيل</option>
                             <option value="Draft" style={{ background: 'var(--bg-secondary)' }}>مسودة</option>
                             <option value="Pending" style={{ background: 'var(--bg-secondary)' }}>قيد الانتظار</option>
-                            
-                            {/* Bosta Live Statuses */}
                             <option value="10" style={{ background: 'var(--bg-secondary)' }}>طلب استلام جديد</option>
                             <option value="20" style={{ background: 'var(--bg-secondary)' }}>اتحدد مندوب</option>
                             <option value="21" style={{ background: 'var(--bg-secondary)' }}>المندوب استلم الشحنة</option>
@@ -465,19 +470,21 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                             <option value="101" style={{ background: 'var(--bg-secondary)' }}>شحنة تالفة</option>
                         </select>
 
-                        {/* Payment Status Filter */}
                         <select 
                             className="form-select" 
-                            style={{ 
-                                width: '155px', 
-                                backgroundColor: 'var(--glass-bg)', 
-                                color: 'var(--text-primary)', 
-                                border: '1px solid var(--glass-border)', 
-                                borderRadius: '6px', 
-                                paddingTop: '8px', 
-                                paddingBottom: '8px' 
-                            }}
-                            value={paymentStatusFilter}
+                            style={{ flex: '1', minWidth: '150px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '10px' }} 
+                            value={sourceFilter} 
+                            onChange={(e) => { setSourceFilter(e.target.value); setCurrentPage(1); }}
+                        >
+                            <option value="all" style={{ background: 'var(--bg-secondary)' }}>كل المصادر</option>
+                            <option value="shopify" style={{ background: 'var(--bg-secondary)' }}>طلبات شوبيفاي</option>
+                            <option value="manual" style={{ background: 'var(--bg-secondary)' }}>طلبات يدوية</option>
+                        </select>
+
+                        <select 
+                            className="form-select" 
+                            style={{ flex: '1', minWidth: '150px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '10px' }} 
+                            value={paymentStatusFilter} 
                             onChange={(e) => { setPaymentStatusFilter(e.target.value); setCurrentPage(1); }}
                         >
                             <option value="all" style={{ background: 'var(--bg-secondary)' }}>كل حالات الدفع</option>
@@ -486,62 +493,36 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                             <option value="مدفوع" style={{ background: 'var(--bg-secondary)' }}>مدفوع</option>
                         </select>
 
-
-
-                        {/* Date Range Calendar Pickers */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-secondary)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
                             <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>من:</span>
                             <input 
                                 type="date" 
                                 value={startDate} 
-                                onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1); }}
-                                style={{
-                                    background: 'var(--glass-bg)',
-                                    color: 'var(--text-primary)',
-                                    border: '1px solid var(--glass-border)',
-                                    borderRadius: '6px',
-                                    padding: '6px 10px',
-                                    fontSize: '13px',
-                                    colorScheme: 'dark'
-                                }}
+                                onChange={(e) => { setStartDate(e.target.value); setCurrentPage(1); }} 
+                                style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: '13px', outline: 'none', colorScheme: 'dark' }} 
                             />
                         </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--bg-secondary)', padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--glass-border)' }}>
                             <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>إلى:</span>
                             <input 
                                 type="date" 
                                 value={endDate} 
-                                onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1); }}
-                                style={{
-                                    background: 'var(--glass-bg)',
-                                    color: 'var(--text-primary)',
-                                    border: '1px solid var(--glass-border)',
-                                    borderRadius: '6px',
-                                    padding: '6px 10px',
-                                    fontSize: '13px',
-                                    colorScheme: 'dark'
-                                }}
+                                onChange={(e) => { setEndDate(e.target.value); setCurrentPage(1); }} 
+                                style={{ background: 'transparent', border: 'none', color: 'var(--text-primary)', fontSize: '13px', outline: 'none', colorScheme: 'dark' }} 
                             />
                         </div>
+
                         {(startDate || endDate) && (
                             <button 
-                                className="btn btn-secondary" 
-                                onClick={() => { setStartDate(''); setEndDate(''); setCurrentPage(1); }}
-                                style={{ padding: '6px 12px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '4px', borderColor: 'rgba(231,76,60,0.2)', background: 'rgba(231,76,60,0.05)', color: '#e74c3c' }}
+                                className="btn" 
+                                onClick={() => { setStartDate(''); setEndDate(''); setCurrentPage(1); }} 
+                                style={{ padding: '9px 12px', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '6px', border: '1px solid rgba(231,76,60,0.3)', background: 'rgba(231,76,60,0.1)', color: '#e74c3c', borderRadius: '8px', cursor: 'pointer' }}
                             >
-                                <i className="fa-solid fa-xmark"></i> مسح التصفية
+                                <i className="fa-solid fa-xmark"></i> مسح التواريخ
                             </button>
                         )}
                     </div>
-
-                    {/* Export button */}
-                    <button 
-                        onClick={handleExportCSV} 
-                        className="btn btn-secondary" 
-                        style={{ display: 'flex', alignItems: 'center', gap: '8px', borderColor: 'var(--glass-border-hover)', background: 'var(--glass-bg)', color: 'var(--text-primary)', padding: '8px 16px' }}
-                    >
-                        <i className="fa-solid fa-file-excel" style={{ color: '#27AE60' }}></i> تصدير Excel
-                    </button>
                 </div>
             </div>
 

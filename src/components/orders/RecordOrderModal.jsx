@@ -45,14 +45,15 @@ const calculateBostaShippingFee = (cityName) => {
 };
 
 export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
-    const { state, addOrder, editOrder, showToast, t, validateCoupon, getOrCreateCustomer, approveOrderWithBosta } = useContext(AppContext);
+    const { state, addOrder, editOrder, showToast, t, validateCoupon, applyCouponUsage, getOrCreateCustomer, approveOrderWithBosta } = useContext(AppContext);
     
     // Order info
     const [orderId, setOrderId] = useState('');
     const [status, setStatus] = useState('Draft'); // 'Draft', 'Pending', 'Completed'
     const [step, setStep] = useState(1); // 1: بيانات العميل, 2: المنتجات, 3: الشحن والدفع, 4: مراجعة
-    const [syncWithBosta, setSyncWithBosta] = useState(false);
+    const [syncWithBosta, setSyncWithBosta] = useState(true);
     const [allowToOpenPackage, setAllowToOpenPackage] = useState(false);
+    const [originalAddressObj, setOriginalAddressObj] = useState({});
     
     // Customer Section
     const [client, setClient] = useState('');
@@ -61,8 +62,11 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const [couponValid, setCouponValid] = useState(false);
     const [couponDiscountValue, setCouponDiscountValue] = useState(0);
     const [couponDiscountType, setCouponDiscountType] = useState('');
+    const [globalDiscountValue, setGlobalDiscountValue] = useState('');
+    const [globalDiscountType, setGlobalDiscountType] = useState('Percentage');
     const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
     const [phone, setPhone] = useState('');
+    const [secondPhone, setSecondPhone] = useState('');
     const [governorate, setGovernorate] = useState('');
     const [address, setAddress] = useState('');
     
@@ -85,27 +89,33 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     
     const currency = state.storeSettings.currency || '$';
     
-    // Helper to parse address JSON structure safely
     const parseAddressData = (addressStr) => {
         let detailAddress = addressStr || '';
         let phone = '';
+        let secondPhone = '';
         let vatEnabled = false;
-        // removed orderDiscountPercent
+        let globalDiscountValue = '';
+        let globalDiscountType = 'Percentage';
         let customerCode = 'CUS-0000';
         let appliedCoupon = '';
+        let originalObj = {};
         
         if (addressStr && addressStr.startsWith('{')) {
             try {
                 const parsed = JSON.parse(addressStr);
+                originalObj = parsed;
                 detailAddress = parsed.detailAddress || '';
                 phone = parsed.phone || '';
+                secondPhone = parsed.secondPhone || '';
                 vatEnabled = parsed.vatEnabled || false;
+                globalDiscountValue = parsed.globalDiscountValue || '';
+                globalDiscountType = parsed.globalDiscountType || 'Percentage';
                 
                 customerCode = parsed.customerCode || 'CUS-0000';
                 appliedCoupon = parsed.appliedCoupon || '';
             } catch(e) {}
         }
-        return { detailAddress, phone, vatEnabled, customerCode, appliedCoupon };
+        return { detailAddress, phone, secondPhone, vatEnabled, globalDiscountValue, globalDiscountType, customerCode, appliedCoupon, originalObj };
     };
 
     // Deterministic Customer Code Generator
@@ -140,8 +150,12 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     
                     const parsed = parseAddressData(order.address);
                     setPhone(parsed.phone);
+                    setSecondPhone(parsed.secondPhone);
                     setAddress(parsed.detailAddress || order.address);
                     setVatEnabled(parsed.vatEnabled);
+                    setGlobalDiscountValue(parsed.globalDiscountValue || '');
+                    setGlobalDiscountType(parsed.globalDiscountType || 'Percentage');
+                    setOriginalAddressObj(parsed.originalObj || {});
                     
                     setCouponCode(parsed.appliedCoupon || '');
                     setCustomerId(order.customer_id || null);
@@ -179,7 +193,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             discountPercent: itemDiscount,
                             discountType: 'Percentage',
                             maxStock: maxStock,
-                            searchVal: (variantName && variantName !== 'Standard Option') ? `${productName} | ${variantName}` : productName,
+                            searchVal: (variantName && variantName !== 'Standard Option' && variantName !== 'Default Title') ? `${productName} (${variantName})` : `${productName} (أساسي)`,
                             isOpen: false,
                             productName: productName,
                             variantName: variantName
@@ -196,19 +210,23 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 setClient('');
                 setIsClientDropdownOpen(false);
                 setPhone('');
+                setSecondPhone('');
                 setGovernorate('');
                 setAddress('');
                 setItems([{ variantSku: '', quantity: 1, price: 0, discountPercent: 0, discountType: 'Percentage', maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }]);
                 
                 setShippingFee('');
                 setVatEnabled(false);
+                setGlobalDiscountValue('');
+                setGlobalDiscountType('Percentage');
+                setOriginalAddressObj({});
                 setDeposit('');
                 setCustomerId(null);
                 setCouponCode('');
                 setCouponValid(false);
                 setCouponDiscountValue(0);
                 setCouponDiscountType('');
-                setSyncWithBosta(false);
+                setSyncWithBosta(true);
             }
         }
     }, [isOpen, editOrderId]);
@@ -231,6 +249,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         if (cust) {
             setCustomerId(cust.id);
             setPhone(cust.phone || '');
+            setSecondPhone(cust.secondPhone || '');
             setGovernorate(cust.governorate || '');
             setAddress(cust.address || '');
         } else {
@@ -242,6 +261,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 try {
                     const parsed = JSON.parse(lastOrder.address);
                     setPhone(parsed.phone || '');
+                    setSecondPhone(parsed.secondPhone || '');
                     setAddress(parsed.detailAddress || lastOrder.address);
                     setVatEnabled(parsed.vatEnabled || false);
                     
@@ -287,7 +307,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
             maxStock: variant.stock,
             productName: variant.productName,
             variantName: variant.name,
-            searchVal: variant.name === 'Standard Option' ? variant.productName : `${variant.productName} | ${variant.name}`,
+            searchVal: variant.name === 'Standard Option' || variant.name === 'Default Title' ? `${variant.productName} (أساسي)` : `${variant.productName} (${variant.name})`,
             isOpen: false
         } : item));
     };
@@ -337,7 +357,18 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
             couponDisc = couponDiscountValue;
         }
     }
-    const orderDiscountAmount = couponDisc;
+    
+    let globalDisc = 0;
+    const gDiscountVal = parseFloat(globalDiscountValue) || 0;
+    if (gDiscountVal > 0) {
+        if (globalDiscountType === 'Percentage') {
+            globalDisc = totalProductsSubtotal * (gDiscountVal / 100);
+        } else {
+            globalDisc = gDiscountVal;
+        }
+    }
+
+    const orderDiscountAmount = couponDisc + globalDisc;
     const discountedProductsTotal = totalProductsSubtotal - orderDiscountAmount;
     
     const vatAmount = vatEnabled ? (discountedProductsTotal * 0.14) : 0;
@@ -473,10 +504,13 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
             warehouse: 'Sulur',
             status: finalStatus,
             address: JSON.stringify({
+                ...originalAddressObj,
                 detailAddress: address,
                 phone: phone,
+                secondPhone: secondPhone,
                 vatEnabled: vatEnabled,
-                
+                globalDiscountValue: globalDiscountValue,
+                globalDiscountType: globalDiscountType,
                 customerCode: customerCode,
                 appliedCoupon: couponValid ? couponCode : ''
             }),
@@ -497,6 +531,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 const bostaMetadata = {
                     customerName: client,
                     customerPhone: phone,
+                    customerSecondPhone: secondPhone,
                     customerAddress: address,
                     governorate: governorate,
                     bostaCityCode: citySelected?.cityCode,
@@ -510,6 +545,12 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit);
             }
         }
+
+        // Apply coupon usage to update its statistics
+        if (couponValid && couponCode) {
+            applyCouponUsage(couponCode, newOrderObj.id);
+        }
+
         onClose();
     };
 
@@ -657,6 +698,26 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     {phone && phone.length < 11 && (
                                         <div style={{ fontSize: '10px', color: 'var(--color-warning)', marginTop: '4px' }}>
                                             يجب إدخال 11 رقماً (المتبقي: {11 - phone.length})
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">رقم الهاتف البديل (اختياري)</label>
+                                    <input 
+                                        type="text" 
+                                        className="form-input" 
+                                        value={secondPhone}
+                                        onChange={(e) => {
+                                            const digits = e.target.value.replace(/\D/g, '');
+                                            if (digits.length <= 11) {
+                                                setSecondPhone(digits);
+                                            }
+                                        }}
+                                        placeholder="مثال: 01112345678" 
+                                    />
+                                    {secondPhone && secondPhone.length > 0 && secondPhone.length < 11 && (
+                                        <div style={{ fontSize: '10px', color: 'var(--color-warning)', marginTop: '4px' }}>
+                                            رقم الهاتف يجب أن يكون 11 رقماً (المتبقي: {11 - secondPhone.length})
                                         </div>
                                     )}
                                 </div>
@@ -1047,6 +1108,43 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                 </div>
 
                                 <div className="form-group">
+                                    <label className="form-label">خصم عام على إجمالي المنتجات</label>
+                                    <div style={{ display: 'flex', gap: '4px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '6px', overflow: 'hidden' }}>
+                                        <input 
+                                            type="number"
+                                            min="0"
+                                            value={globalDiscountValue}
+                                            onChange={(e) => setGlobalDiscountValue(e.target.value)}
+                                            placeholder="0"
+                                            style={{
+                                                flex: 1,
+                                                background: 'transparent',
+                                                border: 'none',
+                                                color: 'var(--text-primary)',
+                                                padding: '8px 12px',
+                                                outline: 'none'
+                                            }}
+                                        />
+                                        <select 
+                                            value={globalDiscountType}
+                                            onChange={(e) => setGlobalDiscountType(e.target.value)}
+                                            style={{
+                                                background: 'var(--glass-bg-hover)',
+                                                border: 'none',
+                                                borderLeft: '1px solid var(--glass-border)',
+                                                color: 'var(--gold-primary)',
+                                                cursor: 'pointer',
+                                                padding: '0 12px',
+                                                outline: 'none'
+                                            }}
+                                        >
+                                            <option value="Percentage">%</option>
+                                            <option value="Fixed">ج</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="form-group">
                                     <label className="form-label">سعر الشحن ({currency})</label>
                                     <input 
                                         type="number" 
@@ -1149,7 +1247,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     </h4>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '13px' }}>
                                         <div><strong>اسم العميل:</strong> {client} <span style={{ color: 'var(--text-secondary)', marginRight: '6px' }}>({customerCode})</span></div>
-                                        <div><strong>رقم الهاتف:</strong> {phone}</div>
+                                        <div><strong>رقم الهاتف:</strong> {phone} {secondPhone && `- ${secondPhone}`}</div>
                                         <div><strong>المحافظة:</strong> {governorate}</div>
                                         <div><strong>العنوان التفصيلي:</strong> {address}</div>
                                     </div>
@@ -1215,7 +1313,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             const sub = item.discountType === 'Percentage' ? (item.quantity * item.price * (1 - (item.discountPercent || 0) / 100)) : Math.max(0, (item.quantity * item.price) - (item.discountPercent || 0));
                                             return (
                                                 <tr key={`review-item-${i}`} style={{ borderBottom: '1px solid var(--glass-bg-hover)' }}>
-                                                    <td style={{ padding: '6px 4px' }}>{item.productName} {item.variantName && item.variantName !== 'Standard Option' && <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>({item.variantName})</span>}</td>
+                                                    <td style={{ padding: '6px 4px' }}>{item.productName} <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>({item.variantName && item.variantName !== 'Standard Option' && item.variantName !== 'Default Title' ? item.variantName : 'أساسي'})</span></td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>{item.quantity}</td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>{currency} {item.price.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px', color: 'var(--color-danger)' }}>{item.discountPercent > 0 ? (item.discountType === 'Percentage' ? `${item.discountPercent}%` : `${currency} ${item.discountPercent}`) : '-'}</td>

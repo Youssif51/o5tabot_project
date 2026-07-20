@@ -268,6 +268,7 @@ h1, h2, h3, h4, h5, h6 {
 /* Layout Shell */
 .app-container {
     display: flex;
+    width: 100%;
     min-height: 100vh;
 }
 
@@ -423,11 +424,12 @@ h1, h2, h3, h4, h5, h6 {
 
 /* Main Content Area */
 .main-content {
-    flex-grow: 1;
+    flex: 0 0 calc(100% - 260px);
     margin-left: 260px;
     padding: 32px 40px;
     background: var(--bg-secondary);
     min-height: 100vh;
+    overflow-x: auto;
     transition: var(--transition);
     position: relative;
 }
@@ -956,6 +958,9 @@ input[type=number] {
     gap: 24px;
     margin-bottom: 32px;
 }
+.metrics-grid > * {
+    min-width: 0;
+}
 
 .metric-card {
     padding: 24px;
@@ -1020,6 +1025,9 @@ input[type=number] {
     gap: 24px;
     margin-bottom: 32px;
 }
+.dashboard-grid > * {
+    min-width: 0;
+}
 
 .chart-card {
     padding: 24px;
@@ -1068,6 +1076,7 @@ input[type=number] {
 .table-card {
     padding: 0;
     overflow: hidden;
+    min-width: 0;
 }
 
 .card-header-bar {
@@ -1127,8 +1136,9 @@ input[type=number] {
 }
 
 /* Clean, Spacious Tables - Arabic Note Implementation */
-.table-wrapper {
+.table-wrapper, .table-responsive {
     overflow-x: auto;
+    width: 100%;
 }
 
 .custom-table {
@@ -1138,7 +1148,7 @@ input[type=number] {
 }
 
 .custom-table th {
-    padding: 16px 24px;
+    padding: 16px 16px;
     font-size: 12px;
     font-weight: 600;
     color: var(--text-secondary);
@@ -1146,14 +1156,16 @@ input[type=number] {
     letter-spacing: 0.05em;
     border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     background: rgba(0, 0, 0, 0.15);
+    white-space: nowrap;
 }
 
 .custom-table td {
-    padding: 16px 24px;
+    padding: 16px 16px;
     font-size: 14px;
     color: var(--text-primary);
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
     transition: var(--transition);
+    white-space: nowrap;
 }
 
 .custom-table tr:hover td {
@@ -1950,6 +1962,7 @@ input[type=number] {
 [dir="rtl"] .main-content {
     margin-left: 0 !important;
     margin-right: 260px !important;
+    flex: 0 0 calc(100% - 260px) !important;
 }
 
 [dir="rtl"] th, [dir="rtl"] td {
@@ -2100,11 +2113,9 @@ input[type=number] {
     /* Reset main content margins to occupy full width */
     .main-content {
         margin-left: 0 !important;
-        padding: 20px 16px !important;
-    }
-
-    [dir="rtl"] .main-content {
         margin-right: 0 !important;
+        flex: 0 0 100% !important;
+        padding: 20px 16px !important;
     }
 
     /* Top Bar Mobile Adjustments */

@@ -1,4 +1,5 @@
 import React, { useContext, useState } from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { AppContext } from './context/AppContext';
 
 // Common components
@@ -20,6 +21,7 @@ import SuppliersList from './components/suppliers/SuppliersList';
 import CustomersList from './components/customers/CustomersList';
 import ReportsView from './components/reports/ReportsView';
 import StoreSettings from './components/store/StoreSettings';
+import MarketingView from './components/marketing/MarketingView';
 import SupabaseTodos from './components/supabase/SupabaseTodos';
 
 // Modal Forms
@@ -303,83 +305,91 @@ export default function App() {
                 />
 
                 {/* Main Views Router */}
-                {currentView === 'dashboard' && (
-                    <div id="dashboard-view" className="view-pane active" dir="rtl">
-                        {/* Dashboard Time Filter Header */}
-                        <div className="page-header" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
-                            <div className="page-title-group">
-                                <h2 style={{ fontSize: '22px', fontWeight: 'bold' }}>لوحة التحكم والتحليلات</h2>
+                <Routes>
+                    <Route path="/dashboard" element={
+                        <div id="dashboard-view" className="view-pane active" dir="rtl">
+                            {/* Dashboard Time Filter Header */}
+                            <div className="page-header" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                                <div className="page-title-group">
+                                    <h2 style={{ fontSize: '22px', fontWeight: 'bold' }}>لوحة التحكم والتحليلات</h2>
+                                </div>
+                                <div className="page-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                                    <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>تصفية الفترة الزمنية:</span>
+                                    <select 
+                                        className="form-select" 
+                                        value={dashTimeFilter} 
+                                        onChange={(e) => setDashTimeFilter(e.target.value)}
+                                        style={{ width: '180px', backgroundColor: 'rgba(255,255,255,0.02)', color: '#fff', border: '1px solid var(--glass-border)', borderRadius: '6px', padding: '8px' }}
+                                    >
+                                        <option value="all" style={{ background: '#1a1a1a' }}>كل الأوقات</option>
+                                        <option value="today" style={{ background: '#1a1a1a' }}>اليوم</option>
+                                        <option value="week" style={{ background: '#1a1a1a' }}>آخر 7 أيام (أسبوع)</option>
+                                        <option value="month" style={{ background: '#1a1a1a' }}>آخر 30 يوماً (شهر)</option>
+                                        <option value="year" style={{ background: '#1a1a1a' }}>آخر 365 يوماً (سنة)</option>
+                                    </select>
+                                </div>
                             </div>
-                            <div className="page-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                                <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>تصفية الفترة الزمنية:</span>
-                                <select 
-                                    className="form-select" 
-                                    value={dashTimeFilter} 
-                                    onChange={(e) => setDashTimeFilter(e.target.value)}
-                                    style={{ width: '180px', backgroundColor: 'rgba(255,255,255,0.02)', color: '#fff', border: '1px solid var(--glass-border)', borderRadius: '6px', padding: '8px' }}
-                                >
-                                    <option value="all" style={{ background: '#1a1a1a' }}>كل الأوقات</option>
-                                    <option value="today" style={{ background: '#1a1a1a' }}>اليوم</option>
-                                    <option value="week" style={{ background: '#1a1a1a' }}>آخر 7 أيام (أسبوع)</option>
-                                    <option value="month" style={{ background: '#1a1a1a' }}>آخر 30 يوماً (شهر)</option>
-                                    <option value="year" style={{ background: '#1a1a1a' }}>آخر 365 يوماً (سنة)</option>
-                                </select>
+
+                            <MetricsRow timeFilter={dashTimeFilter} />
+                            <ChartsSection timeFilter={dashTimeFilter} />
+                            <div className="dashboard-grid" style={{ marginTop: '24px' }}>
+                                <TopSelling />
+                                <LowQuantity />
                             </div>
                         </div>
+                    } />
 
-                        <MetricsRow timeFilter={dashTimeFilter} />
-                        <ChartsSection timeFilter={dashTimeFilter} />
-                        <div className="dashboard-grid" style={{ marginTop: '24px' }}>
-                            <TopSelling />
-                            <LowQuantity />
-                        </div>
-                    </div>
-                )}
+                    <Route path="/inventory" element={
+                        <InventoryList 
+                            globalSearch={globalSearch}
+                            setGlobalSearch={setGlobalSearch}
+                            onOpenAddProduct={() => { setEditProductId(null); setIsAddProductOpen(true); }}
+                            onOpenEditProduct={(id) => { setEditProductId(id); setIsAddProductOpen(true); }}
+                            onOpenScanner={handleOpenScanner}
+                        />
+                    } />
 
-                {currentView === 'inventory' && (
-                    <InventoryList 
-                        globalSearch={globalSearch}
-                        setGlobalSearch={setGlobalSearch}
-                        onOpenAddProduct={() => { setEditProductId(null); setIsAddProductOpen(true); }}
-                        onOpenEditProduct={(id) => { setEditProductId(id); setIsAddProductOpen(true); }}
-                        onOpenScanner={handleOpenScanner}
-                    />
-                )}
+                    <Route path="/orders" element={
+                        <OrdersList 
+                            globalSearch={globalSearch}
+                            setGlobalSearch={setGlobalSearch}
+                            onOpenAddOrder={() => { setEditOrderId(null); setIsAddOrderOpen(true); }}
+                            onOpenEditOrder={(id) => { setEditOrderId(id); setIsAddOrderOpen(true); }}
+                        />
+                    } />
 
-                {currentView === 'orders' && (
-                    <OrdersList 
-                        globalSearch={globalSearch}
-                        setGlobalSearch={setGlobalSearch}
-                        onOpenAddOrder={() => { setEditOrderId(null); setIsAddOrderOpen(true); }}
-                        onOpenEditOrder={(id) => { setEditOrderId(id); setIsAddOrderOpen(true); }}
-                    />
-                )}
+                    <Route path="/shopifyPending" element={
+                        <ShopifyPendingList 
+                            onOpenEditOrder={(id) => { setEditOrderId(id); setIsAddOrderOpen(true); }}
+                        />
+                    } />
 
-                {currentView === 'shopifyPending' && (
-                    <ShopifyPendingList 
-                        onOpenEditOrder={(id) => { setEditOrderId(id); setIsAddOrderOpen(true); }}
-                    />
-                )}
+                    <Route path="/suppliers" element={
+                        <SuppliersList globalSearch={globalSearch} setGlobalSearch={setGlobalSearch} />
+                    } />
 
-                {currentView === 'suppliers' && (
-                    <SuppliersList globalSearch={globalSearch} setGlobalSearch={setGlobalSearch} />
-                )}
+                    <Route path="/customers" element={
+                        <CustomersList globalSearch={globalSearch} setGlobalSearch={setGlobalSearch} />
+                    } />
 
-                {currentView === 'customers' && (
-                    <CustomersList globalSearch={globalSearch} setGlobalSearch={setGlobalSearch} />
-                )}
+                    <Route path="/reports" element={
+                        <ReportsView />
+                    } />
 
-                {currentView === 'reports' && (
-                    <ReportsView />
-                )}
+                    <Route path="/supabaseTasks" element={
+                        <SupabaseTodos />
+                    } />
 
-                {currentView === 'supabaseTasks' && (
-                    <SupabaseTodos />
-                )}
+                    <Route path="/store" element={
+                        <StoreSettings />
+                    } />
 
-                {currentView === 'store' && (
-                    <StoreSettings />
-                )}
+                    <Route path="/marketing" element={
+                        <MarketingView />
+                    } />
+
+                    <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                </Routes>
             </main>
 
             {/* Global Modals overlay registry */}
