@@ -1,5 +1,6 @@
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../../context/AppContext';
+import { formatProductDisplayName } from '../../utils/productUtils';
 import Modal from '../common/Modal';
 
 export default function TopSelling() {
@@ -22,7 +23,7 @@ export default function TopSelling() {
             let sold = variantSales[vr.sku] || 0;
             if (sold > 0) {
                 topSelling.push({
-                    name: `${prod.name} (${vr.name})`,
+                    name: formatProductDisplayName(prod.name, vr.name),
                     soldQty: sold,
                     remainingQty: (vr.stock.Sulur || 0),
                     price: vr.retailPrice

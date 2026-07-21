@@ -11,6 +11,74 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+function convertPlaintextToHtml(text: string): string {
+  if (!text) return "";
+  
+  // If it's already HTML, don't convert it!
+  if (/<[a-z][\s\S]*>/i.test(text)) {
+    return text;
+  }
+  
+  // Normalize line endings
+  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  
+  // Split into lines
+  const lines = normalized.split("\n");
+  
+  let html = "";
+  let inList = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // If the line is empty
+    if (!line) {
+      if (inList) {
+        html += "</ul>\n";
+        inList = false;
+      }
+      continue;
+    }
+    
+    // Check if it is a list item (starts with - or * or bullet character)
+    const isBullet = line.startsWith("-") || line.startsWith("*") || line.startsWith("•");
+    
+    if (isBullet) {
+      if (!inList) {
+        html += "<ul>\n";
+        inList = true;
+      }
+      // Strip bullet character
+      const content = line.replace(/^[\-\*•]\s*/, "");
+      html += `  <li>${content}</li>\n`;
+    } else {
+      if (inList) {
+        html += "</ul>\n";
+        inList = false;
+      }
+      
+      // Check if it is a header (like "Key Features" or "Specifications")
+      const isHeader = line.toLowerCase().endsWith("features") || 
+                       line.toLowerCase().endsWith("specifications") ||
+                       line.startsWith("Key ") ||
+                       line.length < 30 && (line.endsWith(":") || !line.endsWith("."));
+      
+      if (isHeader) {
+        const cleanHeader = line.replace(/:$/, "");
+        html += `<p><strong>${cleanHeader}</strong></p>\n`;
+      } else {
+        html += `<p>${line}</p>\n`;
+      }
+    }
+  }
+  
+  if (inList) {
+    html += "</ul>\n";
+  }
+  
+  return html;
+}
+
 // Caching variables (in-memory)
 let cachedToken = null;
 let tokenExpiryTime = 0; // Epoch timestamp in seconds
@@ -504,7 +572,7 @@ Deno.serve(async (req) => {
     const shopifyPayload = {
       product: {
         title: name,
-        body_html: description || "منتج مضاف من نظام إدارة المخزون",
+        body_html: convertPlaintextToHtml(description) || "منتج مضاف من نظام إدارة المخزون",
         vendor: vendor || "Octabot",
         product_type: category || "",
         tags: tags || "",

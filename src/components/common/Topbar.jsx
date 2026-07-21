@@ -1,18 +1,24 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { useNavigate } from 'react-router-dom';
+import { formatProductDisplayName } from '../../utils/productUtils';
 
 export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar }) {
-    const { state, currentView, setCurrentView, language, setLanguage, theme, setTheme, t } = useContext(AppContext);
+    const { state, currentView, setCurrentView, language, setLanguage, theme, setTheme, t, authLogout } = useContext(AppContext);
     const navigate = useNavigate();
     const [isOpen, setIsOpen] = useState(false);
+    const [showProfileDropdown, setShowProfileDropdown] = useState(false);
     const dropdownRef = useRef(null);
+    const profileDropdownRef = useRef(null);
 
     // Close on click outside
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
                 setIsOpen(false);
+            }
+            if (profileDropdownRef.current && !profileDropdownRef.current.contains(event.target)) {
+                setShowProfileDropdown(false);
             }
         };
         document.addEventListener('mousedown', handleClickOutside);
@@ -34,15 +40,31 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
                 lowStockItems.push({
                     productId: p.id,
                     sku: v.sku,
-                    name: v.name === 'Standard Option' ? p.name : `${p.name} (${v.name})`,
+                    name: formatProductDisplayName(p.name, v.name),
                     stock: stockQty
                 });
             }
         });
     });
 
-    // 3. Combine notifications
+    // 3. Pending confirmed deposits that belong to me
+    const pendingMyDeposits = (state.orders || []).filter(o => 
+        o.depositReceiverId === state.currentUser?.id && 
+        o.depositStatus === 'pending' &&
+        (parseFloat(o.deposit) || 0) > 0
+    );
+
+    // 4. Combine notifications
     const notificationsList = [
+        ...pendingMyDeposits.map(o => ({
+            id: `deposit-${o.id}`,
+            type: 'deposit',
+            title: language === 'en' ? 'Pending Deposit' : 'عربون معلق بانتظار التأكيد',
+            text: language === 'en'
+                ? `Confirm receipt of ${o.deposit} EGP for order #${o.id} (${o.client})`
+                : `تأكيد استلام عربون بقيمة ${o.deposit} ج.م للطلب #${o.id} للعميل ${o.client}`,
+            targetView: 'supabaseTasks'
+        })),
         ...pendingShopifyOrders.map(o => ({
             id: `shopify-${o.id}`,
             type: 'shopify',
@@ -284,23 +306,93 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
 
                 <div 
                     className="top-profile-avatar" 
-                    onClick={() => setCurrentView('store')}
-                    style={{ cursor: 'pointer' }}
+                    style={{ position: 'relative', cursor: 'pointer' }}
+                    ref={profileDropdownRef}
                 >
                     <div 
                         className="user-avatar" 
                         id="top-avatar-lbl"
+                        onClick={() => setShowProfileDropdown(prev => !prev)}
                         style={{
-                            backgroundImage: (state.userAvatars?.[state.currentUser?.id] || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) ? `url(${state.userAvatars?.[state.currentUser?.id] || state.storeSettings?.adminAvatar})` : 'none',
+                            backgroundImage: (state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) ? `url(${state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || state.storeSettings?.adminAvatar})` : 'none',
                             backgroundSize: 'cover',
                             backgroundPosition: 'center',
-                            color: (state.userAvatars?.[state.currentUser?.id] || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) ? 'transparent' : 'inherit'
+                            color: (state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) ? 'transparent' : 'inherit'
                         }}
                     >
-                        {!(state.userAvatars?.[state.currentUser?.id] || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) && 
-                            (state.currentUser.avatar || 'A')
+                        {!(state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) && 
+                            (state.currentUser.name?.charAt(0)?.toUpperCase() || 'A')
                         }
                     </div>
+
+                    {showProfileDropdown && (
+                        <div style={{
+                            position: 'absolute',
+                            top: '42px',
+                            left: 0,
+                            background: 'rgba(30, 30, 40, 0.98)',
+                            border: '1px solid var(--glass-border)',
+                            borderRadius: '8px',
+                            boxShadow: '0 4px 15px rgba(0,0,0,0.5)',
+                            zIndex: 9999,
+                            width: '160px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden'
+                        }}>
+                            {(state.currentUser.role === 'SuperAdmin' || (state.currentUser.permissions || []).includes('manage_settings')) && (
+                                <a 
+                                    href="#" 
+                                    onClick={(e) => { 
+                                        e.preventDefault(); 
+                                        setCurrentView('store'); 
+                                        setShowProfileDropdown(false); 
+                                    }}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '10px',
+                                        padding: '12px 16px',
+                                        color: 'var(--text-primary)',
+                                        fontSize: '13px',
+                                        textDecoration: 'none',
+                                        borderBottom: '1px solid rgba(255,255,255,0.05)',
+                                        transition: 'background 0.2s',
+                                        textAlign: 'right'
+                                    }}
+                                    onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.05)'}
+                                    onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                                >
+                                    <img src="/icons/Settings.png" alt="Settings" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
+                                    <span>{t('settings')}</span>
+                                </a>
+                            )}
+                            <a 
+                                href="#" 
+                                onClick={(e) => { 
+                                    e.preventDefault(); 
+                                    authLogout(); 
+                                    setShowProfileDropdown(false); 
+                                }}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    padding: '12px 16px',
+                                    color: 'var(--color-danger)',
+                                    fontSize: '13px',
+                                    textDecoration: 'none',
+                                    transition: 'background 0.2s',
+                                    textAlign: 'right'
+                                }}
+                                onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.05)'}
+                                onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                            >
+                                <img src="/icons/Log Out.png" alt="Log Out" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
+                                <span>{t('logout')}</span>
+                            </a>
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 import UserManagement from './UserManagement';
@@ -10,9 +10,16 @@ export default function StoreSettings() {
     const [storeAddress, setStoreAddress] = useState(state.storeSettings.address || '');
     const [currency, setCurrency] = useState(state.storeSettings.currency || '$');
     
-    const currentUserAvatar = state.userAvatars?.[state.currentUser?.id] || state.storeSettings.adminAvatar || '';
+    const currentUserAvatar = state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || state.storeSettings.adminAvatar || '';
     const [userAvatar, setUserAvatar] = useState(currentUserAvatar);
     const [selectedAdminImage, setSelectedAdminImage] = useState(null);
+
+    useEffect(() => {
+        const avatar = state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || state.storeSettings.adminAvatar || '';
+        if (avatar) {
+            setUserAvatar(avatar);
+        }
+    }, [state.userAvatars, state.currentUser?.id, state.currentUser?.avatar, state.storeSettings.adminAvatar]);
 
     const admins = (state.users || []).filter(u => u.role === 'SuperAdmin' || u.role === 'Admin');
 
@@ -161,7 +168,7 @@ export default function StoreSettings() {
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px' }}>
                         {admins.map(admin => {
-                            const adminAvatar = state.userAvatars?.[admin.id] || (admin.role === 'SuperAdmin' ? state.storeSettings.adminAvatar : '');
+                            const adminAvatar = state.userAvatars?.[admin.id] || admin.avatar || (admin.role === 'SuperAdmin' ? state.storeSettings.adminAvatar : '');
                             
                             return (
                                 <div key={admin.id} style={{ 

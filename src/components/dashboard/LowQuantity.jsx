@@ -1,5 +1,6 @@
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../../context/AppContext';
+import { formatProductDisplayName } from '../../utils/productUtils';
 import Modal from '../common/Modal';
 
 export default function LowQuantity() {
@@ -13,7 +14,7 @@ export default function LowQuantity() {
             const limit = vr.reorderLimit || 5; // Default to 5 if not set or 0
             if (totalQty <= limit) {
                 lowStock.push({
-                    name: vr.name && vr.name !== 'Standard Option' ? `${prod.name} - ${vr.name}` : prod.name,
+                    name: formatProductDisplayName(prod.name, vr.name),
                     remainingQty: totalQty,
                     status: totalQty === 0 ? t('outOfStock') : t('lowStock')
                 });

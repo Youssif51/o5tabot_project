@@ -1,3 +1,4 @@
+import { formatProductDisplayName } from '../../utils/productUtils';
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
@@ -169,8 +170,19 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                     <span style={{ color: '#fff', fontFamily: 'monospace' }}>{product.id}</span>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr' }}>
-                                    <span style={{ color: 'var(--text-secondary)' }}>{t('categories')}</span>
-                                    <span style={{ color: '#fff' }}>{product.category}</span>
+                                    <span style={{ color: 'var(--text-secondary)' }}>المجموعة (Collection)</span>
+                                    <span style={{ color: '#fff' }}>
+                                        {(() => {
+                                            if (!product.shopifyCollectionIds || product.shopifyCollectionIds.length === 0) {
+                                                return product.category || 'غير محدد';
+                                            }
+                                            const names = product.shopifyCollectionIds.map(id => {
+                                                const col = (state.collections || []).find(c => String(c.id) === String(id));
+                                                return col ? col.title : null;
+                                            }).filter(Boolean);
+                                            return names.length > 0 ? names.join(', ') : (product.category || 'غير محدد');
+                                        })()}
+                                    </span>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr' }}>
                                     <span style={{ color: 'var(--text-secondary)' }}>{t('createdDate')}</span>
@@ -212,7 +224,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                             const profitMargin = v.retailPrice > 0 ? ((v.retailPrice - costVal) / v.retailPrice * 100).toFixed(1) : 0;
                                             return (
                                                 <tr key={v.sku}>
-                                                    <td style={{ fontWeight: 600 }}>{v.name === 'Standard Option' || v.name === 'Default Title' ? `${product.name} (أساسي)` : `${product.name} (${v.name})`}</td>
+                                                    <td style={{ fontWeight: 600 }}>{formatProductDisplayName(product.name, v.name)}</td>
                                                     <td>{currency} {v.wholesalePrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                     <td style={{ fontWeight: 600, color: 'var(--color-warning)' }}>{currency} {costVal.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                     <td style={{ color: 'var(--gold-primary)', fontWeight: 600 }}>{currency} {v.retailPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
@@ -442,7 +454,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                     <td>{item.date}</td>
                                                     <td style={{ fontWeight: 600 }}>{item.id}</td>
                                                     <td>{item.supplierName}</td>
-                                                    <td>{item.variantName === 'Standard Option' || item.variantName === 'Default Title' ? `${product.name} (أساسي)` : `${product.name} (${item.variantName})`}</td>
+                                                    <td>{formatProductDisplayName(product.name, item.variantName)}</td>
                                                     <td>{item.quantity} قطعة</td>
                                                     <td style={{ fontWeight: 600, color: 'var(--gold-primary)' }}>
                                                         {currency} {item.cost.toLocaleString('en-US', {maximumFractionDigits: 2})}
@@ -523,7 +535,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                 >
                                     {product.variants.map(v => (
                                         <option key={v.sku} value={v.sku}>
-                                            {v.name === 'Standard Option' || v.name === 'Default Title' ? `${product.name} (أساسي)` : `${product.name} (${v.name})`}
+                                            {formatProductDisplayName(product.name, v.name)}
                                         </option>
                                     ))}
                                 </select>
@@ -671,7 +683,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
 
                                             const logSku = log.variant_sku || log.variantSku;
                                             const variant = product.variants?.find(v => v.sku === logSku);
-                                            const variantLabel = variant ? (variant.name === 'Standard Option' || variant.name === 'Default Title' ? `${product.name} (أساسي)` : `${product.name} (${variant.name})`) : `${product.name} (${logSku})`;
+                                            const variantLabel = variant ? formatProductDisplayName(product.name, variant.name) : formatProductDisplayName(product.name, logSku);
                                             
                                             return (
                                                 <tr key={idx}>

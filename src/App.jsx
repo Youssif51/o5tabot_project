@@ -23,6 +23,7 @@ import ReportsView from './components/reports/ReportsView';
 import StoreSettings from './components/store/StoreSettings';
 import MarketingView from './components/marketing/MarketingView';
 import SupabaseTodos from './components/supabase/SupabaseTodos';
+import DepositConfirmList from './components/orders/DepositConfirmList';
 
 // Modal Forms
 import AddProductModal from './components/inventory/AddProductModal';
@@ -376,8 +377,9 @@ export default function App() {
                         <ReportsView />
                     } />
 
-                    <Route path="/supabaseTasks" element={
-                        <SupabaseTodos />
+
+                    <Route path="/depositConfirm" element={
+                        <DepositConfirmList />
                     } />
 
                     <Route path="/store" element={

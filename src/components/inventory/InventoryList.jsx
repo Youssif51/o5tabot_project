@@ -21,9 +21,9 @@ export default function InventoryList({
 
     // Filters visibility toggle
     const [showFilters, setShowFilters] = useState(false);
-    const [categoryFilter, setCategoryFilter] = useState('all');
+    const [collectionFilter, setCollectionFilter] = useState('all');
     const [warehouseFilter, setWarehouseFilter] = useState('all');
-    const [stockFilter, setStockFilter] = useState('all'); // 'all', 'low'
+    const [stockFilter, setStockFilter] = useState('all'); // 'all', 'in_stock', 'out_of_stock', 'low'
     // Using globalSearch instead of local searchVal
 
     // Pagination
@@ -33,24 +33,31 @@ export default function InventoryList({
     const currency = state.storeSettings.currency || '$';
     const activeSearch = globalSearch || '';
 
-    // Collect list of categories
-    const categoriesList = ['all', ...new Set(state.products.map(p => p.category))];
-
-    // Filter products
+    // Filter products by collection
     let filteredList = [];
     state.products.forEach(prod => {
-        if (categoryFilter !== 'all' && prod.category !== categoryFilter) return;
+        if (collectionFilter !== 'all') {
+            if (collectionFilter === 'none') {
+                if (prod.shopifyCollectionIds && prod.shopifyCollectionIds.length > 0) return;
+            } else {
+                if (!prod.shopifyCollectionIds || !prod.shopifyCollectionIds.includes(String(collectionFilter))) return;
+            }
+        }
 
         let hasLow = false;
         let hasOut = false;
+        let hasInStock = false;
         prod.variants.forEach(vr => {
             const qty = Number(vr.stock?.Sulur || 0);
             const limit = vr.reorderLimit !== undefined && vr.reorderLimit !== null && vr.reorderLimit !== "" ? Number(vr.reorderLimit) : 5;
             if (qty === 0) hasOut = true;
             else if (qty <= limit) hasLow = true;
+            if (qty > 0) hasInStock = true;
         });
 
         if (stockFilter === 'low' && !hasLow && !hasOut) return;
+        if (stockFilter === 'in_stock' && !hasInStock) return;
+        if (stockFilter === 'out_of_stock' && !hasOut) return;
 
         const query = activeSearch.toLowerCase();
         const nameMatches = (prod.name || '').toLowerCase().includes(query);
@@ -82,7 +89,7 @@ export default function InventoryList({
     const paginatedList = filteredList.slice(startIdx, endIdx);
 
     // --- Metrics Summaries for Inventory Dashboard Block ---
-    const categoriesCount = categoriesList.filter(c => c !== 'all').length;
+    const collectionsCount = (state.collections || []).length;
     const totalProductsCount = (state.products || []).reduce((acc, p) => acc + (p.variants || []).length, 0);
     
     let totalInvValue = 0;
@@ -177,13 +184,13 @@ export default function InventoryList({
             </div>
             
             <div className="metrics-grid" style={{ marginBottom: '24px' }}>
-                {/* Categories */}
+                {/* Collections */}
                 <div className="glass-card metric-card">
                     <div className="metric-glow-decor"></div>
                     <div className="metric-info">
-                        <h3 style={{ color: 'var(--gold-primary)' }}>{t('categories')}</h3>
-                        <div className="metric-value">{categoriesCount}</div>
-                        <div className="metric-change" style={{ color: 'var(--text-muted)' }}>Last 7 days</div>
+                        <h3 style={{ color: 'var(--gold-primary)' }}>المجموعات</h3>
+                        <div className="metric-value">{collectionsCount}</div>
+                        <div className="metric-change" style={{ color: 'var(--text-muted)' }}>Collections</div>
                     </div>
                 </div>
 
@@ -290,16 +297,36 @@ export default function InventoryList({
                                 
                                 <select 
                                     className="form-select" 
-                                    style={{ width: '150px', padding: '8px 12px' }}
-                                    value={categoryFilter}
-                                    onChange={(e) => { setCategoryFilter(e.target.value); setCurrentPage(1); }}
+                                    style={{ 
+                                        flex: '1',
+                                        minWidth: '220px',
+                                        padding: '10px 16px'
+                                    }}
+                                    value={collectionFilter}
+                                    onChange={(e) => { setCollectionFilter(e.target.value); setCurrentPage(1); }}
                                 >
-                                    <option value="all">All Categories</option>
-                                    {categoriesList.filter(c => c !== 'all').map(c => (
-                                        <option key={c} value={c}>{c}</option>
+                                    <option value="all">جميع المجموعات</option>
+                                    <option value="none">بدون مجموعة</option>
+                                    {(state.collections || []).map(col => (
+                                        <option key={col.id} value={String(col.id)}>{col.title}</option>
                                     ))}
                                 </select>
 
+                                <select 
+                                    className="form-select" 
+                                    style={{ 
+                                        flex: '1',
+                                        minWidth: '200px',
+                                        padding: '10px 16px'
+                                    }}
+                                    value={stockFilter}
+                                    onChange={(e) => { setStockFilter(e.target.value); setCurrentPage(1); }}
+                                >
+                                    <option value="all">جميع المنتجات</option>
+                                    <option value="in_stock">✅ متوفر في المخزون</option>
+                                    <option value="out_of_stock">❌ نفذ من المخزون</option>
+                                    <option value="low">⚠️ مخزون منخفض / نفذ</option>
+                                </select>
 
                             </div>
                         </div>
@@ -394,7 +421,16 @@ export default function InventoryList({
                                                         {prod.name}
                                                     </div>
                                                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                                        {prod.category}
+                                                        {(() => {
+                                                            if (!prod.shopifyCollectionIds || prod.shopifyCollectionIds.length === 0) {
+                                                                return prod.category || 'بدون مجموعة';
+                                                            }
+                                                            const names = prod.shopifyCollectionIds.map(id => {
+                                                                const col = (state.collections || []).find(c => String(c.id) === String(id));
+                                                                return col ? col.title : null;
+                                                            }).filter(Boolean);
+                                                            return names.length > 0 ? names.join(', ') : (prod.category || 'بدون مجموعة');
+                                                        })()}
                                                     </div>
                                                 </td>
                                                  <td style={{ fontWeight: 600 }}>{currency} {buyingPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>

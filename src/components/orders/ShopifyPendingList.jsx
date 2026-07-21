@@ -1,10 +1,13 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { getLocalDateString } from '../../utils/dateUtils';
+import { formatProductDisplayName } from '../../utils/productUtils';
 import bostaData from '../../../محافظات/المناطق التابعه لكل محافظة.json';
 
+import { supabase } from '../../utils/supabase';
+
 export default function ShopifyPendingList() {
-    const { state, updateOrderStatus, approveOrderWithBosta, showToast, showConfirm, addCustomer, setCustomerSpam, logActivity } = useContext(AppContext);
+    const { state, updateOrderStatus, updateOrderProperties, approveOrderWithBosta, showToast, showConfirm, addCustomer, setCustomerSpam, logActivity } = useContext(AppContext);
     const [globalSearch, setGlobalSearch] = useState('');
     const [expandedOrderIds, setExpandedOrderIds] = useState({});
     
@@ -12,6 +15,7 @@ export default function ShopifyPendingList() {
     const [selectedDistricts, setSelectedDistricts] = useState({}); // { [orderId]: DistrictObject }
     const [customDeposits, setCustomDeposits] = useState({}); // { [orderId]: string/number }
     const [allowToOpenMap, setAllowToOpenMap] = useState({}); // { [orderId]: boolean }
+    const [depositReceivers, setDepositReceivers] = useState({}); // { [orderId]: string }
     
     // Dropdowns UI search states
     const [citySearch, setCitySearch] = useState({}); // { [orderId]: string }
@@ -162,12 +166,11 @@ export default function ShopifyPendingList() {
         }));
     };
 
-    // Helper to fetch product name for item sub-table
     const getProductNameBySku = (sku) => {
         let name = sku;
         state.products.forEach(p => {
             const v = p.variants.find(vr => vr.sku === sku);
-            if (v) name = v.name === 'Standard Option' || v.name === 'Default Title' ? `${p.name} (أساسي)` : `${p.name} (${v.name})`;
+            if (v) name = formatProductDisplayName(p.name, v.name);
         });
         return name;
     };
@@ -186,18 +189,73 @@ export default function ShopifyPendingList() {
 
         const depositAmount = customDeposits[ordId] !== undefined ? (parseFloat(customDeposits[ordId]) || 0) : (pendingOrders.find(o => o.id === ordId)?.deposit || 0);
         const allowToOpen = allowToOpenMap[ordId] !== undefined ? allowToOpenMap[ordId] : false;
+        const receiverId = depositReceivers[ordId] || state.currentUser?.id || null;
 
-        showConfirm('هل أنت متأكد من الموافقة على هذا الطلب وتأكيده للخصم من المخزون؟', () => {
-            approveOrderWithBosta(ordId, {
-                bostaCityCode: city.cityCode,
-                bostaCityName: city.cityOtherName,
-                bostaDistrictId: district.districtId,
-                bostaDistrictName: district.districtOtherName,
-                bostaZoneId: district.zoneId,
-                allowToOpenPackage: allowToOpen
-            }, depositAmount);
-            showToast('تمت الموافقة على الطلب وتأكيده للتحويل لبوسطة وخصم الكميات بنجاح!', 'success');
-        });
+        if (depositAmount > 0 && !receiverId) {
+            showToast('يرجى تحديد الأدمن المستلم للعربون للمتابعة', 'warning');
+            return;
+        }
+
+        let depositStatus = 'confirmed';
+        if (depositAmount > 0 && receiverId !== state.currentUser?.id) {
+            depositStatus = 'pending';
+        }
+
+        showConfirm(
+            depositStatus === 'pending'
+                ? 'العربون المستلم موجه لأدمن آخر. سيتم حفظ الطلب معلقاً محلياً بانتظار تأكيد الأدمن، هل أنت متأكد؟'
+                : 'هل أنت متأكد من الموافقة على هذا الطلب وتأكيده للخصم من المخزون؟',
+            async () => {
+                if (depositStatus === 'pending') {
+                    if (supabase) {
+                        try {
+                            const originalOrd = pendingOrders.find(o => o.id === ordId);
+                            const updatedAddrObj = {
+                                ...(originalOrd?.address ? JSON.parse(originalOrd.address) : {}),
+                                bostaCityCode: city.cityCode,
+                                bostaCityName: city.cityOtherName,
+                                bostaDistrictId: district.districtId,
+                                bostaDistrictName: district.districtOtherName,
+                                bostaZoneId: district.zoneId
+                            };
+                            
+                            const addressStr = JSON.stringify(updatedAddrObj);
+
+                            await supabase.from('orders').update({
+                                deposit: depositAmount,
+                                deposit_receiver_id: receiverId,
+                                deposit_status: 'pending',
+                                status: 'Pending',
+                                address: addressStr
+                            }).eq('id', ordId);
+
+                            // Update local state properties
+                            updateOrderProperties(ordId, {
+                                deposit: depositAmount,
+                                depositReceiverId: receiverId,
+                                depositStatus: 'pending',
+                                status: 'Pending',
+                                address: addressStr
+                            });
+
+                            showToast('تم حفظ الطلب بنجاح وهو بانتظار تأكيد استلام العربون من الأدمن المختار قبل الشحن.', 'success');
+                        } catch (err) {
+                            console.error('Error saving pending shopify order:', err);
+                            showToast('حدث خطأ أثناء حفظ الطلب', 'error');
+                        }
+                    }
+                } else {
+                    approveOrderWithBosta(ordId, {
+                        bostaCityCode: city.cityCode,
+                        bostaCityName: city.cityOtherName,
+                        bostaDistrictId: district.districtId,
+                        bostaDistrictName: district.districtOtherName,
+                        bostaZoneId: district.zoneId,
+                        allowToOpenPackage: allowToOpen
+                    }, depositAmount, receiverId, depositStatus);
+                }
+            }
+        );
     };
 
     // Cancel Action
@@ -748,13 +806,14 @@ export default function ShopifyPendingList() {
                                                                             <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>تعديل العربون المدفوع (Deposit):</label>
                                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                                                 <input 
-                                                                                    type="number"
-                                                                                    min="0"
-                                                                                    max={ord.totalValue}
+                                                                                    type="text"
+                                                                                    inputMode="decimal"
                                                                                     value={customDeposits[ord.id] !== undefined ? customDeposits[ord.id] : (ord.deposit || 0)}
                                                                                     onChange={(e) => {
                                                                                         const val = e.target.value;
-                                                                                        setCustomDeposits({ ...customDeposits, [ord.id]: val });
+                                                                                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                                                                            setCustomDeposits({ ...customDeposits, [ord.id]: val });
+                                                                                        }
                                                                                     }}
                                                                                     style={{
                                                                                         background: 'rgba(0,0,0,0.2)',
@@ -769,6 +828,34 @@ export default function ShopifyPendingList() {
                                                                                 <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{currency}</span>
                                                                             </div>
                                                                         </div>
+
+                                                                        {/* Deposit Receiver Selector */}
+                                                                        {((customDeposits[ord.id] !== undefined ? parseFloat(customDeposits[ord.id]) : (ord.deposit || 0)) > 0) && (
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }}>
+                                                                                <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>الأدمن المستلم للعربون:</label>
+                                                                                <select
+                                                                                    value={depositReceivers[ord.id] || ''}
+                                                                                    onChange={(e) => setDepositReceivers({ ...depositReceivers, [ord.id]: e.target.value })}
+                                                                                    style={{
+                                                                                        background: 'rgba(0,0,0,0.2)',
+                                                                                        border: '1px solid var(--glass-border)',
+                                                                                        color: 'var(--text-primary)',
+                                                                                        borderRadius: '4px',
+                                                                                        padding: '4px 8px',
+                                                                                        fontSize: '12px',
+                                                                                        width: '100%',
+                                                                                        outline: 'none'
+                                                                                    }}
+                                                                                >
+                                                                                    <option value="" style={{ background: '#121216' }}>-- اختر الأدمن --</option>
+                                                                                    {(state.users || []).filter(u => u.is_active).map(u => (
+                                                                                        <option key={u.id} value={u.id} style={{ background: '#121216' }}>
+                                                                                            {u.name} {u.id === state.currentUser?.id ? ' (أنت)' : ''}
+                                                                                        </option>
+                                                                                    ))}
+                                                                                </select>
+                                                                            </div>
+                                                                        )}
 
                                                                         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: 'var(--gold-primary)', borderTop: '1px dashed var(--glass-border-hover)', paddingTop: '6px', marginTop: '4px' }}>
                                                                             <span>المتبقي للتحصيل:</span>

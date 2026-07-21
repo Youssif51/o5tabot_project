@@ -1,9 +1,10 @@
+import { formatProductDisplayName } from '../../utils/productUtils';
 import React, { useContext, useState } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 
 export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrder, onOpenEditOrder }) {
-    const { state, updateOrderStatus, deleteOrder, showToast, logActivity, setCurrentView, t, showConfirm, addCustomer, setCustomerSpam, syncBostaStatus } = useContext(AppContext);
+    const { state, updateOrderStatus, deleteOrder, showToast, logActivity, setCurrentView, t, showConfirm, addCustomer, setCustomerSpam, syncBostaStatus, updateDepositStatus, updateOrderProperties, settleAdminsCustody } = useContext(AppContext);
     
     // Expanded rows state (keeps track of order IDs that are expanded)
     const [expandedOrderIds, setExpandedOrderIds] = useState({});
@@ -42,6 +43,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         }
     };
 
+
     // Deterministic Customer Code Generator
     const getCustomerCode = (name) => {
         if (!name) return 'CUS-0000';
@@ -53,9 +55,9 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         return `CUS-${code}`;
     };
 
-    // Helper to parse address JSON structure safely
-    const parseAddressData = (addressStr) => {
-        let detailAddress = addressStr || '';
+    // Helper to parse address JSON structure safely (handles Object or String)
+    const parseAddressData = (addressData) => {
+        let detailAddress = '';
         let phone = '';
         let vatEnabled = false;
         let orderDiscountPercent = 0;
@@ -65,19 +67,31 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         let bostaTrackingNumber = '';
         let bostaExceptionReason = '';
         
-        if (addressStr && addressStr.startsWith('{')) {
-            try {
-                const parsed = JSON.parse(addressStr);
+        if (addressData) {
+            let parsed = addressData;
+            if (typeof addressData === 'string') {
+                if (addressData.startsWith('{')) {
+                    try {
+                        parsed = JSON.parse(addressData);
+                    } catch(e) {
+                        parsed = { detailAddress: addressData };
+                    }
+                } else {
+                    parsed = { detailAddress: addressData };
+                }
+            }
+            
+            if (parsed && typeof parsed === 'object') {
                 detailAddress = parsed.detailAddress || '';
                 phone = parsed.phone || '';
                 vatEnabled = parsed.vatEnabled || false;
                 orderDiscountPercent = parseFloat(parsed.orderDiscountPercent) || 0;
                 customerCode = parsed.customerCode || 'CUS-0000';
                 bostaStateName = parsed.bostaStateName || '';
-                bostaStateCode = parsed.bostaStateCode || null;
+                bostaStateCode = (parsed.bostaStateCode !== undefined && parsed.bostaStateCode !== null) ? parsed.bostaStateCode : null;
                 bostaTrackingNumber = parsed.bostaTrackingNumber || '';
                 bostaExceptionReason = parsed.bostaExceptionReason || '';
-            } catch(e) {}
+            }
         }
         return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode, bostaStateName, bostaStateCode, bostaTrackingNumber, bostaExceptionReason };
     };
@@ -155,13 +169,31 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         }
     };
 
+    // Helper to calculate accurate remaining amount to collect
+    const getRemainingToCollect = (ord) => {
+        if (ord.status === 'Cancelled') return 0;
+        const { bostaStateCode } = parseAddressData(ord.address);
+        const isDelivered = ord.status === 'Completed' || Number(bostaStateCode) === 45 || Number(bostaStateCode) === 25;
+        const tot = parseFloat(ord.totalValue) || 0;
+        const dep = parseFloat(ord.deposit) || 0;
+        
+        if (isDelivered || dep >= tot) {
+            return 0; // خالص - Delivered to customer (money collected) or full deposit received
+        }
+        
+        return Math.max(0, tot - dep);
+    };
+
     // Payment Status helpers
     const getPaymentStatus = (ord) => {
+        const { bostaStateCode } = parseAddressData(ord.address);
+        const isDelivered = ord.status === 'Completed' || Number(bostaStateCode) === 45 || Number(bostaStateCode) === 25;
         const dep = parseFloat(ord.deposit) || 0;
         const tot = parseFloat(ord.totalValue) || 0;
-        if (dep <= 0) return 'غير مدفوع';
-        if (dep < tot) return 'مدفوع جزئي';
-        return 'مدفوع';
+        
+        if (isDelivered || dep >= tot) return 'مدفوع';
+        if (dep > 0) return 'مدفوع جزئي';
+        return 'غير مدفوع';
     };
 
     const getPaymentStatusBadgeClass = (paymentStatus) => {
@@ -245,11 +277,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         .reduce((sum, o) => sum + (parseFloat(o.totalValue) || 0), 0);
 
     const remainingToCollectTotal = filteredOrders
-        .filter(o => o.status !== 'Cancelled' && o.status !== 'Completed')
-        .reduce((sum, o) => {
-            const remaining = (parseFloat(o.totalValue) || 0) - (parseFloat(o.deposit) || 0);
-            return sum + (remaining > 0 ? remaining : 0);
-        }, 0);
+        .reduce((sum, o) => sum + getRemainingToCollect(o), 0);
 
     const todayStr = getLocalDateString();
     const todayOrdersCount = filteredOrders.filter(o => o.date === todayStr).length;
@@ -278,7 +306,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         const rows = filteredOrders.map(ord => {
             const { phone, customerCode } = parseAddressData(ord.address);
             const totalQty = (ord.items || []).reduce((acc, curr) => acc + curr.quantity, 0);
-            const remaining = ord.status === 'Completed' ? 0 : ord.totalValue - (parseFloat(ord.deposit) || 0);
+            const remaining = getRemainingToCollect(ord);
             const paymentStatus = getPaymentStatus(ord);
             const deliveryStatus = getOrderStatusBadge(ord).label;
             
@@ -314,14 +342,91 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         let name = sku;
         state.products.forEach(p => {
             const v = p.variants.find(vr => vr.sku === sku);
-            if (v) name = v.name === 'Standard Option' || v.name === 'Default Title' ? `${p.name} (أساسي)` : `${p.name} (${v.name})`;
+            if (v) name = formatProductDisplayName(p.name, v.name);
         });
         return name;
+    };
+
+    const getWhatsAppLink = (phoneStr, ord) => {
+        if (!phoneStr) return '';
+        let clean = phoneStr.replace(/\D/g, '');
+        if (clean.startsWith('01') && clean.length === 11) {
+            clean = '2' + clean;
+        } else if (clean.startsWith('1') && clean.length === 10) {
+            clean = '20' + clean;
+        }
+        
+        let textParam = '';
+        if (ord) {
+            const itemsText = (ord.items || []).map(item => `- ${getProductNameBySku(item.variantSku)} (الكمية: ${item.quantity})`).join('\n');
+            const clientName = ord.client || '';
+            const msg = `أهلاً يا ${clientName}، يارب تكون بخير.\n\nبخصوص طلبك من متجر اخطبوط:\n${itemsText}\n\nحابب أأكد مع حضرتك الاوردر ودفع عربون بسيط عشان نبدأ نشحن لحضرتك الاوردر.`;
+            textParam = `?text=${encodeURIComponent(msg)}`;
+        }
+        return `https://wa.me/${clean}${textParam}`;
     };
 
     return (
         <div id="orders-view" className="view-pane active" dir="rtl" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
             
+
+            {/* SuperAdmin active custody dashboard */}
+            {state.currentUser?.role === 'SuperAdmin' && (() => {
+                const adminCustodies = (() => {
+                    const custodyMap = {};
+                    (state.users || []).forEach(u => {
+                        custodyMap[u.id] = { name: u.name, role: u.role, confirmed: 0, pending: 0, orderIds: [] };
+                    });
+
+                    (state.orders || []).forEach(o => {
+                        if (o.deposit > 0 && o.depositReceiverId) {
+                            if (!custodyMap[o.depositReceiverId]) {
+                                custodyMap[o.depositReceiverId] = { name: 'أدمن غير معروف', role: '', confirmed: 0, pending: 0, orderIds: [] };
+                            }
+                            if (o.depositStatus === 'confirmed') {
+                                custodyMap[o.depositReceiverId].confirmed += parseFloat(o.deposit) || 0;
+                                custodyMap[o.depositReceiverId].orderIds.push(o.id);
+                            } else if (o.depositStatus === 'pending') {
+                                custodyMap[o.depositReceiverId].pending += parseFloat(o.deposit) || 0;
+                            }
+                        }
+                    });
+
+                    return Object.entries(custodyMap).map(([id, data]) => ({ id, ...data })).filter(item => item.confirmed > 0 || item.pending > 0);
+                })();
+
+                if (adminCustodies.length === 0) return null;
+
+                return (
+                    <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '8px', marginBottom: '24px' }}>
+                        <h4 style={{ fontSize: '14px', color: 'var(--gold-primary)', marginBottom: '12px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <i className="fa-solid fa-users-gear"></i> عُهد الأدمنز النشطة (من العرابين المستلمة)
+                        </h4>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '16px' }}>
+                            {adminCustodies.map(cust => (
+                                <div key={cust.id} style={{ background: 'rgba(0,0,0,0.2)', padding: '12px', borderRadius: '6px', border: '1px solid var(--glass-border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <strong style={{ fontSize: '13px' }}>{cust.name} ({cust.role === 'SuperAdmin' ? 'سوبر أدمن' : 'أدمن'})</strong>
+                                        <span className="badge badge-success" style={{ fontSize: '12px', background: 'rgba(46, 204, 113, 0.1)', color: '#2ecc71', border: '1px solid rgba(46, 204, 113, 0.2)' }}>
+                                            {cust.confirmed} {currency}
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', color: 'var(--text-muted)' }}>
+                                        <span>عرابين بانتظار التأكيد: {cust.pending} {currency}</span>
+                                        <button 
+                                            className="btn btn-primary"
+                                            onClick={(e) => { e.stopPropagation(); settleAdminsCustody(cust.id, cust.orderIds); }}
+                                            style={{ padding: '2px 8px', fontSize: '10.5px', background: 'var(--gold-primary)', color: '#000', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
+                                        >
+                                            تسوية العهدة
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                );
+            })()}
             {/* Header */}
             <div className="page-header" style={{ marginBottom: '24px' }}>
                 <div className="page-title-group">
@@ -558,7 +663,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                     const isExpanded = expandedOrderIds[ord.id];
                                     const { phone, detailAddress, bostaStateName, bostaTrackingNumber } = parseAddressData(ord.address);
                                     const totalQty = (ord.items || []).reduce((acc, curr) => acc + curr.quantity, 0);
-                                    const remaining = ord.status === 'Completed' ? 0 : ord.totalValue - (parseFloat(ord.deposit) || 0);
+                                    const remaining = getRemainingToCollect(ord);
                                     const paymentStatus = getPaymentStatus(ord);
                                     const isDropdownOpen = activeDropdownOrderId === ord.id;
 
@@ -610,7 +715,23 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                             return null;
                                                         })()}
                                                     </div>
-                                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', fontFamily: 'monospace' }}>{phone || 'بدون هاتف'}</div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', fontFamily: 'monospace', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
+                                                        {phone || 'بدون هاتف'}
+                                                        {phone && (
+                                                            <a 
+                                                                href={getWhatsAppLink(phone, ord)} 
+                                                                target="_blank" 
+                                                                rel="noopener noreferrer"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                                style={{ color: '#25D366', display: 'inline-flex', alignItems: 'center', transition: 'transform 0.2s', textDecoration: 'none' }}
+                                                                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.2)'}
+                                                                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                                                title="مراسلة عبر واتساب"
+                                                            >
+                                                                <i className="fa-brands fa-whatsapp" style={{ fontSize: '13px', fontWeight: 'bold' }}></i>
+                                                            </a>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                                                     <div style={{ fontWeight: 500 }}>{ord.date}</div>
@@ -624,7 +745,24 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>{totalQty} قطع</td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, verticalAlign: 'middle', whiteSpace: 'nowrap' }}>{currency} {ord.totalValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, color: remaining > 0 ? '#e74c3c' : '#2ecc71', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
-                                                    {remaining > 0 ? `${currency} ${remaining.toLocaleString('en-US', {maximumFractionDigits: 2})}` : 'خالص'}
+                                                    {ord.depositStatus === 'pending' ? (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                                            <span style={{ color: '#ef4444', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                                <i className="fa-solid fa-clock-rotate-left"></i> عربون معلق
+                                                            </span>
+                                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                                                بانتظار تأكيد الأدمن
+                                                            </span>
+                                                        </div>
+                                                    ) : ord.depositStatus === 'rejected' ? (
+                                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                                                            <span style={{ color: '#ef4444', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                                <i className="fa-solid fa-circle-xmark"></i> تم رفض العربون
+                                                            </span>
+                                                        </div>
+                                                    ) : (
+                                                        remaining > 0 ? `${currency} ${remaining.toLocaleString('en-US', {maximumFractionDigits: 2})}` : 'خالص'
+                                                    )}
                                                 </td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', color: 'var(--text-primary)', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>{ord.createdBy || 'الآدمن'}</td>
                                                 
@@ -678,28 +816,28 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
 
                                                 {/* Action Buttons with Labels */}
                                                 <td style={{ padding: '14px 16px', verticalAlign: 'middle', textAlign: 'center', overflow: 'visible', whiteSpace: 'nowrap' }} onClick={(e) => e.stopPropagation()}>
-                                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center', position: 'relative', overflow: 'visible' }}>
+                                                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', position: 'relative', overflow: 'visible' }}>
                                                         
                                                         {/* Details Toggle Button */}
                                                         <button 
-                                                            className="btn btn-secondary" 
-                                                            style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--glass-bg-hover)', color: 'var(--text-primary)', borderColor: 'var(--glass-border-hover)' }}
+                                                            className="action-btn-circle" 
+                                                            style={{ background: 'var(--glass-bg-hover)', color: 'var(--text-primary)', borderColor: 'var(--glass-border-hover)' }}
                                                             onClick={() => toggleRow(ord.id)}
+                                                            title={isExpanded ? 'إخفاء التفاصيل' : 'عرض التفاصيل'}
                                                         >
                                                             <i className={`fa-solid ${isExpanded ? 'fa-eye-slash' : 'fa-eye'}`}></i>
-                                                            {isExpanded ? 'إخفاء' : 'عرض'}
                                                         </button>
 
                                                         {/* Status transition dropdown toggle */}
                                                         {ord.status !== 'Cancelled' && (
                                                             <div style={{ position: 'relative', overflow: 'visible' }}>
                                                                 <button 
-                                                                    className="btn btn-secondary" 
-                                                                    style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--glass-bg-hover)', color: 'var(--text-primary)', borderColor: 'var(--glass-border-hover)' }}
+                                                                    className="action-btn-circle" 
+                                                                    style={{ background: 'var(--glass-bg-hover)', color: 'var(--text-primary)', borderColor: 'var(--glass-border-hover)' }}
                                                                     onClick={() => setActiveDropdownOrderId(isDropdownOpen ? null : ord.id)}
+                                                                    title="تغيير حالة الطلب"
                                                                 >
-                                                                    <i className="fa-solid fa-arrow-rotate-left"></i>
-                                                                    الحالة
+                                                                    <i className="fa-solid fa-arrows-rotate"></i>
                                                                 </button>
                                                                 
                                                                 {isDropdownOpen && (
@@ -720,6 +858,10 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                             <div 
                                                                                 key={st}
                                                                                 onClick={() => {
+                                                                                    if (st === 'Shipped' && ord.depositStatus === 'pending') {
+                                                                                        showToast("لا يمكن شحن الطلب قبل تأكيد استلام العربون من الأدمن المستلم", "warning");
+                                                                                        return;
+                                                                                    }
                                                                                     updateOrderStatus(ord.id, st);
                                                                                     setActiveDropdownOrderId(null);
                                                                                     showToast("تم تحديث حالة الطلب بنجاح", "success");
@@ -745,23 +887,23 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
 
                                                         {/* Edit order */}
                                                         <button 
-                                                            className="btn btn-secondary" 
-                                                            style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', background: 'var(--glass-bg-hover)', color: 'var(--text-primary)', borderColor: 'var(--glass-border-hover)' }}
-                                                            onClick={() => onOpenEditOrder(ord.id)}
-                                                        >
-                                                            <i className="fa-solid fa-pen-to-square"></i>
-                                                            تعديل
-                                                        </button>
+                                                             className="action-btn-circle" 
+                                                             style={{ background: 'var(--glass-bg-hover)', color: 'var(--text-primary)', borderColor: 'var(--glass-border-hover)' }}
+                                                             onClick={() => onOpenEditOrder(ord.id)}
+                                                             title="تعديل الطلب"
+                                                         >
+                                                             <i className="fa-solid fa-pen-to-square"></i>
+                                                         </button>
 
                                                         {/* Delete button */}
                                                         <button 
-                                                            className="btn btn-secondary" 
-                                                            style={{ padding: '4px 8px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(231,76,60,0.1)', color: '#e74c3c', borderColor: 'rgba(231,76,60,0.2)' }}
-                                                            onClick={(e) => handleDeleteOrder(e, ord.id)}
-                                                        >
-                                                            <i className="fa-solid fa-trash-can"></i>
-                                                            حذف
-                                                        </button>
+                                                             className="action-btn-circle" 
+                                                             style={{ background: 'rgba(231,76,60,0.1)', color: '#e74c3c', borderColor: 'rgba(231,76,60,0.2)' }}
+                                                             onClick={(e) => handleDeleteOrder(e, ord.id)}
+                                                             title="حذف الطلب"
+                                                         >
+                                                             <i className="fa-solid fa-trash-can"></i>
+                                                         </button>
                                                     </div>
                                                 </td>
                                             </tr>
@@ -793,7 +935,23 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                             return null;
                                                                         })()}
                                                                     </div>
-                                                                    <div><strong>رقم الهاتف:</strong> {phone || 'غير مسجل'}</div>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'center' }}>
+                                                                        <strong>رقم الهاتف:</strong> {phone || 'غير مسجل'}
+                                                                        {phone && (
+                                                                            <a 
+                                                                                href={getWhatsAppLink(phone, ord)} 
+                                                                                target="_blank" 
+                                                                                rel="noopener noreferrer"
+                                                                                onClick={(e) => e.stopPropagation()}
+                                                                                style={{ color: '#25D366', display: 'inline-flex', alignItems: 'center', transition: 'transform 0.2s', textDecoration: 'none' }}
+                                                                                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.2)'}
+                                                                                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                                                                title="مراسلة عبر واتساب"
+                                                                            >
+                                                                                <i className="fa-brands fa-whatsapp" style={{ fontSize: '14px', fontWeight: 'bold' }}></i>
+                                                                            </a>
+                                                                        )}
+                                                                    </div>
                                                                     {ord.source === 'shopify' && (
                                                                         <>
                                                                             <div><strong>البريد الإلكتروني:</strong> {(state.customers || []).find(c => c.id === ord.customer_id)?.email || 'غير مسجل'}</div>
@@ -840,22 +998,29 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                     <i className="fa-solid fa-file-invoice-dollar" style={{ marginLeft: '6px' }}></i> تفصيل التكلفة
                                                                 </h4>
                                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
-                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                        <span>إجمالي المنتجات:</span>
-                                                                        <span>{currency} {ord.totalValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
-                                                                    </div>
-                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                        <span>مصاريف الشحن:</span>
-                                                                        <span>+{currency} {(ord.shipping_fee || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
-                                                                    </div>
-                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
-                                                                        <span>العربون المدفوع (Deposit):</span>
-                                                                        <span>-{currency} {(ord.deposit || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
-                                                                    </div>
-                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: 'var(--gold-primary)', borderTop: '1px dashed var(--glass-border-hover)', paddingTop: '8px', marginTop: '4px', fontSize: '13px' }}>
-                                                                        <span>المتبقي للتحصيل:</span>
-                                                                        <span>{currency} {remaining > 0 ? remaining.toLocaleString('en-US', {maximumFractionDigits: 2}) : '0.00'}</span>
-                                                                    </div>
+                                                                    {(() => {
+                                                                        const productsSubtotal = (ord.items || []).reduce((sum, item) => sum + (item.quantity * item.price), 0);
+                                                                        return (
+                                                                            <>
+                                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                    <span>إجمالي المنتجات:</span>
+                                                                                    <span>{currency} {productsSubtotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                </div>
+                                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                    <span>مصاريف الشحن:</span>
+                                                                                    <span>+{currency} {(ord.shipping_fee || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                </div>
+                                                                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
+                                                                                    <span>العربون المدفوع (Deposit):</span>
+                                                                                    <span>-{currency} {(ord.deposit || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                </div>
+                                                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: 'var(--gold-primary)', borderTop: '1px dashed var(--glass-border-hover)', paddingTop: '8px', marginTop: '4px', fontSize: '13px' }}>
+                                                                                    <span>المتبقي للتحصيل:</span>
+                                                                                    <span>{currency} {remaining > 0 ? remaining.toLocaleString('en-US', {maximumFractionDigits: 2}) : '0.00'}</span>
+                                                                                </div>
+                                                                            </>
+                                                                        );
+                                                                    })()}
                                                                 </div>
                                                             </div>
                                                         </div>

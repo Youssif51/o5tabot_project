@@ -1,3 +1,4 @@
+import { formatProductDisplayName } from '../../utils/productUtils';
 import React, { useContext, useState, useEffect } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
@@ -45,7 +46,7 @@ const calculateBostaShippingFee = (cityName) => {
 };
 
 export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
-    const { state, addOrder, editOrder, showToast, t, validateCoupon, applyCouponUsage, getOrCreateCustomer, approveOrderWithBosta } = useContext(AppContext);
+    const { state, addOrder, editOrder, showToast, showConfirm, t, validateCoupon, applyCouponUsage, getOrCreateCustomer, approveOrderWithBosta } = useContext(AppContext);
     
     // Order info
     const [orderId, setOrderId] = useState('');
@@ -86,6 +87,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const [shippingFee, setShippingFee] = useState('');
     const [vatEnabled, setVatEnabled] = useState(false);
     const [deposit, setDeposit] = useState('');
+    const [depositReceiverId, setDepositReceiverId] = useState('');
+    const [depositStatus, setDepositStatus] = useState('confirmed');
     
     const currency = state.storeSettings.currency || '$';
     
@@ -99,23 +102,41 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         let customerCode = 'CUS-0000';
         let appliedCoupon = '';
         let originalObj = {};
+        let bostaCityCode = null;
+        let bostaCityName = '';
+        let bostaDistrictId = null;
+        let bostaDistrictName = '';
+        let bostaZoneId = null;
         
-        if (addressStr && addressStr.startsWith('{')) {
-            try {
-                const parsed = JSON.parse(addressStr);
+        if (addressStr) {
+            let parsed = addressStr;
+            if (typeof addressStr === 'string' && addressStr.startsWith('{')) {
+                try {
+                    parsed = JSON.parse(addressStr);
+                } catch(e) {}
+            }
+            if (parsed && typeof parsed === 'object') {
                 originalObj = parsed;
-                detailAddress = parsed.detailAddress || '';
+                detailAddress = parsed.detailAddress || (typeof addressStr === 'string' && !addressStr.startsWith('{') ? addressStr : '');
                 phone = parsed.phone || '';
                 secondPhone = parsed.secondPhone || '';
                 vatEnabled = parsed.vatEnabled || false;
                 globalDiscountValue = parsed.globalDiscountValue || '';
                 globalDiscountType = parsed.globalDiscountType || 'Percentage';
-                
                 customerCode = parsed.customerCode || 'CUS-0000';
                 appliedCoupon = parsed.appliedCoupon || '';
-            } catch(e) {}
+                bostaCityCode = parsed.bostaCityCode || null;
+                bostaCityName = parsed.bostaCityName || '';
+                bostaDistrictId = parsed.bostaDistrictId || null;
+                bostaDistrictName = parsed.bostaDistrictName || '';
+                bostaZoneId = parsed.bostaZoneId || null;
+            }
         }
-        return { detailAddress, phone, secondPhone, vatEnabled, globalDiscountValue, globalDiscountType, customerCode, appliedCoupon, originalObj };
+        return { 
+            detailAddress, phone, secondPhone, vatEnabled, globalDiscountValue, globalDiscountType, 
+            customerCode, appliedCoupon, originalObj,
+            bostaCityCode, bostaCityName, bostaDistrictId, bostaDistrictName, bostaZoneId
+        };
     };
 
     // Deterministic Customer Code Generator
@@ -131,9 +152,133 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
     const customerCode = getCustomerCode(client);
 
-    // Load active unique customers list for searchable dropdown
-    const existingCustomers = state.customers ? state.customers.map(c => c.name) : Array.from(new Set((state.orders || []).map(o => o.client))).filter(Boolean);
-    const filteredCustomers = existingCustomers.filter(c => c.toLowerCase().includes(client.toLowerCase()));
+    const resolveBostaCityAndDistrict = (govName, cityCode, districtId, districtName, fullAddress = '') => {
+        let city = null;
+        if (cityCode) {
+            city = bostaData.data.find(c => String(c.cityCode) === String(cityCode));
+        }
+        if (!city && govName) {
+            const trimmedGov = govName.trim().toLowerCase();
+            city = bostaData.data.find(c => 
+                c.cityOtherName.trim().toLowerCase() === trimmedGov ||
+                c.cityName.trim().toLowerCase() === trimmedGov ||
+                c.cityOtherName.includes(govName) ||
+                govName.includes(c.cityOtherName)
+            );
+        }
+        
+        let district = null;
+        if (city && city.districts) {
+            if (districtId) {
+                district = city.districts.find(d => String(d.districtId) === String(districtId));
+            }
+            if (!district && districtName) {
+                const trimmedDist = districtName.trim().toLowerCase();
+                district = city.districts.find(d => 
+                    d.districtOtherName.trim().toLowerCase() === trimmedDist ||
+                    d.districtName.trim().toLowerCase() === trimmedDist ||
+                    d.districtOtherName.includes(districtName) ||
+                    districtName.includes(d.districtOtherName)
+                );
+            }
+            if (!district && fullAddress) {
+                const trimmedAddr = fullAddress.trim().toLowerCase();
+                district = city.districts.find(d => 
+                    (d.districtOtherName && trimmedAddr.includes(d.districtOtherName.trim().toLowerCase())) ||
+                    (d.districtName && trimmedAddr.includes(d.districtName.trim().toLowerCase()))
+                );
+            }
+            if (!district) {
+                const avail = city.districts.filter(d => d.dropOffAvailability);
+                if (avail.length === 1) {
+                    district = avail[0];
+                }
+            }
+        }
+        return { city, district };
+    };
+
+    // Build rich list of unique customers for auto-fill & searching
+    const getCustomerOptions = () => {
+        const map = new Map();
+        
+        (state.customers || []).forEach(c => {
+            if (c.name) {
+                map.set(c.name.toLowerCase().trim(), {
+                    id: c.id,
+                    name: c.name,
+                    phone: c.phone || '',
+                    secondPhone: c.secondPhone || '',
+                    governorate: c.governorate || '',
+                    address: c.address || ''
+                });
+            }
+        });
+
+        (state.orders || []).forEach(o => {
+            if (o.client) {
+                const key = o.client.toLowerCase().trim();
+                const existing = map.get(key) || {};
+                const parsed = parseAddressData(o.address);
+                map.set(key, {
+                    id: existing.id || o.customer_id || null,
+                    name: o.client,
+                    phone: existing.phone || parsed.phone || '',
+                    secondPhone: existing.secondPhone || parsed.secondPhone || '',
+                    governorate: existing.governorate || o.governorate || '',
+                    address: existing.address || parsed.detailAddress || (typeof o.address === 'string' && !o.address.startsWith('{') ? o.address : ''),
+                    bostaCityCode: parsed.bostaCityCode,
+                    bostaCityName: parsed.bostaCityName,
+                    bostaDistrictId: parsed.bostaDistrictId,
+                    bostaDistrictName: parsed.bostaDistrictName,
+                    shippingFee: o.shipping_fee || 0
+                });
+            }
+        });
+
+        return Array.from(map.values());
+    };
+
+    const customerOptions = getCustomerOptions();
+    const filteredCustomers = customerOptions.filter(c => 
+        (c.name || '').toLowerCase().includes((client || '').toLowerCase()) ||
+        (c.phone || '').includes(client || '')
+    );
+
+    // Reset all form state variables cleanly
+    const resetFormState = () => {
+        const rand = Math.floor(1000 + Math.random() * 9000);
+        setOrderId(`ORD-2026-${rand}`);
+        setStatus('Draft');
+        setStep(1);
+        setClient('');
+        setIsClientDropdownOpen(false);
+        setPhone('');
+        setSecondPhone('');
+        setGovernorate('');
+        setAddress('');
+        setCitySelected(null);
+        setDistrictSelected(null);
+        setCitySearch('');
+        setDistrictSearch('');
+        setActiveCityDropdown(false);
+        setActiveDistrictDropdown(false);
+        setItems([{ variantSku: '', quantity: 1, price: 0, discountPercent: 0, discountType: 'Percentage', maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }]);
+        setShippingFee('');
+        setVatEnabled(false);
+        setGlobalDiscountValue('');
+        setGlobalDiscountType('Percentage');
+        setOriginalAddressObj({});
+        setDeposit('');
+        setDepositReceiverId('');
+        setDepositStatus('confirmed');
+        setCustomerId(null);
+        setCouponCode('');
+        setCouponValid(false);
+        setCouponDiscountValue(0);
+        setCouponDiscountType('');
+        setSyncWithBosta(true);
+    };
 
     // Reset and initialize form on open
     useEffect(() => {
@@ -163,6 +308,16 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     setGovernorate(order.governorate || '');
                     setShippingFee(order.shipping_fee || '');
                     setDeposit(order.deposit || '');
+                    setDepositReceiverId(order.depositReceiverId || '');
+                    setDepositStatus(order.depositStatus || 'confirmed');
+
+                    const { city, district } = resolveBostaCityAndDistrict(order.governorate, parsed.bostaCityCode, parsed.bostaDistrictId, parsed.bostaDistrictName);
+                    setCitySelected(city || null);
+                    setDistrictSelected(district || null);
+                    setCitySearch('');
+                    setDistrictSearch('');
+                    setActiveCityDropdown(false);
+                    setActiveDistrictDropdown(false);
                     
                     // Map items
                     const mappedItems = order.items.map(oi => {
@@ -193,7 +348,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             discountPercent: itemDiscount,
                             discountType: 'Percentage',
                             maxStock: maxStock,
-                            searchVal: (variantName && variantName !== 'Standard Option' && variantName !== 'Default Title') ? `${productName} (${variantName})` : `${productName} (أساسي)`,
+                            searchVal: formatProductDisplayName(productName, variantName),
                             isOpen: false,
                             productName: productName,
                             variantName: variantName
@@ -202,32 +357,10 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     setItems(mappedItems);
                 }
             } else {
-                // RESET TO NEW ORDER INITIAL VALUES
-                const rand = Math.floor(1000 + Math.random() * 9000);
-                setOrderId(`ORD-2026-${rand}`);
-                setStatus('Draft');
-                setStep(1);
-                setClient('');
-                setIsClientDropdownOpen(false);
-                setPhone('');
-                setSecondPhone('');
-                setGovernorate('');
-                setAddress('');
-                setItems([{ variantSku: '', quantity: 1, price: 0, discountPercent: 0, discountType: 'Percentage', maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }]);
-                
-                setShippingFee('');
-                setVatEnabled(false);
-                setGlobalDiscountValue('');
-                setGlobalDiscountType('Percentage');
-                setOriginalAddressObj({});
-                setDeposit('');
-                setCustomerId(null);
-                setCouponCode('');
-                setCouponValid(false);
-                setCouponDiscountValue(0);
-                setCouponDiscountType('');
-                setSyncWithBosta(true);
+                resetFormState();
             }
+        } else {
+            resetFormState();
         }
     }, [isOpen, editOrderId]);
 
@@ -242,43 +375,64 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     };
 
     // Client Selection Auto-fill Details
-    const handleSelectCustomer = (name) => {
-        setClient(name);
+    const handleSelectCustomer = (custObj) => {
+        if (!custObj) return;
+        setClient(custObj.name);
         setIsClientDropdownOpen(false);
-        const cust = state.customers?.find(c => c.name === name);
-        if (cust) {
-            setCustomerId(cust.id);
-            setPhone(cust.phone || '');
-            setSecondPhone(cust.secondPhone || '');
-            setGovernorate(cust.governorate || '');
-            setAddress(cust.address || '');
-        } else {
-            setCustomerId(null);
+        setCustomerId(custObj.id || null);
+        
+        if (custObj.phone) setPhone(custObj.phone);
+        if (custObj.secondPhone) setSecondPhone(custObj.secondPhone);
+        
+        const latestOrder = (state.orders || [])
+            .filter(o => (custObj.id && o.customer_id === custObj.id) || o.client === custObj.name)
+            .sort((a, b) => new Date(b.createdAt || b.date) - new Date(a.createdAt || a.date))[0];
+
+        let finalGov = custObj.governorate || '';
+        let finalAddr = custObj.address || '';
+        let bCode = custObj.bostaCityCode;
+        let bCityName = custObj.bostaCityName;
+        let bDistId = custObj.bostaDistrictId;
+        let bDistName = custObj.bostaDistrictName;
+        let sFee = custObj.shippingFee || 0;
+
+        if (latestOrder) {
+            if (!finalGov) finalGov = latestOrder.governorate || '';
+            const parsed = parseAddressData(latestOrder.address);
+            if (!finalAddr) finalAddr = parsed.detailAddress || (typeof latestOrder.address === 'string' && !latestOrder.address.startsWith('{') ? latestOrder.address : '');
+            if (!bCode) bCode = parsed.bostaCityCode;
+            if (!bCityName) bCityName = parsed.bostaCityName;
+            if (!bDistId) bDistId = parsed.bostaDistrictId;
+            if (!bDistName) bDistName = parsed.bostaDistrictName;
+            if (!sFee) sFee = latestOrder.shipping_fee || 0;
+            if (!custObj.phone && parsed.phone) setPhone(parsed.phone);
+            if (!custObj.secondPhone && parsed.secondPhone) setSecondPhone(parsed.secondPhone);
         }
-        const lastOrder = (state.orders || []).find(o => o.client === name);
-        if (lastOrder) {
-            if (lastOrder.address && lastOrder.address.startsWith('{')) {
-                try {
-                    const parsed = JSON.parse(lastOrder.address);
-                    setPhone(parsed.phone || '');
-                    setSecondPhone(parsed.secondPhone || '');
-                    setAddress(parsed.detailAddress || lastOrder.address);
-                    setVatEnabled(parsed.vatEnabled || false);
-                    
-                } catch (e) {
-                    setAddress(lastOrder.address);
-                }
-            } else {
-                setAddress(lastOrder.address || '');
-            }
-            setGovernorate(lastOrder.governorate || '');
-            setShippingFee(lastOrder.shipping_fee || 0);
-            showToast("تم ملء بيانات العميل تلقائياً من طلباته السابقة", "success");
+
+        if (finalGov) setGovernorate(finalGov);
+        if (finalAddr) setAddress(finalAddr);
+
+        const { city, district } = resolveBostaCityAndDistrict(finalGov, bCode, bDistId, bDistName, finalAddr);
+        setCitySelected(city || null);
+        setDistrictSelected(district || null);
+        
+        if (city) {
+            const calculatedFee = calculateBostaShippingFee(city.cityOtherName);
+            setShippingFee(sFee || calculatedFee);
+        } else if (finalGov) {
+            setShippingFee(sFee || shippingFees[finalGov] || 0);
         }
+
+        showToast("تم ملء بيانات العميل والمحافظة والمنطقة تلقائياً", "success");
     };
 
     // Products table actions
     const handleAddItem = () => {
+        const hasUnselectedItem = items.some(item => !item.variantSku);
+        if (hasUnselectedItem) {
+            showToast("يرجى اختيار المنتج والتنوع في الصف الحالي أولاً قبل إضافة منتج جديد", "warning");
+            return;
+        }
         setItems(prev => [...prev, { variantSku: '', quantity: 1, price: 0, discountPercent: 0, discountType: 'Percentage', maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }]);
     };
 
@@ -300,15 +454,33 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     };
 
     const handleSelectOption = (index, variant) => {
+        if ((variant.stock || 0) <= 0) {
+            showToast("عفواً هذا المنتج غير متوفر في المخزن حالياً (الاستوك صفر)", "error");
+        }
         setItems(prev => prev.map((item, i) => i === index ? {
             ...item,
             variantSku: variant.sku,
             price: variant.retailPrice,
-            maxStock: variant.stock,
+            maxStock: variant.stock || 0,
             productName: variant.productName,
             variantName: variant.name,
-            searchVal: variant.name === 'Standard Option' || variant.name === 'Default Title' ? `${variant.productName} (أساسي)` : `${variant.productName} (${variant.name})`,
+            searchVal: formatProductDisplayName(variant.productName, variant.name),
             isOpen: false
+        } : item));
+    };
+
+    const handleClearItem = (index) => {
+        setItems(prev => prev.map((item, i) => i === index ? {
+            ...item,
+            variantSku: '',
+            price: 0,
+            discountPercent: 0,
+            maxStock: 0,
+            searchVal: '',
+            productName: '',
+            variantName: '',
+            quantity: 1,
+            isOpen: true
         } : item));
     };
 
@@ -435,9 +607,23 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
     // Validations
     const isStep1Valid = client.trim() !== '' && phone.trim().length === 11 && governorate !== '' && address.trim() !== '';
-    const isStep2Valid = items.length > 0 && items.every(item => item.variantSku !== '' && item.quantity > 0);
-    const isStep3Valid = shippingFeeVal >= 0 && depositVal >= 0;
+    const isStep2Valid = items.length > 0 && items.every(item => item.variantSku !== '' && item.quantity > 0 && (item.maxStock || 0) > 0 && item.quantity <= (item.maxStock || 0));
+    useEffect(() => {
+        if (depositVal > 0 && !depositReceiverId && state.currentUser) {
+            setDepositReceiverId(state.currentUser.id);
+        }
+    }, [deposit, depositReceiverId, state.currentUser]);
+
+    const isStep3Valid = shippingFee !== '' && shippingFee !== null && !isNaN(shippingFee) && parseFloat(shippingFee) > 0 && depositVal >= 0 && (depositVal === 0 || !!depositReceiverId);
     
+    const canNavigateToStep = (targetStep) => {
+        if (targetStep <= step) return true;
+        if (targetStep >= 2 && !isStep1Valid) return false;
+        if (targetStep >= 3 && (!isStep1Valid || !isStep2Valid)) return false;
+        if (targetStep >= 4 && (!isStep1Valid || !isStep2Valid || !isStep3Valid)) return false;
+        return true;
+    };
+
     const canConfirm = isStep1Valid && isStep2Valid && isStep3Valid;
 
     // Handle Submit
@@ -481,7 +667,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
             price: item.discountType === 'Percentage' ? (item.price * (1 - (item.discountPercent || 0) / 100)) : (item.price - (item.discountPercent || 0) / item.quantity)
         }));
 
-        const finalStatus = isDraftSave ? 'Draft' : (state.currentUser?.role === 'Staff' ? 'Pending' : 'Completed'); // Draft = مسودة, Pending = قيد المراجعة, Completed = مؤكد/مكتمل
+        const finalStatus = isDraftSave ? 'Draft' : 'Pending'; // Draft = مسودة, Pending = قيد التجهيز/الانتظار, Completed = تم التسليم
 
         
         // Ensure we have a valid customer_id in DB
@@ -512,10 +698,17 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 globalDiscountValue: globalDiscountValue,
                 globalDiscountType: globalDiscountType,
                 customerCode: customerCode,
-                appliedCoupon: couponValid ? couponCode : ''
+                appliedCoupon: couponValid ? couponCode : '',
+                bostaCityCode: citySelected?.cityCode || null,
+                bostaCityName: citySelected?.cityName || citySelected?.cityOtherName || '',
+                bostaDistrictId: districtSelected?.districtId || null,
+                bostaDistrictName: districtSelected?.districtName || districtSelected?.districtOtherName || '',
+                bostaZoneId: districtSelected?.zoneId || null
             }),
             governorate: governorate,
             deposit: depositVal,
+            depositReceiverId: depositVal > 0 ? (depositReceiverId || state.currentUser?.id || null) : null,
+            depositStatus: depositVal > 0 ? (depositReceiverId === state.currentUser?.id ? 'confirmed' : (depositStatus || 'pending')) : 'confirmed',
             shipping_fee: shippingFeeVal,
             createdBy: state.currentUser ? state.currentUser.name : 'sfsf'
         };
@@ -527,7 +720,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
             addOrder(newOrderObj);
             showToast(isDraftSave ? "تم حفظ الطلب كمسودة بنجاح" : "تم إضافة طلب العميل بنجاح", "success");
             
-            if (!isDraftSave && syncWithBosta && newOrderObj.status !== 'Draft') {
+            if (!isDraftSave && syncWithBosta && newOrderObj.status !== 'Draft' && newOrderObj.depositStatus !== 'pending') {
                 const bostaMetadata = {
                     customerName: client,
                     customerPhone: phone,
@@ -554,8 +747,30 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         onClose();
     };
 
+    const handleRequestClose = () => {
+        const isDirty = client.trim() !== '' || phone.trim() !== '' || address.trim() !== '' || items.some(i => i.variantSku !== '');
+        if (isDirty) {
+            showConfirm(
+                "هل أنت تأكد أنك تريد الخروج وإلغاء تسجيل الطلب؟ سيتم فقد البيانات المدخلة غير المحفوظة.",
+                () => {
+                    resetFormState();
+                    onClose();
+                }
+            );
+        } else {
+            resetFormState();
+            onClose();
+        }
+    };
+
     return (
-        <Modal isOpen={isOpen} onClose={onClose} title={editOrderId ? `تعديل طلب مبيعات: ${orderId}` : "تسجيل طلب مبيعات جديد"} width="1150px">
+        <Modal 
+            isOpen={isOpen} 
+            onClose={handleRequestClose} 
+            title={editOrderId ? `تعديل طلب مبيعات: ${orderId}` : "تسجيل طلب مبيعات جديد"} 
+            width="1150px"
+            closeOnBackdropClick={false}
+        >
             <div dir="rtl" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', padding: '10px 4px', borderRadius: '8px' }}>
                 
                 {/* 1. ORDER HEADER */}
@@ -580,32 +795,68 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                         { stepNum: 2, label: 'المنتجات' },
                         { stepNum: 3, label: 'الشحن والدفع' },
                         { stepNum: 4, label: 'مراجعة وتأكيد' }
-                    ].map((s) => (
-                        <div key={s.stepNum} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 3, cursor: 'pointer' }} onClick={() => {
-                            setStep(s.stepNum);
-                        }}>
-                            <div style={{
-                                width: '32px',
-                                height: '32px',
-                                borderRadius: '50%',
-                                background: step === s.stepNum ? 'var(--gold-primary)' : (step > s.stepNum ? '#27AE60' : '#26262b'),
-                                color: step === s.stepNum ? '#000' : '#fff',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontWeight: 'bold',
-                                fontSize: '13px',
-                                border: '2px solid',
-                                borderColor: step === s.stepNum ? 'var(--gold-primary)' : (step > s.stepNum ? '#27AE60' : 'var(--glass-border-hover)'),
-                                transition: 'all 0.3s ease'
-                            }}>
-                                {step > s.stepNum ? <i className="fa-solid fa-check" style={{ fontSize: '11px' }}></i> : s.stepNum}
+                    ].map((s) => {
+                        const isAccessible = canNavigateToStep(s.stepNum);
+                        return (
+                            <div 
+                                key={s.stepNum} 
+                                style={{ 
+                                    display: 'flex', 
+                                    flexDirection: 'column', 
+                                    alignItems: 'center', 
+                                    zIndex: 3, 
+                                    cursor: isAccessible ? 'pointer' : 'not-allowed',
+                                    opacity: isAccessible ? 1 : 0.45,
+                                    transition: 'opacity 0.2s ease'
+                                }} 
+                                onClick={() => {
+                                    if (s.stepNum <= step) {
+                                        setStep(s.stepNum);
+                                        return;
+                                    }
+                                    if (s.stepNum >= 2 && !isStep1Valid) {
+                                        showToast("يرجى استكمال بيانات العميل ورقم الهاتف والمحافظة والعنوان أولاً", "warning");
+                                        return;
+                                    }
+                                    if (s.stepNum >= 3 && !isStep2Valid) {
+                                        const hasZeroStock = items.some(i => i.variantSku && (i.maxStock || 0) <= 0);
+                                        if (hasZeroStock) {
+                                            showToast("لا يمكن الانتقال: يوجد منتج مختار غير متوفر في المخزن (الاستوك صفر)", "error");
+                                        } else {
+                                            showToast("يرجى اختيار منتجات صالحة ومتوفرة في المخزن أولاً", "warning");
+                                        }
+                                        return;
+                                    }
+                                    if (s.stepNum >= 4 && !isStep3Valid) {
+                                        showToast("يرجى تحديد مبلغ وسعر الشحن الإلزامي أولاً للمتابعة", "warning");
+                                        return;
+                                    }
+                                    setStep(s.stepNum);
+                                }}
+                            >
+                                <div style={{
+                                    width: '32px',
+                                    height: '32px',
+                                    borderRadius: '50%',
+                                    background: step === s.stepNum ? 'var(--gold-primary)' : (step > s.stepNum ? '#27AE60' : '#26262b'),
+                                    color: step === s.stepNum ? '#000' : '#fff',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontWeight: 'bold',
+                                    fontSize: '13px',
+                                    border: '2px solid',
+                                    borderColor: step === s.stepNum ? 'var(--gold-primary)' : (step > s.stepNum ? '#27AE60' : 'var(--glass-border-hover)'),
+                                    transition: 'all 0.3s ease'
+                                }}>
+                                    {step > s.stepNum ? <i className="fa-solid fa-check" style={{ fontSize: '11px' }}></i> : s.stepNum}
+                                </div>
+                                <span style={{ fontSize: '12px', marginTop: '6px', color: step === s.stepNum ? 'var(--gold-primary)' : 'rgba(255,255,255,0.5)', fontWeight: step === s.stepNum ? 'bold' : 'normal' }}>
+                                    {s.label}
+                                </span>
                             </div>
-                            <span style={{ fontSize: '12px', marginTop: '6px', color: step === s.stepNum ? 'var(--gold-primary)' : 'rgba(255,255,255,0.5)', fontWeight: step === s.stepNum ? 'bold' : 'normal' }}>
-                                {s.label}
-                            </span>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
 
                 {/* STEP PANELS CONTAINER */}
@@ -633,22 +884,41 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             top: '100%',
                                             left: 0,
                                             right: 0,
-                                            maxHeight: '150px',
+                                            maxHeight: '200px',
                                             overflowY: 'auto',
                                             zIndex: 1000,
-                                            background: 'rgba(30, 30, 40, 0.99)',
+                                            background: 'rgba(25, 25, 35, 0.98)',
                                             border: '1px solid var(--glass-border)',
                                             borderRadius: '8px',
-                                            padding: '4px'
+                                            padding: '6px',
+                                            boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
                                         }}>
-                                            {filteredCustomers.map(custName => (
+                                            {filteredCustomers.map((cust, idx) => (
                                                 <div 
-                                                    key={custName}
-                                                    onMouseDown={() => handleSelectCustomer(custName)}
-                                                    style={{ padding: '8px 12px', fontSize: '12px', cursor: 'pointer', borderBottom: '1px solid var(--glass-bg-hover)', color: 'var(--text-primary)', borderRadius: '4px' }}
+                                                    key={cust.id || cust.name || idx}
+                                                    onMouseDown={() => handleSelectCustomer(cust)}
+                                                    style={{ 
+                                                        padding: '10px 12px', 
+                                                        fontSize: '12px', 
+                                                        cursor: 'pointer', 
+                                                        borderBottom: '1px solid var(--glass-border)', 
+                                                        color: 'var(--text-primary)', 
+                                                        borderRadius: '6px',
+                                                        display: 'flex',
+                                                        justify: 'space-between',
+                                                        alignItems: 'center'
+                                                    }}
                                                     className="autocomplete-option"
                                                 >
-                                                    {custName}
+                                                    <div>
+                                                        <strong style={{ color: '#fff', fontSize: '13px' }}>{cust.name}</strong>
+                                                        {cust.phone && <span style={{ marginRight: '8px', color: 'var(--text-secondary)', fontSize: '11px' }}>({cust.phone})</span>}
+                                                    </div>
+                                                    {cust.governorate && (
+                                                        <span style={{ fontSize: '11px', color: 'var(--gold-primary)', background: 'rgba(212, 175, 55, 0.12)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(212, 175, 55, 0.2)' }}>
+                                                            {cust.governorate}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>
@@ -677,6 +947,12 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             const digits = e.target.value.replace(/\D/g, '');
                                             if (digits.length <= 11) {
                                                 setPhone(digits);
+                                                if (digits.length === 11) {
+                                                    const match = customerOptions.find(c => c.phone === digits);
+                                                    if (match && (!client || client === match.name)) {
+                                                        handleSelectCustomer(match);
+                                                    }
+                                                }
                                             }
                                         }}
                                         placeholder="مثال: 01012345678" 
@@ -757,7 +1033,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                         onClick={() => {
                             setCitySelected(c);
                             setGovernorate(c.cityOtherName);
-                            setDistrictSelected(null);
+                            const { district } = resolveBostaCityAndDistrict(c.cityOtherName, c.cityCode, null, null, address);
+                            setDistrictSelected(district || null);
                             setShippingFee(calculateBostaShippingFee(c.cityOtherName));
                             setActiveCityDropdown(false);
                             setCitySearch('');
@@ -825,7 +1102,14 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     type="text" 
                                     className="form-input" 
                                     value={address}
-                                    onChange={(e) => setAddress(e.target.value)}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        setAddress(val);
+                                        if (citySelected && !districtSelected && val.trim().length > 2) {
+                                            const { district } = resolveBostaCityAndDistrict(citySelected.cityOtherName, citySelected.cityCode, null, null, val);
+                                            if (district) setDistrictSelected(district);
+                                        }
+                                    }}
                                     placeholder="اسم الشارع / رقم العقار / علامة مميزة"
                                     required 
                                 />
@@ -861,22 +1145,65 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             return (
                                                 <tr key={`order-item-${idx}`} style={{ borderBottom: '1px solid var(--glass-border)' }}>
                                                     <td style={{ padding: '8px 10px', verticalAlign: 'middle', position: 'relative' }}>
-                                                        <input 
-                                                            type="text"
-                                                            className="form-input"
-                                                            placeholder="ابحث عن منتج..."
-                                                            value={item.searchVal || ''}
-                                                            onChange={(e) => handleItemSearchChange(idx, e.target.value)}
-                                                            onFocus={() => setItemOpen(idx, true)}
-                                                            onBlur={() => setTimeout(() => setItemOpen(idx, false), 250)}
-                                                            required
-                                                            style={{ background: 'var(--glass-bg)', borderColor: item.variantSku ? 'var(--color-success)' : 'var(--glass-border)' }}
-                                                        />
-                                                        {item.maxStock > 0 && (
+                                                        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                                            <input 
+                                                                type="text"
+                                                                className="form-input"
+                                                                placeholder="ابحث عن منتج..."
+                                                                value={item.searchVal || ''}
+                                                                onChange={(e) => handleItemSearchChange(idx, e.target.value)}
+                                                                onFocus={() => setItemOpen(idx, true)}
+                                                                onBlur={() => setTimeout(() => setItemOpen(idx, false), 250)}
+                                                                required
+                                                                style={{ 
+                                                                    width: '100%',
+                                                                    background: 'var(--glass-bg)', 
+                                                                    borderColor: item.variantSku ? 'var(--color-success)' : 'var(--glass-border)',
+                                                                    paddingLeft: (item.searchVal || item.variantSku) ? '32px' : '12px'
+                                                                }}
+                                                            />
+                                                            {(item.searchVal || item.variantSku) && (
+                                                                <button
+                                                                    type="button"
+                                                                    onMouseDown={(e) => {
+                                                                        e.preventDefault();
+                                                                        handleClearItem(idx);
+                                                                    }}
+                                                                    style={{
+                                                                        position: 'absolute',
+                                                                        left: '10px',
+                                                                        top: '50%',
+                                                                        transform: 'translateY(-50%)',
+                                                                        background: 'transparent',
+                                                                        border: 'none',
+                                                                        color: 'var(--text-secondary)',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '12px',
+                                                                        padding: '4px',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        cursor: 'pointer',
+                                                                        fontSize: '11px',
+                                                                        transition: 'all 0.2s ease',
+                                                                        zIndex: 5
+                                                                    }}
+                                                                    title="تفريغ المنتج المختار"
+                                                                >
+                                                                    <i className="fa-solid fa-xmark"></i>
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                        {item.variantSku && (item.maxStock || 0) <= 0 ? (
+                                                            <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                <i className="fa-solid fa-triangle-exclamation"></i>
+                                                                عفواً غير متوفر في المخزن حالياً (الاستوك 0)!
+                                                            </div>
+                                                        ) : item.maxStock > 0 ? (
                                                             <div style={{ fontSize: '10px', color: 'var(--gold-primary)', marginTop: '4px' }}>
                                                                 المتاح في المخزن: {item.maxStock} وحدات
                                                             </div>
-                                                        )}
+                                                        ) : null}
                                                         
                                                         {item.isOpen && (
                                                             <div className="glass-card" style={{
@@ -919,7 +1246,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                                             }}
                                                                             className="autocomplete-option"
                                                                         >
-                                                                            <span>{opt.productName} <span style={{ color: 'var(--text-secondary)', fontSize: '10px' }}>({opt.name})</span></span>
+                                                                            <span>{formatProductDisplayName(opt.productName, opt.name)}</span>
                                                                             <span style={{ color: 'var(--gold-primary)', fontSize: '10px', fontWeight: 600 }}>الرصيد: {opt.stock}</span>
                                                                         </div>
                                                                     ))
@@ -1145,14 +1472,21 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                 </div>
 
                                 <div className="form-group">
-                                    <label className="form-label">سعر الشحن ({currency})</label>
+                                    <label className="form-label">سعر الشحن ({currency}) *</label>
                                     <input 
                                         type="number" 
                                         className="form-input" 
                                         min="0"
                                         value={shippingFee}
-                                        onChange={(e) => setShippingFee(parseFloat(e.target.value) || 0)}
+                                        onChange={(e) => setShippingFee(e.target.value)}
+                                        placeholder="أدخل مصاريف الشحن..."
+                                        required
                                     />
+                                    {(shippingFee === '' || shippingFee === null || isNaN(shippingFee) || parseFloat(shippingFee) <= 0) && (
+                                        <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px', fontWeight: 'bold' }}>
+                                            * مصاريف الشحن إجبارية وتتطلب تحديد قيمة برقم أكبر من الصفر للمتابعة.
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -1160,14 +1494,51 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                 <div className="form-group">
                                     <label className="form-label">العربون المستلم (Deposit) ({currency})</label>
                                     <input 
-                                        type="number" 
+                                        type="text" 
+                                        inputMode="decimal"
                                         className="form-input" 
-                                        min="0"
                                         value={deposit}
-                                        onChange={(e) => setDeposit(parseFloat(e.target.value) || 0)}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                                setDeposit(val);
+                                                const numericVal = parseFloat(val) || 0;
+                                                if (numericVal <= 0) {
+                                                    setDepositReceiverId('');
+                                                } else if (!depositReceiverId && state.currentUser) {
+                                                    setDepositReceiverId(state.currentUser.id);
+                                                }
+                                            }
+                                        }}
                                         placeholder="0.00"
                                     />
                                 </div>
+                                {deposit > 0 && (
+                                    <div className="form-group">
+                                        <label className="form-label">الأدمن المستلم للعربون *</label>
+                                        <select
+                                            className="form-input"
+                                            value={depositReceiverId}
+                                            onChange={(e) => {
+                                                setDepositReceiverId(e.target.value);
+                                                if (state.currentUser && e.target.value !== state.currentUser.id) {
+                                                    setDepositStatus('pending');
+                                                } else {
+                                                    setDepositStatus('confirmed');
+                                                }
+                                            }}
+                                            required
+                                            style={{ background: 'var(--glass-bg)', color: 'var(--text-primary)' }}
+                                        >
+                                            <option value="" style={{ background: '#121216' }}>-- اختر الأدمن --</option>
+                                            {(state.users || []).filter(u => u.is_active).map(u => (
+                                                <option key={u.id} value={u.id} style={{ background: '#121216' }}>
+                                                    {u.name} {u.id === state.currentUser?.id ? ' (أنت)' : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
                                 <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '24px' }}>
                                     <label className="form-label" style={{ marginBottom: 0 }}>تطبيق ضريبة القيمة المضافة 14%</label>
                                     <div 
@@ -1313,7 +1684,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             const sub = item.discountType === 'Percentage' ? (item.quantity * item.price * (1 - (item.discountPercent || 0) / 100)) : Math.max(0, (item.quantity * item.price) - (item.discountPercent || 0));
                                             return (
                                                 <tr key={`review-item-${i}`} style={{ borderBottom: '1px solid var(--glass-bg-hover)' }}>
-                                                    <td style={{ padding: '6px 4px' }}>{item.productName} <span style={{ color: 'var(--text-muted)', fontSize: '10px' }}>({item.variantName && item.variantName !== 'Standard Option' && item.variantName !== 'Default Title' ? item.variantName : 'أساسي'})</span></td>
+                                                    <td style={{ padding: '6px 4px' }}>{formatProductDisplayName(item.productName, item.variantName)}</td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>{item.quantity}</td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px' }}>{currency} {item.price.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                     <td style={{ textAlign: 'center', padding: '6px 4px', color: 'var(--color-danger)' }}>{item.discountPercent > 0 ? (item.discountType === 'Percentage' ? `${item.discountPercent}%` : `${currency} ${item.discountPercent}`) : '-'}</td>
@@ -1435,7 +1806,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                 السابق
                             </button>
                         ) : (
-                            <button type="button" className="btn btn-secondary" onClick={onClose}>
+                            <button type="button" className="btn btn-secondary" onClick={handleRequestClose}>
                                 إلغاء
                             </button>
                         )}
@@ -1457,8 +1828,35 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             <button 
                                 type="button" 
                                 className="btn btn-primary" 
-                                onClick={() => setStep(prev => prev + 1)}
-
+                                onClick={() => {
+                                    if (step === 1 && !isStep1Valid) {
+                                        showToast("يرجى استكمال بيانات العميل ورقم الهاتف والمحافظة والعنوان أولاً", "warning");
+                                        return;
+                                    }
+                                    if (step === 2 && !isStep2Valid) {
+                                        const hasZeroStock = items.some(i => i.variantSku && (i.maxStock || 0) <= 0);
+                                        if (hasZeroStock) {
+                                            showToast("لا يمكن المتابعة: يوجد منتج مختار غير متوفر في المخزن (الاستوك صفر)", "error");
+                                        } else {
+                                            showToast("يرجى اختيار منتجات صالحة ومتوفرة في المخزن أولاً", "warning");
+                                        }
+                                        return;
+                                    }
+                                    if (step === 3 && !isStep3Valid) {
+                                        showToast("يرجى تحديد مبلغ وسعر الشحن الزامي أولاً للمتابعة", "warning");
+                                        return;
+                                    }
+                                    setStep(prev => prev + 1);
+                                }}
+                                disabled={
+                                    (step === 1 && !isStep1Valid) ||
+                                    (step === 2 && !isStep2Valid) ||
+                                    (step === 3 && !isStep3Valid)
+                                }
+                                style={{
+                                    opacity: ((step === 1 && !isStep1Valid) || (step === 2 && !isStep2Valid) || (step === 3 && !isStep3Valid)) ? 0.5 : 1,
+                                    cursor: ((step === 1 && !isStep1Valid) || (step === 2 && !isStep2Valid) || (step === 3 && !isStep3Valid)) ? 'not-allowed' : 'pointer'
+                                }}
                             >
                                 التالي
                             </button>

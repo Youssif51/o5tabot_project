@@ -2,6 +2,7 @@ import React, { useContext, useState, useEffect } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
+import RichTextEditor from '../common/RichTextEditor';
 
 export default function AddProductModal({ isOpen, onClose, editProductId }) {
     const { state, addProduct, editProduct, syncShopifyCollections, t, showAlert } = useContext(AppContext);
@@ -172,8 +173,40 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
         }
     };
 
+    const [draggedIdx, setDraggedIdx] = useState(null);
+
     const handleRemoveImage = (indexToRemove) => {
         setImages(images.filter((_, idx) => idx !== indexToRemove));
+    };
+
+    const handleDragStart = (e, index) => {
+        setDraggedIdx(index);
+        e.dataTransfer.setData('text/plain', index);
+        e.dataTransfer.effectAllowed = 'move';
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    };
+
+    const handleDrop = (e, targetIndex) => {
+        e.preventDefault();
+        const sourceIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
+        if (isNaN(sourceIndex) || sourceIndex === targetIndex) {
+            setDraggedIdx(null);
+            return;
+        }
+
+        const newImages = [...images];
+        const [movedImage] = newImages.splice(sourceIndex, 1);
+        newImages.splice(targetIndex, 0, movedImage);
+        setImages(newImages);
+        setDraggedIdx(null);
+    };
+
+    const handleDragEnd = () => {
+        setDraggedIdx(null);
     };
 
     const handleSyncCollections = async () => {
@@ -280,15 +313,45 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                     
                     <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center', marginBottom: '10px' }}>
                         {images.map((imgSrc, idx) => (
-                            <div key={idx} style={{ position: 'relative', width: '90px', height: '90px', borderRadius: '8px', overflow: 'hidden' }}>
-                                <img src={imgSrc} alt={`Preview ${idx}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <div 
+                                key={idx} 
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, idx)}
+                                onDragOver={handleDragOver}
+                                onDrop={(e) => handleDrop(e, idx)}
+                                onDragEnd={handleDragEnd}
+                                title="اسحب لتغيير ترتيب الصورة"
+                                style={{ 
+                                    position: 'relative', 
+                                    width: '90px', 
+                                    height: '90px', 
+                                    borderRadius: '8px', 
+                                    overflow: 'hidden',
+                                    cursor: 'grab',
+                                    opacity: draggedIdx === idx ? 0.4 : 1,
+                                    border: idx === 0 ? '2px solid var(--gold-primary, #d4af37)' : '1px solid rgba(255, 255, 255, 0.1)',
+                                    transition: 'all 0.2s ease',
+                                    boxShadow: idx === 0 ? '0 0 10px rgba(212, 175, 55, 0.3)' : 'none'
+                                }}
+                            >
+                                <img src={imgSrc} alt={`Preview ${idx}`} style={{ width: '100%', height: '100%', objectFit: 'cover', pointerEvents: 'none' }} />
+                                {idx === 0 && (
+                                    <div style={{
+                                        position: 'absolute', bottom: '0', left: '0', right: '0',
+                                        background: 'rgba(212, 175, 55, 0.85)', color: '#000',
+                                        fontSize: '9px', fontWeight: 'bold', textAlign: 'center', padding: '2px 0'
+                                    }}>
+                                        الرئيسية
+                                    </div>
+                                )}
                                 <button
                                     type="button"
-                                    onClick={() => handleRemoveImage(idx)}
+                                    onClick={(e) => { e.stopPropagation(); handleRemoveImage(idx); }}
                                     style={{
                                         position: 'absolute', top: '4px', right: '4px', background: 'rgba(255,0,0,0.8)', color: 'white',
                                         border: 'none', borderRadius: '50%', width: '20px', height: '20px', display: 'flex',
-                                        alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '10px'
+                                        alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: '10px',
+                                        zIndex: 2
                                     }}
                                 >
                                     <i className="fa-solid fa-times"></i>
@@ -472,12 +535,10 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
 
                 <div className="form-group" style={{ marginBottom: '20px' }}>
                     <label className="form-label">الوصف (Description)</label>
-                    <textarea 
-                        className="form-input" 
+                    <RichTextEditor 
                         value={description}
-                        onChange={(e) => setDescription(e.target.value)}
+                        onChange={setDescription}
                         placeholder="اكتب وصف المنتج هنا..."
-                        style={{ height: '100px', resize: 'vertical' }}
                     />
                 </div>
 

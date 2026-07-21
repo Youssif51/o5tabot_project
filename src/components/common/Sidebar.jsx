@@ -1,8 +1,9 @@
-import React, { useContext } from 'react';
+import React, { useContext, useState } from 'react';
 import { AppContext } from '../../context/AppContext';
 
 export default function Sidebar() {
-    const { state, currentView, setCurrentView, authLogout, t } = useContext(AppContext);
+    const { state, currentView, setCurrentView, authLogout, t, theme } = useContext(AppContext);
+    const [showUserDropdown, setShowUserDropdown] = useState(false);
     
     if (!state.currentUser) return null;
 
@@ -12,6 +13,11 @@ export default function Sidebar() {
     };
 
     const pendingShopifyCount = (state.orders || []).filter(o => o.status === 'Pending' && o.source === 'shopify').length;
+    const pendingDepositCount = (state.orders || []).filter(o => 
+        o.depositReceiverId === state.currentUser?.id && 
+        o.depositStatus === 'pending' &&
+        (parseFloat(o.deposit) || 0) > 0
+    ).length;
 
     const navItems = [
         { id: 'dashboard', name: t('dashboard'), icon: 'Home.png', perm: 'view_dashboard' },
@@ -22,7 +28,7 @@ export default function Sidebar() {
         { id: 'orders', name: t('orders'), icon: 'Order.png', perm: 'manage_orders' },
         { id: 'marketing', name: 'التسويق والمؤثرين', icon: 'promo-code.png', perm: 'view_dashboard' },
         { id: 'shopifyPending', name: 'طلبات شوبيفاي', icon: 'Cart.png', perm: 'manage_orders', isShopify: true },
-        { id: 'supabaseTasks', name: t('supabaseTasks'), icon: 'Calendar.png', perm: 'manage_settings' }
+        { id: 'depositConfirm', name: 'تأكيد العرابين', icon: 'Wallet.svg', perm: 'manage_orders', isDeposit: true }
     ].filter(item => checkPermission(item.perm));
 
     return (
@@ -57,6 +63,7 @@ export default function Sidebar() {
                                         width: '24px', 
                                         height: '24px', 
                                         objectFit: 'contain',
+                                        ...(item.id === 'depositConfirm' ? { filter: theme === 'dark' ? 'invert(1)' : 'none' } : {}),
                                         ...(item.id === 'supabaseTasks' ? { filter: 'brightness(0) saturate(100%) invert(26%) sepia(85%) saturate(7403%) hue-rotate(352deg) brightness(96%) contrast(106%)' } : {})
                                     }}
                                 />
@@ -81,52 +88,126 @@ export default function Sidebar() {
                                     {pendingShopifyCount}
                                 </span>
                             )}
+                            {item.id === 'depositConfirm' && pendingDepositCount > 0 && (
+                                <span style={{
+                                    background: '#ef4444',
+                                    color: '#fff',
+                                    fontSize: '10px',
+                                    fontWeight: 'bold',
+                                    padding: '2px 7px',
+                                    borderRadius: '10px',
+                                    marginRight: 'auto',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    boxShadow: '0 0 10px rgba(239,68,68,0.4)',
+                                    height: '18px',
+                                    minWidth: '18px'
+                                }}>
+                                    {pendingDepositCount}
+                                </span>
+                            )}
                         </a>
                     </li>
                 ))}
             </ul>
             
-            <div className="sidebar-footer" style={{ borderTop: 'none', paddingTop: 0 }}>
-                <ul className="nav-links" style={{ width: '100%', marginBottom: '14px' }}>
-                    {checkPermission('manage_settings') && (
-                        <li className={`nav-item ${currentView === 'store' ? 'active' : ''}`}>
-                            <a href="#" onClick={(e) => { e.preventDefault(); setCurrentView('store'); }}>
-                                <img src="/icons/Settings.png" alt="Settings" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
+            <div className="sidebar-footer" style={{ borderTop: 'none', paddingTop: 0, position: 'relative' }}>
+                {showUserDropdown && (
+                    <div style={{
+                        position: 'absolute',
+                        bottom: '70px',
+                        left: '16px',
+                        right: '16px',
+                        background: 'rgba(30, 30, 40, 0.95)',
+                        border: '1px solid var(--glass-border)',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 15px rgba(0,0,0,0.5)',
+                        zIndex: 999,
+                        overflow: 'hidden',
+                        display: 'flex',
+                        flexDirection: 'column'
+                    }}>
+                        {checkPermission('manage_settings') && (
+                            <a 
+                                href="#" 
+                                onClick={(e) => { 
+                                    e.preventDefault(); 
+                                    setCurrentView('store'); 
+                                    setShowUserDropdown(false); 
+                                }}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    padding: '12px 16px',
+                                    color: 'var(--text-primary)',
+                                    fontSize: '13px',
+                                    textDecoration: 'none',
+                                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                                    transition: 'background 0.2s'
+                                }}
+                                onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.05)'}
+                                onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                            >
+                                <img src="/icons/Settings.png" alt="Settings" style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
                                 <span>{t('settings')}</span>
                             </a>
-                        </li>
-                    )}
-                    <li className="nav-item">
-                        <a href="#" onClick={(e) => { e.preventDefault(); authLogout(); }}>
-                            <img src="/icons/Log Out.png" alt="Log Out" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
-                            <span style={{ color: 'var(--color-danger)' }}>{t('logout')}</span>
+                        )}
+                        <a 
+                            href="#" 
+                            onClick={(e) => { 
+                                e.preventDefault(); 
+                                authLogout(); 
+                                setShowUserDropdown(false); 
+                            }}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                padding: '12px 16px',
+                                color: 'var(--color-danger)',
+                                fontSize: '13px',
+                                textDecoration: 'none',
+                                transition: 'background 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.05)'}
+                            onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                        >
+                            <img src="/icons/Log Out.png" alt="Log Out" style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
+                            <span>{t('logout')}</span>
                         </a>
-                    </li>
-                </ul>
+                    </div>
+                )}
 
-                <div className="user-profile" style={{ marginTop: '10px' }}>
+                <div 
+                    className="user-profile" 
+                    style={{ marginTop: '10px', cursor: 'pointer' }}
+                    onClick={() => setShowUserDropdown(prev => !prev)}
+                >
                     <div 
                         className="user-avatar" 
                         id="user-avatar-lbl"
                         style={{
-                            backgroundImage: (state.userAvatars?.[state.currentUser?.id] || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) ? `url(${state.userAvatars?.[state.currentUser?.id] || state.storeSettings?.adminAvatar})` : 'none',
+                            backgroundImage: (state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) ? `url(${state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || state.storeSettings?.adminAvatar})` : 'none',
                             backgroundSize: 'cover',
                             backgroundPosition: 'center',
-                            color: (state.userAvatars?.[state.currentUser?.id] || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) ? 'transparent' : 'inherit'
+                            color: (state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) ? 'transparent' : 'inherit'
                         }}
                     >
-                        {!(state.userAvatars?.[state.currentUser?.id] || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) && 
-                            (state.currentUser.avatar || state.currentUser.name?.charAt(0)?.toUpperCase() || 'U')
+                        {!(state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) && 
+                            (state.currentUser.name?.charAt(0)?.toUpperCase() || 'U')
                         }
                     </div>
                     <div className="user-details">
                         <h4 id="user-display-name">{state.currentUser.name}</h4>
-                        <span>{state.currentUser.role}</span>
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            {state.currentUser.role}
+                            <i className={`fa-solid fa-chevron-${showUserDropdown ? 'down' : 'up'}`} style={{ fontSize: '10px', opacity: 0.7 }}></i>
+                        </span>
                     </div>
                 </div>
             </div>
         </aside>
     );
 }
-
-// hmr force update

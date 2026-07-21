@@ -60,6 +60,97 @@ function normalizePhone(phoneStr: string | null | undefined): string {
   return cleaned;
 }
 
+// Dynamically resolve, match, link or create local variant from Shopify line item
+async function resolveLocalVariantSku(supabase: any, item: any, shopifyProductId: string, productName: string): Promise<string> {
+  const titleLower = (productName || "").toLowerCase();
+  const isDigital = ["tiktok", "pubg", "coins", "uc", "top-up", "top up", "bundle", "prime plus"].some(kw => titleLower.includes(kw));
+  if (isDigital) {
+    return "DIGITAL-ITEM";
+  }
+
+  const shopifyVariantId = String(item.variant_id);
+  const itemSku = item.sku ? item.sku.trim() : "";
+  const variantTitle = item.variant_title || "Standard Option";
+
+  // Step 1: Check by shopify_id in product_variants
+  const { data: vByShopifyId } = await supabase
+    .from("product_variants")
+    .select("sku")
+    .eq("shopify_id", shopifyVariantId)
+    .maybeSingle();
+  if (vByShopifyId) return vByShopifyId.sku;
+
+  // Step 2: Check by SKU in product_variants
+  if (itemSku) {
+    const { data: vBySku } = await supabase
+      .from("product_variants")
+      .select("sku, product_id")
+      .eq("sku", itemSku)
+      .maybeSingle();
+    if (vBySku) {
+      // Link them permanently since SKU matches
+      await supabase.from("product_variants").update({ shopify_id: shopifyVariantId }).eq("sku", itemSku);
+      await supabase.from("products").update({ shopify_id: shopifyProductId }).eq("id", vBySku.product_id);
+      return vBySku.sku;
+    }
+  }
+
+  // Step 3: Check by Product Name + Variant Name
+  const { data: pByName } = await supabase
+    .from("products")
+    .select("id")
+    .ilike("name", productName.trim())
+    .maybeSingle();
+
+  if (pByName) {
+    const { data: vByName } = await supabase
+      .from("product_variants")
+      .select("sku")
+      .eq("product_id", pByName.id)
+      .ilike("name", variantTitle.trim() === "Default Title" ? "Standard Option" : variantTitle.trim())
+      .maybeSingle();
+    
+    if (vByName) {
+      // Link them permanently
+      await supabase.from("product_variants").update({ shopify_id: shopifyVariantId }).eq("sku", vByName.sku);
+      await supabase.from("products").update({ shopify_id: shopifyProductId }).eq("id", pByName.id);
+      return vByName.sku;
+    }
+  }
+
+  // Step 4: Dynamically import/create product and variant if no match found
+  console.log(`Product/Variant not found locally. Dynamically importing "${productName}" - "${variantTitle}"`);
+  
+  let localProductId = crypto.randomUUID();
+  if (pByName) {
+    localProductId = pByName.id;
+  } else {
+    // Insert new product
+    await supabase.from("products").insert([{
+      id: localProductId,
+      name: productName,
+      category: "Shopify Sync",
+      unit: "Piece",
+      shopify_id: shopifyProductId,
+      description: "Dynamically imported via order webhook."
+    }]);
+  }
+
+  // Insert new variant
+  const finalSku = itemSku || `SKU-${Math.random().toString(36).substring(2,8).toUpperCase()}`;
+  await supabase.from("product_variants").insert([{
+    product_id: localProductId,
+    sku: finalSku,
+    name: variantTitle === "Default Title" ? "Standard Option" : variantTitle,
+    shopify_id: shopifyVariantId,
+    retail_price: parseFloat(item.price) || 0,
+    wholesale_price: 0,
+    stock_sulur: 0
+  }]);
+
+  return finalSku;
+}
+
 // Verify Shopify Webhook signature
 async function verifyShopifyWebhook(bodyText: string, hmacHeader: string, secret: string): Promise<boolean> {
   const encoder = new TextEncoder();
@@ -341,23 +432,28 @@ Deno.serve(async (req) => {
     const orderItemsToInsert = [];
 
     for (const item of lineItems) {
+      // Safely map/link/create the variant to resolve local SKU
+      const resolvedSku = await resolveLocalVariantSku(supabase, item, String(item.product_id), item.title || item.name || "Shopify Product");
+      if (resolvedSku === "DIGITAL-ITEM") {
+        console.log(`Skipping digital line item: ${item.title}`);
+        continue;
+      }
+
       // Find variant average cost for inventory reports
       let costAtTimeOfSale = 0;
-      if (item.sku) {
-        const { data: variant } = await supabase
-          .from("product_variants")
-          .select("average_cost, wholesale_price")
-          .eq("sku", item.sku)
-          .maybeSingle();
-        
-        if (variant) {
-          costAtTimeOfSale = parseFloat(variant.average_cost) || parseFloat(variant.wholesale_price) || 0;
-        }
+      const { data: variant } = await supabase
+        .from("product_variants")
+        .select("average_cost, wholesale_price")
+        .eq("sku", resolvedSku)
+        .maybeSingle();
+      
+      if (variant) {
+        costAtTimeOfSale = parseFloat(variant.average_cost) || parseFloat(variant.wholesale_price) || 0;
       }
 
       orderItemsToInsert.push({
         order_id: orderId,
-        variant_sku: item.sku || "UNKNOWN-SKU",
+        variant_sku: resolvedSku,
         quantity: parseInt(item.quantity) || 1,
         price: parseFloat(item.price) || 0,
         cost_at_time_of_sale: costAtTimeOfSale

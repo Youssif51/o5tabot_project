@@ -1,10 +1,17 @@
 import React from 'react';
 
-export default function Modal({ isOpen, onClose, title, children, width = '760px' }) {
+export default function Modal({ isOpen, onClose, title, children, width = '760px', closeOnBackdropClick = true }) {
     if (!isOpen) return null;
 
     return (
-        <div className="modal-overlay active" onClick={onClose}>
+        <div 
+            className="modal-overlay active" 
+            onClick={(e) => {
+                if (closeOnBackdropClick) {
+                    onClose(e);
+                }
+            }}
+        >
             <div 
                 className="modal-container" 
                 style={{ width, maxWidth: '90%' }} 

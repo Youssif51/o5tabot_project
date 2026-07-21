@@ -3,7 +3,7 @@ import { supabase } from '../../utils/supabase';
 import { AppContext } from '../../context/AppContext';
 
 export default function SupabaseTodos() {
-    const { t, showToast, showConfirm } = useContext(AppContext);
+    const { state, t, showToast, showConfirm, updateDepositStatus } = useContext(AppContext);
     const [todos, setTodos] = useState([]);
     const [loading, setLoading] = useState(true);
     const [newTodoName, setNewTodoName] = useState('');
@@ -129,6 +129,7 @@ export default function SupabaseTodos() {
                     </button>
                 </div>
             </div>
+
 
             <div className="dashboard-grid grid-2-1" style={{ marginTop: '24px', alignItems: 'start' }}>
                 
