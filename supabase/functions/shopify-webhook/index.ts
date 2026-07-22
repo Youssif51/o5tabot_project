@@ -242,6 +242,15 @@ Deno.serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     const topic = req.headers.get("X-Shopify-Topic") || req.headers.get("x-shopify-topic") || "";
+
+    // Reject checkout events - we only process fully placed orders
+    if (topic.startsWith("checkouts/") || topic.startsWith("draft_orders/")) {
+      console.log(`Ignoring non-order webhook topic: ${topic}`);
+      return new Response(JSON.stringify({ success: true, message: "Checkout/draft event ignored." }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
     console.log("Received Shopify Webhook Topic:", topic);
 
     // Handle Collection Webhooks
@@ -313,9 +322,26 @@ Deno.serve(async (req) => {
     const shipping = payload.shipping_address || payload.billing_address || {};
     const customerObj = payload.customer || {};
     
-    const customerName = shipping.name || `${shipping.first_name || ""} ${shipping.last_name || ""}`.trim() || customerObj.name || "Shopify Customer";
+    const rawFirstName = shipping.first_name || customerObj.first_name || "";
+    const rawLastName  = shipping.last_name  || customerObj.last_name  || "";
+    const customerName = (shipping.name || `${rawFirstName} ${rawLastName}`.trim() || customerObj.name || "").trim();
     const rawPhone = shipping.phone || customerObj.phone || payload.phone || "";
-    const phone = normalizePhone(rawPhone) || "00000000000";
+    const phone = normalizePhone(rawPhone);
+
+    // Guard: reject placeholder / incomplete orders that have no real customer data
+    const isPlaceholderName = !customerName || customerName.toLowerCase() === "shopify customer";
+    const isPlaceholderPhone = !phone || phone === "00000000000" || phone.replace(/0/g, "").length === 0;
+
+    if (isPlaceholderName || isPlaceholderPhone) {
+      console.warn(`Rejected incomplete Shopify order ${shopifyOrderId}: name='${customerName}', phone='${phone}'`);
+      return new Response(JSON.stringify({
+        success: false,
+        message: "Order rejected: missing real customer name or phone number. Customer has not completed checkout yet."
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
     const email = payload.email || customerObj.email || null;
     const governorate = mapGovernorate(shipping.province);
     
@@ -404,7 +430,7 @@ Deno.serve(async (req) => {
       .from("orders")
       .insert([{
         id: orderId,
-        client: customerName,
+        client: customerName || "عميل شوبيفاي",
         customer_id: customerId,
         date: new Date().toISOString().split("T")[0],
         warehouse: "Sulur",

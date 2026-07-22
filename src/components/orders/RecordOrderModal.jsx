@@ -87,7 +87,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const [shippingFee, setShippingFee] = useState('');
     const [vatEnabled, setVatEnabled] = useState(false);
     const [deposit, setDeposit] = useState('');
-    const [depositReceiverId, setDepositReceiverId] = useState('');
+    const [depositReceiverId, setDepositReceiverId] = useState(() => state.currentUser?.id || '');
     const [depositStatus, setDepositStatus] = useState('confirmed');
     
     const currency = state.storeSettings.currency || '$';
@@ -270,7 +270,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         setGlobalDiscountType('Percentage');
         setOriginalAddressObj({});
         setDeposit('');
-        setDepositReceiverId('');
+        // Default receiver to the currently logged-in user when creating a new order
+        setDepositReceiverId(state.currentUser?.id || '');
         setDepositStatus('confirmed');
         setCustomerId(null);
         setCouponCode('');
@@ -308,7 +309,9 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     setGovernorate(order.governorate || '');
                     setShippingFee(order.shipping_fee || '');
                     setDeposit(order.deposit || '');
-                    setDepositReceiverId(order.depositReceiverId || '');
+                    // In edit mode: restore the saved receiver (could be another admin)
+                    // If none was saved, fall back to current user as a safe default
+                    setDepositReceiverId(order.depositReceiverId || state.currentUser?.id || '');
                     setDepositStatus(order.depositStatus || 'confirmed');
 
                     const { city, district } = resolveBostaCityAndDistrict(order.governorate, parsed.bostaCityCode, parsed.bostaDistrictId, parsed.bostaDistrictName);
@@ -543,9 +546,9 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const orderDiscountAmount = couponDisc + globalDisc;
     const discountedProductsTotal = totalProductsSubtotal - orderDiscountAmount;
     
-    const vatAmount = vatEnabled ? (discountedProductsTotal * 0.14) : 0;
-    const finalOrderTotal = discountedProductsTotal + vatAmount + shippingFeeVal;
-    const remainingToCollect = finalOrderTotal - depositVal;
+    const vatAmount = vatEnabled ? Math.round(discountedProductsTotal * 0.14 * 100) / 100 : 0;
+    const finalOrderTotal = Math.round((discountedProductsTotal + vatAmount + shippingFeeVal) * 100) / 100;
+    const remainingToCollect = Math.round((finalOrderTotal - depositVal) * 100) / 100;
 
     // Get top 5 selling products based on orders
     const getPopularProducts = () => {
@@ -606,7 +609,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     };
 
     // Validations
-    const isStep1Valid = client.trim() !== '' && phone.trim().length === 11 && governorate !== '' && address.trim() !== '';
+    const isStep1Valid = client.trim() !== '' && phone.trim().length >= 8 && phone.trim().length <= 15 && governorate !== '' && address.trim() !== '';
     const isStep2Valid = items.length > 0 && items.every(item => item.variantSku !== '' && item.quantity > 0 && (item.maxStock || 0) > 0 && item.quantity <= (item.maxStock || 0));
     useEffect(() => {
         if (depositVal > 0 && !depositReceiverId && state.currentUser) {
@@ -633,8 +636,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
             setStep(1);
             return;
         }
-        if (!phone.trim() || phone.trim().length !== 11) {
-            showToast("يرجى إدخال رقم هاتف عميل مكون من 11 رقماً", "error");
+        if (!phone.trim() || phone.trim().length < 8 || phone.trim().length > 15) {
+            showToast("يرجى إدخال رقم هاتف عميل صحيح (من 8 إلى 15 رقماً)", "error");
             setStep(1);
             return;
         }
@@ -699,6 +702,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 globalDiscountType: globalDiscountType,
                 customerCode: customerCode,
                 appliedCoupon: couponValid ? couponCode : '',
+                syncWithBosta: syncWithBosta,
                 bostaCityCode: citySelected?.cityCode || null,
                 bostaCityName: citySelected?.cityName || citySelected?.cityOtherName || '',
                 bostaDistrictId: districtSelected?.districtId || null,
@@ -1504,8 +1508,9 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                 setDeposit(val);
                                                 const numericVal = parseFloat(val) || 0;
                                                 if (numericVal <= 0) {
-                                                    setDepositReceiverId('');
+                                                    // Keep the receiver selected but deposit is 0 — it won't be used
                                                 } else if (!depositReceiverId && state.currentUser) {
+                                                    // Auto-set to current user if nothing selected yet
                                                     setDepositReceiverId(state.currentUser.id);
                                                 }
                                             }
@@ -1513,7 +1518,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         placeholder="0.00"
                                     />
                                 </div>
-                                {deposit > 0 && (
+                                {parseFloat(deposit) > 0 && (
                                     <div className="form-group">
                                         <label className="form-label">الأدمن المستلم للعربون *</label>
                                         <select
@@ -1537,6 +1542,24 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                 </option>
                                             ))}
                                         </select>
+                                        {/* Warning: shown in edit mode when the logged-in user is set as receiver */}
+                                        {editOrderId && depositReceiverId === state.currentUser?.id && (
+                                            <div style={{
+                                                marginTop: '8px',
+                                                padding: '8px 12px',
+                                                borderRadius: '8px',
+                                                background: 'rgba(255, 165, 0, 0.12)',
+                                                border: '1px solid rgba(255, 165, 0, 0.4)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                fontSize: '12px',
+                                                color: '#ffb347'
+                                            }}>
+                                                <span>⚠️</span>
+                                                <span>المستلم محدد كـ <strong>أنت</strong> — تأكد أنك ستستلم العربون فعلاً، وإلا غيّر الاختيار.</span>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                                 <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '24px' }}>

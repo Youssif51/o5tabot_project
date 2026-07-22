@@ -98,10 +98,17 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
 
     const normalizePhoneNumber = (phoneStr) => {
         if (!phoneStr) return '';
-        let clean = phoneStr.replace(/\D/g, '');
-        if (clean.startsWith('20') && clean.length > 10) {
+        const trimmed = phoneStr.trim();
+        let clean = trimmed.replace(/\D/g, '');
+        // If international number starting with non-Egyptian prefix (+ or 966/971 etc and not 20), preserve format
+        if (trimmed.startsWith('+') && !clean.startsWith('20')) {
+            return '+' + clean;
+        }
+        if (clean.startsWith('201') && clean.length === 12) {
+            return '0' + clean.substring(2);
+        } else if (clean.startsWith('20') && clean.length > 10) {
             clean = clean.substring(2);
-        } else if (clean.startsWith('2') && clean.length > 10) {
+        } else if (clean.startsWith('2') && clean.length > 10 && (clean.startsWith('210') || clean.startsWith('211') || clean.startsWith('212') || clean.startsWith('215'))) {
             clean = clean.substring(1);
         }
         if (clean.length === 10 && (clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15'))) {
@@ -110,7 +117,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         if (!clean.startsWith('0') && clean.length === 10) {
             clean = '0' + clean;
         }
-        return clean;
+        return clean || trimmed;
     };
 
     // Helper to get the display badge text and class for an order
@@ -761,7 +768,11 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                             </span>
                                                         </div>
                                                     ) : (
-                                                        remaining > 0 ? `${currency} ${remaining.toLocaleString('en-US', {maximumFractionDigits: 2})}` : 'خالص'
+                                                        ord.status === 'Cancelled' ? (
+                                                            <span style={{ color: 'var(--text-muted)', fontWeight: 500 }}>ملغي</span>
+                                                        ) : (
+                                                            remaining > 0 ? `${currency} ${remaining.toLocaleString('en-US', {maximumFractionDigits: 2})}` : 'خالص'
+                                                        )
                                                     )}
                                                 </td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', color: 'var(--text-primary)', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>{ord.createdBy || 'الآدمن'}</td>
@@ -865,6 +876,11 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                                     updateOrderStatus(ord.id, st);
                                                                                     setActiveDropdownOrderId(null);
                                                                                     showToast("تم تحديث حالة الطلب بنجاح", "success");
+                                                                                    if (bostaTrackingNumber) {
+                                                                                        setTimeout(() => {
+                                                                                            syncBostaStatus(ord.id, bostaTrackingNumber);
+                                                                                        }, 2000);
+                                                                                    }
                                                                                 }}
                                                                                 style={{
                                                                                     padding: '8px 10px',
@@ -1000,6 +1016,8 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
                                                                     {(() => {
                                                                         const productsSubtotal = (ord.items || []).reduce((sum, item) => sum + (item.quantity * item.price), 0);
+                                                                        const receiverAdmin = (state.users || []).find(u => u.id === ord.depositReceiverId);
+                                                                        const depositLabel = receiverAdmin ? `العربون المدفوع (${receiverAdmin.name})` : 'العربون المدفوع (Deposit)';
                                                                         return (
                                                                             <>
                                                                                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -1011,12 +1029,12 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                                     <span>+{currency} {(ord.shipping_fee || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                                 </div>
                                                                                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
-                                                                                    <span>العربون المدفوع (Deposit):</span>
+                                                                                    <span>{depositLabel}:</span>
                                                                                     <span>-{currency} {(ord.deposit || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                                 </div>
-                                                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: 'var(--gold-primary)', borderTop: '1px dashed var(--glass-border-hover)', paddingTop: '8px', marginTop: '4px', fontSize: '13px' }}>
+                                                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: ord.status === 'Cancelled' ? 'var(--text-muted)' : 'var(--gold-primary)', borderTop: '1px dashed var(--glass-border-hover)', paddingTop: '8px', marginTop: '4px', fontSize: '13px' }}>
                                                                                     <span>المتبقي للتحصيل:</span>
-                                                                                    <span>{currency} {remaining > 0 ? remaining.toLocaleString('en-US', {maximumFractionDigits: 2}) : '0.00'}</span>
+                                                                                    <span>{ord.status === 'Cancelled' ? 'ملغي' : `${currency} ${remaining > 0 ? remaining.toLocaleString('en-US', {maximumFractionDigits: 2}) : '0.00'}`}</span>
                                                                                 </div>
                                                                             </>
                                                                         );

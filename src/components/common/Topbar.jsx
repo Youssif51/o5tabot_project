@@ -54,8 +54,23 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
         (parseFloat(o.deposit) || 0) > 0
     );
 
+    // 3b. Cancelled orders where this admin still needs to return the deposit
+    const pendingMyRefunds = (state.orders || []).filter(o =>
+        o.depositReceiverId === state.currentUser?.id &&
+        o.status === 'Cancelled' &&
+        (parseFloat(o.deposit) || 0) > 0 &&
+        o.depositRefundStatus === 'awaiting_return'
+    );
+
     // 4. Combine notifications
     const notificationsList = [
+        ...pendingMyRefunds.map(o => ({
+            id: `refund-${o.id}`,
+            type: 'refund',
+            title: '⚠️ إعادة عربون مطلوبة',
+            text: `الطلب #${o.id} للعميل ${o.client} تم إلغاؤه — أعد عربون ${o.deposit} ${state.storeSettings?.currency || 'EGP'} وأكد بسكرين شوت`,
+            targetView: 'depositConfirm'
+        })),
         ...pendingMyDeposits.map(o => ({
             id: `deposit-${o.id}`,
             type: 'deposit',

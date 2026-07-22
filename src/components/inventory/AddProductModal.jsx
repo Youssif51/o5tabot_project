@@ -23,10 +23,18 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
     const [category, setCategory] = useState('Electronics');
     const [unit, setUnit] = useState('Piece');
     const [images, setImages] = useState([]);
+    const [imageUrlInput, setImageUrlInput] = useState('');
     const [vendor, setVendor] = useState('');
     const [tags, setTags] = useState('');
     const [description, setDescription] = useState('');
     const [status, setStatus] = useState('active');
+
+    const handleAddImageLink = () => {
+        if (imageUrlInput.trim()) {
+            setImages(prev => [...prev, imageUrlInput.trim()]);
+            setImageUrlInput('');
+        }
+    };
     
     // Dynamic category addition states
     const [showNewCategoryInput, setShowNewCategoryInput] = useState(false);
@@ -377,6 +385,40 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                         >
                             <i className="fa-solid fa-plus" style={{ fontSize: '24px', color: 'var(--text-muted)' }}></i>
                         </div>
+                    </div>
+
+                    {/* Image URL Link Input */}
+                    <div style={{ display: 'flex', gap: '10px', width: '100%', maxWidth: '480px', margin: '0 auto 20px auto' }}>
+                        <input 
+                            type="text" 
+                            className="form-input" 
+                            value={imageUrlInput}
+                            onChange={(e) => setImageUrlInput(e.target.value)}
+                            placeholder="أو الصق رابط الصورة المباشر هنا..."
+                            style={{ flex: 1, height: '38px' }}
+                        />
+                        <button 
+                            type="button" 
+                            className="btn btn-secondary"
+                            onClick={handleAddImageLink}
+                            style={{ 
+                                height: '38px', 
+                                whiteSpace: 'nowrap',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                padding: '0 16px',
+                                border: '1px solid var(--gold-primary, #d4af37)',
+                                background: 'transparent',
+                                color: 'var(--gold-primary, #d4af37)',
+                                borderRadius: '6px',
+                                cursor: 'pointer',
+                                fontWeight: '600',
+                                fontSize: '13px'
+                            }}
+                        >
+                            إضافة رابط
+                        </button>
                     </div>
                 </div>
 

@@ -225,6 +225,18 @@ Deno.serve(async (req) => {
       address: JSON.stringify(addressObj),
       status: newStatus
     };
+
+    // Flag deposit refund needed if order was cancelled with a collected deposit
+    if (
+      newStatus === 'Cancelled' &&
+      order &&
+      (parseFloat(order.deposit) || 0) > 0 &&
+      order.deposit_receiver_id &&
+      (order.deposit_status === 'confirmed' || order.deposit_status === 'received' || order.deposit_status === 'pending')
+    ) {
+      dbUpdate.deposit_refund_status = 'awaiting_return';
+    }
+
     await supabase
       .from('orders')
       .update(dbUpdate)

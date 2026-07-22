@@ -1,4 +1,4 @@
-import { formatProductDisplayName } from '../../utils/productUtils';
+import { formatProductDisplayName, deduplicateProductName } from '../../utils/productUtils';
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
@@ -111,7 +111,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                         <i className="fa-solid fa-arrow-left"></i>
                     </button>
                     <div>
-                        <h2 style={{ margin: 0 }}>{product.name}</h2>
+                        <h2 style={{ margin: 0 }}>{deduplicateProductName(product.name)}</h2>
                     </div>
                 </div>
 
@@ -163,7 +163,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr' }}>
                                     <span style={{ color: 'var(--text-secondary)' }}>{t('productName')}</span>
-                                    <span style={{ color: '#fff', fontWeight: 500 }}>{product.name}</span>
+                                    <span style={{ color: '#fff', fontWeight: 500 }}>{deduplicateProductName(product.name)}</span>
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr' }}>
                                     <span style={{ color: 'var(--text-secondary)' }}>{t('productId')}</span>
@@ -776,7 +776,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                 {state.storeSettings.name || 'o5taboad store'}
                             </div>
                             <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {product.name}
+                                {deduplicateProductName(product.name)}
                             </div>
 
                             {/* CSS Barcode Lines Simulator */}

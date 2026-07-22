@@ -18,6 +18,14 @@ export default function Sidebar() {
         o.depositStatus === 'pending' &&
         (parseFloat(o.deposit) || 0) > 0
     ).length;
+    // Cancelled orders where this admin still needs to confirm deposit return
+    const pendingRefundCount = (state.orders || []).filter(o =>
+        o.depositReceiverId === state.currentUser?.id &&
+        o.status === 'Cancelled' &&
+        (parseFloat(o.deposit) || 0) > 0 &&
+        o.depositRefundStatus === 'awaiting_return'
+    ).length;
+    const totalDepositAlerts = pendingDepositCount + pendingRefundCount;
 
     const navItems = [
         { id: 'dashboard', name: t('dashboard'), icon: 'Home.png', perm: 'view_dashboard' },
@@ -88,9 +96,9 @@ export default function Sidebar() {
                                     {pendingShopifyCount}
                                 </span>
                             )}
-                            {item.id === 'depositConfirm' && pendingDepositCount > 0 && (
+                            {item.id === 'depositConfirm' && totalDepositAlerts > 0 && (
                                 <span style={{
-                                    background: '#ef4444',
+                                    background: pendingRefundCount > 0 ? '#ef4444' : '#ef4444',
                                     color: '#fff',
                                     fontSize: '10px',
                                     fontWeight: 'bold',
@@ -100,11 +108,14 @@ export default function Sidebar() {
                                     display: 'inline-flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    boxShadow: '0 0 10px rgba(239,68,68,0.4)',
+                                    boxShadow: pendingRefundCount > 0
+                                        ? '0 0 12px rgba(239,68,68,0.7)'
+                                        : '0 0 10px rgba(239,68,68,0.4)',
                                     height: '18px',
-                                    minWidth: '18px'
+                                    minWidth: '18px',
+                                    animation: pendingRefundCount > 0 ? 'pulse 1.5s infinite' : 'none'
                                 }}>
-                                    {pendingDepositCount}
+                                    {totalDepositAlerts}
                                 </span>
                             )}
                         </a>

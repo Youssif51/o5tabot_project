@@ -140,6 +140,14 @@ export const AppProvider = ({ children }) => {
                         parsedImageStr = p.image;
                     }
 
+                    let cleanDescription = p.description || '';
+                    if (cleanDescription) {
+                        cleanDescription = cleanDescription
+                            .replace(/(?:<br\s*\/?>)*\s*<strong>Vendor:<\/strong>[\s\S]*$/i, '')
+                            .replace(/(?:<br\s*\/?>)*\s*Vendor:\s*[^\n<]*\s*Tags:[^\n<]*/gi, '')
+                            .trim();
+                    }
+
                     return {
                         id: p.id,
                         name: p.name,
@@ -151,7 +159,7 @@ export const AppProvider = ({ children }) => {
                         tags: parsedTags,
                         createdDate: p.created_date,
                         createdBy: p.created_by,
-                        description: p.description,
+                        description: cleanDescription,
                         shopify_id: p.shopify_id || null,
                         shopifyCollectionIds: p.shopify_collection_ids || [],
                         status: parsedStatus,
@@ -189,6 +197,8 @@ export const AppProvider = ({ children }) => {
                         deposit: parseFloat(o.deposit) || 0,
                         depositReceiverId: o.deposit_receiver_id || null,
                         depositStatus: o.deposit_status || 'confirmed',
+                        depositRefundStatus: o.deposit_refund_status || null,
+                        depositRefundScreenshot: o.deposit_refund_screenshot || o.deposit_refund_proof_url || null,
                         shipping_fee: parseFloat(o.shipping_fee) || 0,
                         createdBy: o.created_by,
                         shopifyOrderId: o.shopify_order_id || null,
@@ -430,6 +440,8 @@ export const AppProvider = ({ children }) => {
                             deposit: parseFloat(newOrder.deposit) || 0,
                             depositReceiverId: newOrder.deposit_receiver_id || null,
                             depositStatus: newOrder.deposit_status || 'confirmed',
+                            depositRefundStatus: newOrder.deposit_refund_status || null,
+                            depositRefundScreenshot: newOrder.deposit_refund_screenshot || null,
                             shipping_fee: parseFloat(newOrder.shipping_fee) || 0,
                             createdBy: newOrder.created_by,
                             shopifyOrderId: newOrder.shopify_order_id || null,
@@ -444,8 +456,17 @@ export const AppProvider = ({ children }) => {
                         setState(curr => {
                             const exists = curr.orders.some(o => o.id === enrichedOrder.id);
                             if (exists) {
-                                console.log(`Order ${enrichedOrder.id} already exists in local state. Skipping add.`);
-                                return curr;
+                                // Order already in local state (manually created). 
+                                // Still sync address and customer_id from realtime payload.
+                                console.log(`Order ${enrichedOrder.id} already in state. Syncing address/customer_id from realtime.`);
+                                return {
+                                    ...curr,
+                                    orders: curr.orders.map(o => o.id === enrichedOrder.id ? {
+                                        ...o,
+                                        address: enrichedOrder.address || o.address,
+                                        customer_id: enrichedOrder.customer_id || o.customer_id
+                                    } : o)
+                                };
                             }
                             added = true;
                             return {
@@ -495,11 +516,15 @@ export const AppProvider = ({ children }) => {
                         const existing = prev.orders.find(o => o.id === updatedOrder.id);
                         if (!existing) return prev;
 
+                        const isDowngrade = (existing.status !== 'Pending' && updatedOrder.status === 'Pending');
+                        const newStatus = isDowngrade ? existing.status : updatedOrder.status;
+
                         return {
                             ...prev,
                             orders: prev.orders.map(o => o.id === updatedOrder.id ? {
                                 ...o,
-                                status: updatedOrder.status,
+                                status: newStatus,
+                                address: updatedOrder.address || o.address,
                                 deposit: parseFloat(updatedOrder.deposit) || 0,
                                 depositReceiverId: updatedOrder.deposit_receiver_id || null,
                                 depositStatus: updatedOrder.deposit_status || 'confirmed'
@@ -1085,11 +1110,31 @@ export const AppProvider = ({ children }) => {
         if (supabase) {
             (async () => {
                 try {
+                    let finalImageStr = updatedProduct.image;
+                    try {
+                        let baseImages = updatedProduct.images || [];
+                        if ((!baseImages || baseImages.length === 0) && updatedProduct.image) {
+                            if (updatedProduct.image.startsWith('[')) {
+                                baseImages = JSON.parse(updatedProduct.image);
+                            } else {
+                                baseImages = [updatedProduct.image];
+                            }
+                        }
+                        finalImageStr = JSON.stringify({
+                            images: baseImages,
+                            vendor: updatedProduct.vendor || '',
+                            tags: updatedProduct.tags || '',
+                            status: updatedProduct.status || 'Active'
+                        });
+                    } catch(e) {
+                        finalImageStr = updatedProduct.image;
+                    }
+
                     await supabase.from('products').update({
                         name: updatedProduct.name,
                         category: updatedProduct.category,
                         unit: updatedProduct.unit,
-                        image: updatedProduct.image,
+                        image: finalImageStr,
                         description: updatedProduct.description,
                         shopify_collection_ids: updatedProduct.shopifyCollectionIds || []
                     }).eq('id', updatedProduct.id);
@@ -1114,8 +1159,18 @@ export const AppProvider = ({ children }) => {
                     if (updatedProduct.shopify_id) {
                         try {
                             console.log("Syncing update to Shopify...");
+                            let baseImages = updatedProduct.images || [];
+                            if ((!baseImages || baseImages.length === 0) && updatedProduct.image) {
+                                try {
+                                    if (updatedProduct.image.startsWith('[')) baseImages = JSON.parse(updatedProduct.image);
+                                    else if (updatedProduct.image.startsWith('{')) baseImages = JSON.parse(updatedProduct.image).images || [];
+                                    else baseImages = [updatedProduct.image];
+                                } catch {}
+                            }
+
                             const shopifyUpdatePayload = {
                                 ...updatedProduct,
+                                images: baseImages,
                                 action: 'update',
                                 collection_ids: updatedProduct.shopifyCollectionIds || []
                             };
@@ -1127,23 +1182,42 @@ export const AppProvider = ({ children }) => {
                                 console.error("Failed to sync update to Shopify:", shopifyError);
                             } else {
                                 console.log("Shopify update success:", shopifyData);
-                                if (shopifyData?.variants_map) {
-                                    setState(prevState => {
-                                        const updatedProducts = prevState.products.map(p => {
-                                            if (p.id === updatedProduct.id) {
-                                                const updatedVariants = p.variants.map(v => {
-                                                    const vMap = shopifyData.variants_map?.find(m => m.sku === v.sku);
-                                                    return vMap ? { ...v, shopify_id: String(vMap.id) } : v;
-                                                });
-                                                return { ...p, variants: updatedVariants };
-                                            }
-                                            return p;
-                                        });
-                                        return { ...prevState, products: updatedProducts };
+                                
+                                const finalShopifyImages = shopifyData?.images || [];
+                                
+                                setState(prevState => {
+                                    const updatedProducts = prevState.products.map(p => {
+                                        if (p.id === updatedProduct.id) {
+                                            const updatedVariants = p.variants.map(v => {
+                                                const vMap = shopifyData.variants_map?.find(m => m.sku === v.sku);
+                                                return vMap ? { ...v, shopify_id: String(vMap.id) } : v;
+                                            });
+                                            return { 
+                                                ...p, 
+                                                variants: updatedVariants,
+                                                images: finalShopifyImages.length > 0 ? finalShopifyImages : p.images,
+                                                image: finalShopifyImages.length > 0 ? JSON.stringify(finalShopifyImages) : p.image
+                                            };
+                                        }
+                                        return p;
                                     });
+                                    return { ...prevState, products: updatedProducts };
+                                });
+
+                                if (shopifyData?.variants_map) {
                                     for (const vMap of shopifyData.variants_map) {
                                         await supabase.from('product_variants').update({ shopify_id: String(vMap.id) }).eq('product_id', updatedProduct.id).eq('sku', vMap.sku);
                                     }
+                                }
+
+                                if (finalShopifyImages.length > 0) {
+                                    const freshImageStr = JSON.stringify({
+                                        images: finalShopifyImages,
+                                        vendor: updatedProduct.vendor || '',
+                                        tags: updatedProduct.tags || '',
+                                        status: updatedProduct.status || 'Active'
+                                    });
+                                    await supabase.from('products').update({ image: freshImageStr }).eq('id', updatedProduct.id);
                                 }
                             }
                         } catch (err) {
@@ -1290,6 +1364,8 @@ export const AppProvider = ({ children }) => {
         }
     };
 
+    const isDeductedStatus = (st) => st && st !== 'Draft' && st !== 'Cancelled';
+
     // Orders CRUD Actions
     const addOrder = async (order) => {
         const enrichedItems = order.items.map(item => {
@@ -1305,7 +1381,7 @@ export const AppProvider = ({ children }) => {
 
         setState(prev => {
             let products = [...prev.products];
-            if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered" || enrichedOrder.status === "Shipped") {
+            if (isDeductedStatus(enrichedOrder.status)) {
                 enrichedOrder.items.forEach(item => {
                     products = products.map(p => {
                         const hasVar = p.variants.some(v => v.sku === item.variantSku);
@@ -1335,7 +1411,7 @@ export const AppProvider = ({ children }) => {
             }
 
             let newLedger = prev.stockLedger || [];
-            if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered" || enrichedOrder.status === "Shipped") {
+            if (isDeductedStatus(enrichedOrder.status)) {
                 enrichedOrder.items.forEach(item => {
                     const prod = products.find(p => p.variants.some(v => v.sku === item.variantSku));
                     if (prod) {
@@ -1411,7 +1487,7 @@ export const AppProvider = ({ children }) => {
                         await supabase.from('order_items').insert(items);
                     }
 
-                    if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered" || enrichedOrder.status === "Shipped") {
+                    if (isDeductedStatus(enrichedOrder.status)) {
                         for (const item of enrichedOrder.items) {
                             const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id').eq('sku', item.variantSku).single();
                             if (vData) {
@@ -1447,6 +1523,8 @@ export const AppProvider = ({ children }) => {
             addressObj = order.address ? JSON.parse(order.address) : null;
         } catch(e) {}
 
+        let updatedAddressStr = newAddress ? (typeof newAddress === 'string' ? newAddress : JSON.stringify(newAddress)) : order.address;
+
         if (newStatus === 'Cancelled' && addressObj && addressObj.bostaDeliveryId) {
             if (addressObj.bostaStateCode === 45 || addressObj.bostaStateName?.includes("توصيل") || addressObj.bostaStateName?.includes("Delivered")) {
                 showAlert("لا يمكن إلغاء الأوردر آلياً لأنه قيد التوصيل (Out for Delivery). يرجى التواصل مع خدمة عملاء بوسطة.", "error");
@@ -1468,6 +1546,9 @@ export const AppProvider = ({ children }) => {
                     showAlert(`فشل إلغاء الشحنة في بوسطة: ${resData.error || res.statusText}`, "error");
                     return;
                 }
+                addressObj.bostaStateName = "Cancelled";
+                addressObj.bostaStateCode = 49;
+                updatedAddressStr = JSON.stringify(addressObj);
                 showToast("تم إلغاء الشحنة في بوسطة بنجاح", "success");
             } catch (e) {
                 showAlert("حدث خطأ أثناء التواصل مع بوسطة لإلغاء الشحنة.", "error");
@@ -1488,8 +1569,8 @@ export const AppProvider = ({ children }) => {
             orderTotal = order.totalValue;
             customerId = order.customer_id;
             
-            const wasDeducted = oldStatus === "Completed" || oldStatus === "Partially Delivered" || oldStatus === "Shipped";
-            const isDeducted = newStatus === "Completed" || newStatus === "Partially Delivered" || newStatus === "Shipped";
+            const wasDeducted = isDeductedStatus(oldStatus);
+            const isDeducted = isDeductedStatus(newStatus);
             
             if (!wasDeducted && isDeducted) {
                 order.items.forEach(item => {
@@ -1578,9 +1659,19 @@ export const AppProvider = ({ children }) => {
                 stockLedger: newLedger,
                 orders: prev.orders.map(o => {
                     if (o.id === orderId) {
-                        const updatedOrder = { ...o, status: newStatus };
-                        if (newAddress) {
-                            updatedOrder.address = typeof newAddress === 'string' ? newAddress : JSON.stringify(newAddress);
+                        const updatedOrder = { 
+                            ...o, 
+                            status: newStatus,
+                            address: updatedAddressStr
+                        };
+                        // Flag deposit refund needed if order was cancelled with a collected deposit
+                        if (
+                            newStatus === 'Cancelled' &&
+                            parseFloat(o.deposit) > 0 &&
+                            o.depositReceiverId &&
+                            (o.depositStatus === 'confirmed' || o.depositStatus === 'received')
+                        ) {
+                            updatedOrder.depositRefundStatus = 'awaiting_return';
                         }
                         return updatedOrder;
                     }
@@ -1602,15 +1693,29 @@ export const AppProvider = ({ children }) => {
         if (supabase) {
             (async () => {
                 try {
-                    const dbUpdate = { status: newStatus };
+                    const dbUpdate = { 
+                        status: newStatus,
+                        address: updatedAddressStr
+                    };
+                    // Flag deposit refund needed if order was cancelled with a collected deposit
+                    const curOrder = (state.orders || []).find(o => o.id === orderId);
+                    if (
+                        newStatus === 'Cancelled' &&
+                        curOrder &&
+                        parseFloat(curOrder.deposit) > 0 &&
+                        curOrder.depositReceiverId &&
+                        (curOrder.depositStatus === 'confirmed' || curOrder.depositStatus === 'received')
+                    ) {
+                        dbUpdate.deposit_refund_status = 'awaiting_return';
+                    }
                     await supabase.from('orders').update(dbUpdate).eq('id', orderId);
                     
                     const { data: order } = await supabase.from('orders').select('*').eq('id', orderId).single();
                     const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId);
                     
                     if (order && items && items.length > 0) {
-                        const wasDeducted = oldStatus === "Completed" || oldStatus === "Partially Delivered" || oldStatus === "Shipped";
-                        const isDeducted = newStatus === "Completed" || newStatus === "Partially Delivered" || newStatus === "Shipped";
+                        const wasDeducted = isDeductedStatus(oldStatus);
+                        const isDeducted = isDeductedStatus(newStatus);
                         
                         if (!wasDeducted && isDeducted) {
                             for (const item of items) {
@@ -1667,18 +1772,47 @@ export const AppProvider = ({ children }) => {
         let orderTotal = 0;
         let customerId = null;
         let status = null;
+        let deletedOrderItems = [];
+        let orderWarehouse = 'Sulur';
         
         setState(prev => {
             const order = prev.orders.find(o => o.id === orderId);
-            if(order) {
+            let products = [...prev.products];
+            if (order) {
                 orderTotal = order.totalValue;
                 customerId = order.customer_id;
                 status = order.status;
+                deletedOrderItems = order.items || [];
+                orderWarehouse = order.warehouse || 'Sulur';
+
+                if (isDeductedStatus(status)) {
+                    deletedOrderItems.forEach(item => {
+                        products = products.map(p => {
+                            const hasVar = p.variants.some(v => v.sku === item.variantSku);
+                            if (hasVar) {
+                                return {
+                                    ...p,
+                                    variants: p.variants.map(v => {
+                                        if (v.sku === item.variantSku) {
+                                            const stock = { ...v.stock };
+                                            const wh = orderWarehouse;
+                                            stock[wh] = (stock[wh] || 0) + item.quantity;
+                                            return { ...v, stock };
+                                        }
+                                        return v;
+                                    })
+                                };
+                            }
+                            return p;
+                        });
+                    });
+                }
             }
             return {
                 ...prev,
+                products,
                 orders: prev.orders.filter(o => o.id !== orderId)
-            }
+            };
         });
 
         // Trigger customer stats update if deleting a completed order
@@ -1692,9 +1826,29 @@ export const AppProvider = ({ children }) => {
         if (supabase) {
             (async () => {
                 try {
+                    if (isDeductedStatus(status) && deletedOrderItems.length > 0) {
+                        for (const item of deletedOrderItems) {
+                            const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id').eq('sku', item.variantSku).single();
+                            if (vData) {
+                                const newStock = vData.stock_sulur + item.quantity;
+                                await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', item.variantSku);
+                                syncVariantStockToShopify(item.variantSku);
+                                
+                                await supabase.from('stock_ledger').insert([{
+                                    date: new Date().toISOString(),
+                                    product_id: vData.product_id,
+                                    variant_sku: item.variantSku,
+                                    warehouse: orderWarehouse,
+                                    type: 'Return',
+                                    quantity: item.quantity,
+                                    balance_after: newStock
+                                }]);
+                            }
+                        }
+                    }
                     await supabase.from('orders').delete().eq('id', orderId);
                 } catch (e) {
-                    console.error("Supabase Error:", e);
+                    console.error("Supabase Error during order deletion:", e);
                 }
             })();
         }
@@ -1724,7 +1878,7 @@ export const AppProvider = ({ children }) => {
             let products = [...prev.products];
 
             // Revert old stock changes if deducted
-            const oldDeducted = oldOrder.status === "Completed" || oldOrder.status === "Partially Delivered" || oldOrder.status === "Shipped";
+            const oldDeducted = isDeductedStatus(oldOrder.status);
             if (oldDeducted) {
                 oldOrder.items.forEach(item => {
                     products = products.map(p => {
@@ -1749,7 +1903,7 @@ export const AppProvider = ({ children }) => {
             }
 
             // Deduct new stock changes if new status is deducted
-            const newDeducted = enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered" || enrichedOrder.status === "Shipped";
+            const newDeducted = isDeductedStatus(enrichedOrder.status);
             if (newDeducted) {
                 enrichedOrder.items.forEach(item => {
                     products = products.map(p => {
@@ -1775,7 +1929,7 @@ export const AppProvider = ({ children }) => {
 
             // Clean up ledger and generate new ledger entries
             let newLedger = (prev.stockLedger || []).filter(entry => entry.productId !== (oldOrder ? oldOrder.id : ''));
-            if (enrichedOrder.status === "Completed" || enrichedOrder.status === "Partially Delivered" || enrichedOrder.status === "Shipped") {
+            if (isDeductedStatus(enrichedOrder.status)) {
                 enrichedOrder.items.forEach(item => {
                     const prod = products.find(p => p.variants.some(v => v.sku === item.variantSku));
                     if (prod) {
@@ -2563,11 +2717,14 @@ export const AppProvider = ({ children }) => {
                 deposit_status: depositStatus
             }).eq('id', orderId);
 
-            // Update local state first
+            // Update local state first (deposit + address + status) immediately to avoid any race condition
+            // where Realtime events could flash 'Pending' status on the UI.
             setState(prev => ({
                 ...prev,
                 orders: (prev.orders || []).map(o => o.id === orderId ? {
                     ...o,
+                    status: 'Shipped',
+                    address: data.updatedAddress || o.address,
                     deposit: depositAmount,
                     depositReceiverId: depositReceiverId,
                     depositStatus: depositStatus
@@ -2575,7 +2732,7 @@ export const AppProvider = ({ children }) => {
             }));
 
             // The Edge Function has already updated the order address with Bosta tracking code in DB.
-            // Now, we update status to 'Completed' locally and in DB, which deducts stock and records WAC.
+            // Now, we update status to 'Shipped' in DB, which deducts stock and records WAC.
             updateOrderStatus(orderId, 'Shipped', data.updatedAddress);
             
             showToast(
@@ -2606,27 +2763,41 @@ export const AppProvider = ({ children }) => {
 
                 if (status === 'confirmed') {
                     const { data: orderDb } = await supabase.from('orders').select('*').eq('id', orderId).single();
-                    if (orderDb && orderDb.status === 'Pending') {
-                        try {
-                            const addrObj = orderDb.address ? JSON.parse(orderDb.address) : {};
-                            if (addrObj && addrObj.bostaCityCode) {
-                                const bostaMetadata = {
-                                    customerName: orderDb.client,
-                                    customerPhone: addrObj.phone || '',
-                                    customerSecondPhone: addrObj.secondPhone || '',
-                                    customerAddress: addrObj.detailAddress || orderDb.address || '',
-                                    governorate: orderDb.governorate || '',
-                                    bostaCityCode: addrObj.bostaCityCode,
-                                    bostaCityName: addrObj.bostaCityName,
-                                    bostaDistrictId: addrObj.bostaDistrictId,
-                                    bostaDistrictName: addrObj.bostaDistrictName,
-                                    bostaZoneId: addrObj.bostaZoneId,
-                                    allowToOpenPackage: addrObj.allowToOpenPackage || false
-                                };
-                                await approveOrderWithBosta(orderId, bostaMetadata, parseFloat(orderDb.deposit) || 0, orderDb.deposit_receiver_id, 'confirmed');
+                    if (orderDb) {
+                        if (orderDb.status.toLowerCase() === 'cancelled') {
+                            await supabase.from('orders').update({ deposit_refund_status: 'awaiting_return' }).eq('id', orderId);
+                            setState(prev => ({
+                                ...prev,
+                                orders: (prev.orders || []).map(o => o.id === orderId ? { ...o, depositStatus: 'confirmed', depositRefundStatus: 'awaiting_return' } : o)
+                            }));
+                            showToast("تم تأكيد الاستلام، وبما أن الطلب ملغى فلن يُرسل لشركة الشحن. يُرجى التوجه لقائمة المرتجعات لإرجاع العربون.", "info");
+                        } else if (orderDb.status === 'Pending') {
+                            try {
+                                const addrObj = orderDb.address ? JSON.parse(orderDb.address) : {};
+                                // Only auto-dispatch to Bosta if Bosta was enabled (syncWithBosta !== false) and city code exists
+                                if (addrObj && addrObj.bostaCityCode && addrObj.syncWithBosta !== false) {
+                                    const bostaMetadata = {
+                                        customerName: orderDb.client,
+                                        customerPhone: addrObj.phone || '',
+                                        customerSecondPhone: addrObj.secondPhone || '',
+                                        customerAddress: addrObj.detailAddress || orderDb.address || '',
+                                        governorate: orderDb.governorate || '',
+                                        bostaCityCode: addrObj.bostaCityCode,
+                                        bostaCityName: addrObj.bostaCityName,
+                                        bostaDistrictId: addrObj.bostaDistrictId,
+                                        bostaDistrictName: addrObj.bostaDistrictName,
+                                        bostaZoneId: addrObj.bostaZoneId,
+                                        allowToOpenPackage: addrObj.allowToOpenPackage || false
+                                    };
+                                    await approveOrderWithBosta(orderId, bostaMetadata, parseFloat(orderDb.deposit) || 0, orderDb.deposit_receiver_id, 'confirmed');
+                                } else {
+                                    // Bosta sync was OFF: approve order locally on system without dispatching to Bosta
+                                    updateOrderStatus(orderId, 'Completed');
+                                    showToast("تم تأكيد العربون واعتماد الطلب على السيستم بنجاح (بدون إرسال لبوسطة).", "success");
+                                }
+                            } catch (e) {
+                                console.error("Failed to process confirmed deposit order:", e);
                             }
-                        } catch (e) {
-                            console.error("Failed to auto-dispatch confirmed deposit order to Bosta:", e);
                         }
                     }
                 }
@@ -2634,6 +2805,151 @@ export const AppProvider = ({ children }) => {
                 console.error("Error updating deposit status:", err);
                 showToast("حدث خطأ أثناء تحديث حالة العربون", "error");
             }
+        }
+    };
+
+    // Helper to upload or encode screenshot proof safely with zero bucket crashes
+    const uploadScreenshotProof = async (file, orderId, prefix = '') => {
+        if (!file) return null;
+
+        // 1. Try uploading to candidate storage buckets if Supabase is connected
+        if (supabase && supabase.storage) {
+            const candidateBuckets = ['order-attachments', 'product-images', 'receipts', 'public', 'images', 'avatars'];
+            const ext = file.name ? file.name.split('.').pop() : 'png';
+            const filePath = `deposit-refunds/${orderId}${prefix ? '-' + prefix : ''}-${Date.now()}.${ext}`;
+
+            for (const bucketName of candidateBuckets) {
+                try {
+                    const { error: uploadErr } = await supabase.storage
+                        .from(bucketName)
+                        .upload(filePath, file, { upsert: true });
+
+                    if (!uploadErr) {
+                        const { data: urlData } = supabase.storage
+                            .from(bucketName)
+                            .getPublicUrl(filePath);
+                        if (urlData?.publicUrl) {
+                            return urlData.publicUrl;
+                        }
+                    }
+                } catch (bErr) {
+                    // Ignore and try next candidate bucket
+                }
+            }
+        }
+
+        // 2. Fallback: Convert file directly to Base64 Data URL (100% client-side, zero bucket required)
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(file);
+        });
+    };
+
+    // Confirm that a deposit was returned to the customer after order cancellation.
+    // Accepts a screenshot file or image as proof.
+    const confirmDepositRefund = async (orderId, screenshotFile) => {
+        if (!supabase) {
+            showToast('الاتصال بالسيرفر غير متاح.', 'error');
+            return false;
+        }
+        try {
+            showToast('جاري حِفظ الإثبات وتأكيد الإعادة...', 'info');
+            
+            let screenshotUrl = null;
+            if (screenshotFile) {
+                screenshotUrl = await uploadScreenshotProof(screenshotFile, orderId);
+            }
+
+            // Update local state immediately
+            setState(prev => ({
+                ...prev,
+                orders: (prev.orders || []).map(o => o.id === orderId ? {
+                    ...o,
+                    depositRefundStatus: 'returned',
+                    depositRefundScreenshot: screenshotUrl || o.depositRefundScreenshot
+                } : o)
+            }));
+
+            // Persist to DB
+            const updatePayload = {
+                deposit_refund_status: 'returned'
+            };
+            if (screenshotUrl) {
+                updatePayload.deposit_refund_screenshot = screenshotUrl;
+                updatePayload.deposit_refund_proof_url = screenshotUrl;
+            }
+
+            const { error: dbErr } = await supabase.from('orders').update(updatePayload).eq('id', orderId);
+            if (dbErr) {
+                // Retry with standard column if composite error
+                await supabase.from('orders').update({
+                    deposit_refund_status: 'returned',
+                    deposit_refund_proof_url: screenshotUrl
+                }).eq('id', orderId);
+            }
+
+            logActivity('order', `Deposit refund confirmed for cancelled order ${orderId} with screenshot proof.`);
+            showToast('تم تأكيد إعادة العربون بنجاح ✅', 'success');
+            return true;
+        } catch (err) {
+            console.error('confirmDepositRefund error:', err);
+            showToast(`حدث خطأ: ${err.message}`, 'error');
+            return false;
+        }
+    };
+
+    // Shortcut: Confirm deposit receipt AND refund return in one click (for orders cancelled while deposit was pending)
+    const confirmDepositAndRefund = async (orderId, screenshotFile) => {
+        if (!supabase) {
+            showToast('الاتصال بالسيرفر غير متاح.', 'error');
+            return false;
+        }
+        try {
+            showToast('جاري حِفظ الإثبات والتأكيد...', 'info');
+            
+            let screenshotUrl = null;
+            if (screenshotFile) {
+                screenshotUrl = await uploadScreenshotProof(screenshotFile, orderId, 'shortcut');
+            }
+
+            // Update local state immediately
+            setState(prev => ({
+                ...prev,
+                orders: (prev.orders || []).map(o => o.id === orderId ? {
+                    ...o,
+                    depositStatus: 'confirmed',
+                    depositRefundStatus: 'returned',
+                    depositRefundScreenshot: screenshotUrl || o.depositRefundScreenshot
+                } : o)
+            }));
+
+            // Persist to DB
+            const updatePayload = {
+                deposit_status: 'confirmed',
+                deposit_refund_status: 'returned'
+            };
+            if (screenshotUrl) {
+                updatePayload.deposit_refund_screenshot = screenshotUrl;
+                updatePayload.deposit_refund_proof_url = screenshotUrl;
+            }
+
+            const { error: dbErr } = await supabase.from('orders').update(updatePayload).eq('id', orderId);
+            if (dbErr) {
+                await supabase.from('orders').update({
+                    deposit_status: 'confirmed',
+                    deposit_refund_status: 'returned',
+                    deposit_refund_proof_url: screenshotUrl
+                }).eq('id', orderId);
+            }
+
+            logActivity('order', `Shortcut confirmed deposit receipt and refund return for cancelled order ${orderId}.`);
+            showToast('تم تأكيد استلام وإعادة العربون بنجاح ✅', 'success');
+            return true;
+        } catch (err) {
+            console.error('confirmDepositAndRefund error:', err);
+            showToast(`حدث خطأ: ${err.message}`, 'error');
         }
     };
 
@@ -2932,23 +3248,20 @@ export const AppProvider = ({ children }) => {
                         }
                         linkedProductsCount++;
                     } else {
-                        // Parse first image
+                        // Parse first image and strip query parameters like ?v=...
                         let imageUrl = '';
                         let imagesArray = [];
                         if (sp.images && sp.images.length > 0) {
-                            imageUrl = sp.images[0].src;
-                            imagesArray = sp.images.map(img => img.src);
+                            imageUrl = (sp.images[0].src || '').split('?')[0];
+                            imagesArray = sp.images.map(img => (img.src || '').split('?')[0]);
                         }
 
                         // Extract collections and tags
                         const tagsStr = sp.tags || '';
                         const tagsArray = tagsStr.split(',').map(t => t.trim()).filter(Boolean);
                         
-                        // Construct description
+                        // Construct description (pure body_html without appending Vendor/Tags text into description)
                         let finalDescription = sp.body_html || '';
-                        if (tagsArray.length > 0 || sp.vendor) {
-                            finalDescription += `<br/><br/><strong>Vendor:</strong> ${sp.vendor || 'N/A'}<br/><strong>Tags:</strong> ${tagsArray.join(', ')}`;
-                        }
 
                         // Insert Product
                         const newProductId = crypto.randomUUID();
@@ -3197,6 +3510,8 @@ export const AppProvider = ({ children }) => {
             deleteMultipleProducts,
             deleteProductsLocalOnly,
             updateDepositStatus,
+            confirmDepositRefund,
+            confirmDepositAndRefund,
             updateOrderProperties,
             settleAdminsCustody,
             addOrder,

@@ -1,6 +1,7 @@
 import React, { useContext, useState } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
+import { deduplicateProductName } from '../../utils/productUtils';
 import ProductInfo from './ProductInfo';
 
 export default function InventoryList({ 
@@ -418,7 +419,7 @@ export default function InventoryList({
                                                         style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--gold-primary)' }}
                                                         onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
                                                     >
-                                                        {prod.name}
+                                                        {deduplicateProductName(prod.name)}
                                                     </div>
                                                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
                                                         {(() => {
@@ -540,7 +541,7 @@ export default function InventoryList({
                                 ) : (
                                     state.stockLedger.map((entry, idx) => {
                                         const prod = state.products.find(p => p.id === entry.productId);
-                                        const prodName = prod ? prod.name : entry.productId;
+                                        const prodName = prod ? deduplicateProductName(prod.name) : entry.productId;
 
                                         let typeBadge = null;
                                         if (entry.type === "Sale") {

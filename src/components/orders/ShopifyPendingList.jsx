@@ -16,6 +16,7 @@ export default function ShopifyPendingList() {
     const [customDeposits, setCustomDeposits] = useState({}); // { [orderId]: string/number }
     const [allowToOpenMap, setAllowToOpenMap] = useState({}); // { [orderId]: boolean }
     const [depositReceivers, setDepositReceivers] = useState({}); // { [orderId]: string }
+    const [bostaSyncMap, setBostaSyncMap] = useState({}); // { [orderId]: boolean } (default true)
     
     // Dropdowns UI search states
     const [citySearch, setCitySearch] = useState({}); // { [orderId]: string }
@@ -179,10 +180,11 @@ export default function ShopifyPendingList() {
     const handleApprove = (e, ordId) => {
         e.stopPropagation();
         
+        const isBostaEnabled = bostaSyncMap[ordId] !== false; // default true
         const city = selectedCities[ordId];
         const district = selectedDistricts[ordId];
         
-        if (!city || !district) {
+        if (isBostaEnabled && (!city || !district)) {
             showToast('يرجى تحديد المحافظة والمنطقة لشركة بوسطة قبل الموافقة على الطلب', 'warning');
             return;
         }
@@ -201,58 +203,97 @@ export default function ShopifyPendingList() {
             depositStatus = 'pending';
         }
 
-        showConfirm(
-            depositStatus === 'pending'
+        const confirmMsg = !isBostaEnabled 
+            ? (depositStatus === 'pending' 
+                ? 'الشحن عبر بوسطة غير مفعّل. سيتم تسجيل الطلب معلقاً محلياً بانتظار تأكيد الأدمن لاستلام العربون، هل أنت متأكد؟'
+                : 'الشحن عبر بوسطة غير مفعّل. سيتم اعتماد الطلب وتسجيله على السيستم كـ Completed مباشرة دون إرساله لبوسطة، هل أنت متأكد؟')
+            : (depositStatus === 'pending'
                 ? 'العربون المستلم موجه لأدمن آخر. سيتم حفظ الطلب معلقاً محلياً بانتظار تأكيد الأدمن، هل أنت متأكد؟'
-                : 'هل أنت متأكد من الموافقة على هذا الطلب وتأكيده للخصم من المخزون؟',
+                : 'هل أنت متأكد من الموافقة على هذا الطلب وتأكيده للخصم من المخزون وإرساله لبوسطة؟');
+
+        showConfirm(
+            confirmMsg,
             async () => {
-                if (depositStatus === 'pending') {
+                const originalOrd = pendingOrders.find(o => o.id === ordId);
+                const updatedAddrObj = {
+                    ...(originalOrd?.address ? JSON.parse(originalOrd.address) : {}),
+                    syncWithBosta: isBostaEnabled,
+                    bostaCityCode: city?.cityCode || null,
+                    bostaCityName: city?.cityOtherName || '',
+                    bostaDistrictId: district?.districtId || null,
+                    bostaDistrictName: district?.districtOtherName || '',
+                    bostaZoneId: district?.zoneId || null
+                };
+                const addressStr = JSON.stringify(updatedAddrObj);
+
+                if (!isBostaEnabled) {
+                    // Bosta Sync is DISABLED by user
                     if (supabase) {
                         try {
-                            const originalOrd = pendingOrders.find(o => o.id === ordId);
-                            const updatedAddrObj = {
-                                ...(originalOrd?.address ? JSON.parse(originalOrd.address) : {}),
-                                bostaCityCode: city.cityCode,
-                                bostaCityName: city.cityOtherName,
-                                bostaDistrictId: district.districtId,
-                                bostaDistrictName: district.districtOtherName,
-                                bostaZoneId: district.zoneId
-                            };
-                            
-                            const addressStr = JSON.stringify(updatedAddrObj);
-
                             await supabase.from('orders').update({
                                 deposit: depositAmount,
                                 deposit_receiver_id: receiverId,
-                                deposit_status: 'pending',
-                                status: 'Pending',
+                                deposit_status: depositStatus,
+                                status: depositStatus === 'pending' ? 'Pending' : 'Completed',
                                 address: addressStr
                             }).eq('id', ordId);
-
-                            // Update local state properties
-                            updateOrderProperties(ordId, {
-                                deposit: depositAmount,
-                                depositReceiverId: receiverId,
-                                depositStatus: 'pending',
-                                status: 'Pending',
-                                address: addressStr
-                            });
-
-                            showToast('تم حفظ الطلب بنجاح وهو بانتظار تأكيد استلام العربون من الأدمن المختار قبل الشحن.', 'success');
                         } catch (err) {
-                            console.error('Error saving pending shopify order:', err);
-                            showToast('حدث خطأ أثناء حفظ الطلب', 'error');
+                            console.error('Error saving shopify order without Bosta:', err);
                         }
                     }
+
+                    updateOrderProperties(ordId, {
+                        deposit: depositAmount,
+                        depositReceiverId: receiverId,
+                        depositStatus: depositStatus,
+                        status: depositStatus === 'pending' ? 'Pending' : 'Completed',
+                        address: addressStr
+                    });
+
+                    if (depositStatus !== 'pending') {
+                        updateOrderStatus(ordId, 'Completed', addressStr);
+                    }
+
+                    showToast(depositStatus === 'pending' 
+                        ? 'تم حفظ الطلب محلياً بانتظار تأكيد العربون (بدون إرسال لبوسطة).' 
+                        : 'تم اعتماد الطلب وتسجيله على السيستم بنجاح (بدون إرسال لبوسطة).', 'success');
                 } else {
-                    approveOrderWithBosta(ordId, {
-                        bostaCityCode: city.cityCode,
-                        bostaCityName: city.cityOtherName,
-                        bostaDistrictId: district.districtId,
-                        bostaDistrictName: district.districtOtherName,
-                        bostaZoneId: district.zoneId,
-                        allowToOpenPackage: allowToOpen
-                    }, depositAmount, receiverId, depositStatus);
+                    // Bosta Sync is ENABLED
+                    if (depositStatus === 'pending') {
+                        if (supabase) {
+                            try {
+                                await supabase.from('orders').update({
+                                    deposit: depositAmount,
+                                    deposit_receiver_id: receiverId,
+                                    deposit_status: 'pending',
+                                    status: 'Pending',
+                                    address: addressStr
+                                }).eq('id', ordId);
+
+                                updateOrderProperties(ordId, {
+                                    deposit: depositAmount,
+                                    depositReceiverId: receiverId,
+                                    depositStatus: 'pending',
+                                    status: 'Pending',
+                                    address: addressStr
+                                });
+
+                                showToast('تم حفظ الطلب بنجاح وهو بانتظار تأكيد استلام العربون من الأدمن المختار قبل الشحن.', 'success');
+                            } catch (err) {
+                                console.error('Error saving pending shopify order:', err);
+                                showToast('حدث خطأ أثناء حفظ الطلب', 'error');
+                            }
+                        }
+                    } else {
+                        approveOrderWithBosta(ordId, {
+                            bostaCityCode: city.cityCode,
+                            bostaCityName: city.cityOtherName,
+                            bostaDistrictId: district.districtId,
+                            bostaDistrictName: district.districtOtherName,
+                            bostaZoneId: district.zoneId,
+                            allowToOpenPackage: allowToOpen
+                        }, depositAmount, receiverId, depositStatus);
+                    }
                 }
             }
         );
@@ -501,14 +542,6 @@ export default function ShopifyPendingList() {
                                                 <td style={{ padding: '14px 16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
                                                     <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
                                                         <button 
-                                                            className="btn btn-secondary"
-                                                            style={{ padding: '4px 8px', fontSize: '11px', background: 'var(--glass-bg-hover)', color: 'var(--text-primary)', borderColor: 'var(--glass-border-hover)' }}
-                                                            onClick={() => toggleRow(ord.id)}
-                                                        >
-                                                            <i className={`fa-solid ${isExpanded ? 'fa-eye-slash' : 'fa-eye'}`} style={{ marginLeft: '4px' }}></i>
-                                                            {isExpanded ? 'إخفاء' : 'عرض'}
-                                                        </button>
-                                                        <button 
                                                             className="btn"
                                                             disabled={!citySelected || !districtSelected}
                                                             style={{ 
@@ -547,13 +580,58 @@ export default function ShopifyPendingList() {
                                                         <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '20px', marginBottom: '20px' }}>
                                                             
                                                             {/* Bosta Address Matching Card */}
-                                                            <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: '2px solid rgba(150,191,72,0.15)', borderRadius: '8px' }}>
-                                                                <h4 style={{ fontSize: '13px', color: '#96bf48', marginBottom: '16px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                                    <i className="fa-solid fa-map-location-dot"></i>
-                                                                    <span>ربط العنوان بوليصة شحن بوسطة</span>
+                                                            <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: isBostaEnabled ? '2px solid rgba(150,191,72,0.15)' : '2px solid rgba(255,255,255,0.08)', borderRadius: '8px', opacity: isBostaEnabled ? 1 : 0.85 }}>
+                                                                <h4 style={{ fontSize: '13px', color: isBostaEnabled ? '#96bf48' : 'var(--text-muted)', marginBottom: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                        <i className="fa-solid fa-map-location-dot"></i>
+                                                                        <span>ربط العنوان بوليصة شحن بوسطة</span>
+                                                                    </span>
                                                                 </h4>
+
+                                                                {/* Bosta Sync Toggle Switch */}
+                                                                <div 
+                                                                    onClick={() => setBostaSyncMap(prev => ({ ...prev, [ord.id]: !isBostaEnabled }))}
+                                                                    style={{
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'space-between',
+                                                                        background: isBostaEnabled ? 'rgba(227, 0, 15, 0.08)' : 'rgba(255,255,255,0.04)',
+                                                                        border: isBostaEnabled ? '1px solid rgba(227, 0, 15, 0.3)' : '1px solid var(--glass-border)',
+                                                                        borderRadius: '6px',
+                                                                        padding: '8px 12px',
+                                                                        marginBottom: '14px',
+                                                                        cursor: 'pointer',
+                                                                        userSelect: 'none'
+                                                                    }}
+                                                                >
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                        <i className="fa-solid fa-truck-fast" style={{ color: isBostaEnabled ? '#E3000F' : 'var(--text-muted)' }}></i>
+                                                                        <span style={{ fontSize: '11.5px', fontWeight: 600, color: isBostaEnabled ? '#E3000F' : 'var(--text-primary)' }}>
+                                                                            {isBostaEnabled ? 'إرسال الشحنة لشركة بوسطة (مفعّل)' : 'عدم الإرسال لبوسطة (تسجيل محلي فقط)'}
+                                                                        </span>
+                                                                    </div>
+                                                                    <div style={{
+                                                                        width: '36px',
+                                                                        height: '20px',
+                                                                        background: isBostaEnabled ? '#E3000F' : 'rgba(255,255,255,0.2)',
+                                                                        borderRadius: '10px',
+                                                                        position: 'relative',
+                                                                        transition: 'background 0.3s'
+                                                                    }}>
+                                                                        <div style={{
+                                                                            width: '16px',
+                                                                            height: '16px',
+                                                                            background: 'white',
+                                                                            borderRadius: '50%',
+                                                                            position: 'absolute',
+                                                                            top: '2px',
+                                                                            left: isBostaEnabled ? '18px' : '2px',
+                                                                            transition: 'left 0.3s'
+                                                                        }}></div>
+                                                                    </div>
+                                                                </div>
                                                                 
-                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', opacity: isBostaEnabled ? 1 : 0.4, pointerEvents: isBostaEnabled ? 'auto' : 'none' }}>
                                                                     
                                                                     {/* Shopify Address Preview */}
                                                                     <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '6px', border: '1px dashed var(--glass-border)' }}>
@@ -729,7 +807,6 @@ export default function ShopifyPendingList() {
                                                                             السماح للعميل بفتح الشحنة عند الاستلام
                                                                         </label>
                                                                     </div>
-
                                                                 </div>
                                                             </div>
 
@@ -796,38 +873,47 @@ export default function ShopifyPendingList() {
                                                                             <span>مصاريف الشحن شوبيفاي:</span>
                                                                             <span>+{currency} {(ord.shipping_fee || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                         </div>
-                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71', fontWeight: 500 }}>
-                                                                            <span>العربون (Deposit):</span>
-                                                                            <span>-{currency} {(customDeposits[ord.id] !== undefined ? (parseFloat(customDeposits[ord.id]) || 0) : (ord.deposit || 0)).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
-                                                                        </div>
-                                                                        
-                                                                        {/* Editable Deposit Input */}
-                                                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', borderTop: '1px solid var(--glass-border)', paddingTop: '8px', marginTop: '4px' }}>
-                                                                            <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>تعديل العربون المدفوع (Deposit):</label>
-                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                                <input 
-                                                                                    type="text"
-                                                                                    inputMode="decimal"
-                                                                                    value={customDeposits[ord.id] !== undefined ? customDeposits[ord.id] : (ord.deposit || 0)}
-                                                                                    onChange={(e) => {
-                                                                                        const val = e.target.value;
-                                                                                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
-                                                                                            setCustomDeposits({ ...customDeposits, [ord.id]: val });
-                                                                                        }
-                                                                                    }}
-                                                                                    style={{
-                                                                                        background: 'rgba(0,0,0,0.2)',
-                                                                                        border: '1px solid var(--glass-border)',
-                                                                                        color: 'var(--text-primary)',
-                                                                                        borderRadius: '4px',
-                                                                                        padding: '4px 8px',
-                                                                                        width: '100px',
-                                                                                        fontSize: '12px'
-                                                                                    }}
-                                                                                />
-                                                                                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{currency}</span>
-                                                                            </div>
-                                                                        </div>
+                                                                        {(() => {
+                                                                            const receiverAdmin = (state.users || []).find(u => u.id === (customDepositReceivers[ord.id] || ord.depositReceiverId));
+                                                                            const depositLabel = receiverAdmin ? `العربون (${receiverAdmin.name})` : 'العربون (Deposit)';
+                                                                            const editLabel = receiverAdmin ? `تعديل العربون المدفوع (${receiverAdmin.name})` : 'تعديل العربون المدفوع (Deposit)';
+                                                                            return (
+                                                                                <>
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71', fontWeight: 500 }}>
+                                                                                        <span>{depositLabel}:</span>
+                                                                                        <span>-{currency} {(customDeposits[ord.id] !== undefined ? (parseFloat(customDeposits[ord.id]) || 0) : (ord.deposit || 0)).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                    </div>
+                                                                                    
+                                                                                    {/* Editable Deposit Input */}
+                                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', borderTop: '1px solid var(--glass-border)', paddingTop: '8px', marginTop: '4px' }}>
+                                                                                        <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{editLabel}:</label>
+                                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                                                            <input 
+                                                                                                type="text"
+                                                                                                inputMode="decimal"
+                                                                                                value={customDeposits[ord.id] !== undefined ? customDeposits[ord.id] : (ord.deposit || 0)}
+                                                                                                onChange={(e) => {
+                                                                                                    const val = e.target.value;
+                                                                                                    if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                                                                                        setCustomDeposits({ ...customDeposits, [ord.id]: val });
+                                                                                                    }
+                                                                                                }}
+                                                                                                style={{
+                                                                                                    background: 'rgba(0,0,0,0.2)',
+                                                                                                    border: '1px solid var(--glass-border)',
+                                                                                                    color: 'var(--text-primary)',
+                                                                                                    borderRadius: '4px',
+                                                                                                    padding: '4px 8px',
+                                                                                                    width: '100px',
+                                                                                                    fontSize: '12px'
+                                                                                                }}
+                                                                                            />
+                                                                                            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{currency}</span>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                </>
+                                                                            );
+                                                                        })()}
 
                                                                         {/* Deposit Receiver Selector */}
                                                                         {((customDeposits[ord.id] !== undefined ? parseFloat(customDeposits[ord.id]) : (ord.deposit || 0)) > 0) && (
@@ -879,43 +965,53 @@ export default function ShopifyPendingList() {
                                                             gap: '16px',
                                                             flexWrap: 'wrap'
                                                         }}>
-                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                                <i className="fa-solid fa-circle-info" style={{ color: 'var(--gold-primary)', fontSize: '18px' }}></i>
-                                                                <span style={{ fontSize: '12.5px', color: 'var(--text-primary)', fontWeight: 500 }}>
-                                                                    الموافقة ستسجل الطلب كـ Completed وتخصم المخزون وتحفظ أكواد بوسطة المحددة للطلب.
-                                                                </span>
-                                                            </div>
-                                                            <div style={{ display: 'flex', gap: '10px' }}>
-                                                                <button
-                                                                    disabled={!citySelected || !districtSelected}
-                                                                    onClick={(e) => handleApprove(e, ord.id)}
-                                                                    className="btn"
-                                                                    style={{ 
-                                                                        background: (!citySelected || !districtSelected) ? '#3e4e45' : '#2ecc71', 
-                                                                        color: (!citySelected || !districtSelected) ? '#a0a0a0' : 'white', 
-                                                                        border: 'none', 
-                                                                        padding: '8px 18px', 
-                                                                        borderRadius: '6px', 
-                                                                        fontWeight: 'bold', 
-                                                                        fontSize: '12px', 
-                                                                        cursor: (!citySelected || !districtSelected) ? 'not-allowed' : 'pointer', 
-                                                                        display: 'flex', 
-                                                                        alignItems: 'center', 
-                                                                        gap: '6px' 
-                                                                    }}
-                                                                >
-                                                                    <i className="fa-solid fa-circle-check"></i>
-                                                                    موافقة وتأكيد الأوردر
-                                                                </button>
-                                                                <button
-                                                                    onClick={(e) => handleCancel(e, ord.id)}
-                                                                    className="btn"
-                                                                    style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '8px 18px', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                                                                >
-                                                                    <i className="fa-solid fa-circle-xmark"></i>
-                                                                    رفض وإلغاء الأوردر
-                                                                </button>
-                                                            </div>
+                                                            {(() => {
+                                                                const isBostaEnabled = bostaSyncMap[ord.id] !== false;
+                                                                const isDisabled = isBostaEnabled && (!citySelected || !districtSelected);
+                                                                return (
+                                                                    <>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                                            <i className="fa-solid fa-circle-info" style={{ color: 'var(--gold-primary)', fontSize: '18px' }}></i>
+                                                                            <span style={{ fontSize: '12.5px', color: 'var(--text-primary)', fontWeight: 500 }}>
+                                                                                {isBostaEnabled 
+                                                                                    ? 'الموافقة ستسجل الطلب كـ Completed وتخصم المخزون وتنشئ بوليصة شحن في بوسطة.'
+                                                                                    : 'الموافقة ستسجل الطلب كـ Completed وتخصم المخزون محلياً فقط (بدون إرسال لبوسطة).'}
+                                                                            </span>
+                                                                        </div>
+                                                                        <div style={{ display: 'flex', gap: '10px' }}>
+                                                                            <button
+                                                                                disabled={isDisabled}
+                                                                                onClick={(e) => handleApprove(e, ord.id)}
+                                                                                className="btn"
+                                                                                style={{ 
+                                                                                    background: isDisabled ? '#3e4e45' : '#2ecc71', 
+                                                                                    color: isDisabled ? '#a0a0a0' : 'white', 
+                                                                                    border: 'none', 
+                                                                                    padding: '8px 18px', 
+                                                                                    borderRadius: '6px', 
+                                                                                    fontWeight: 'bold', 
+                                                                                    fontSize: '12px', 
+                                                                                    cursor: isDisabled ? 'not-allowed' : 'pointer', 
+                                                                                    display: 'flex', 
+                                                                                    alignItems: 'center', 
+                                                                                    gap: '6px' 
+                                                                                }}
+                                                                            >
+                                                                                <i className="fa-solid fa-circle-check"></i>
+                                                                                {isBostaEnabled ? 'موافقة وتأكيد الأوردر (بوسطة)' : 'موافقة وتأكيد (تسجيل محلي بدون بوسطة)'}
+                                                                            </button>
+                                                                            <button
+                                                                                onClick={(e) => handleCancel(e, ord.id)}
+                                                                                className="btn"
+                                                                                style={{ background: '#e74c3c', color: 'white', border: 'none', padding: '8px 18px', borderRadius: '6px', fontWeight: 'bold', fontSize: '12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                                                                            >
+                                                                                <i className="fa-solid fa-circle-xmark"></i>
+                                                                                رفض وإلغاء الأوردر
+                                                                            </button>
+                                                                        </div>
+                                                                    </>
+                                                                );
+                                                            })()}
                                                         </div>
                                                     </td>
                                                 </tr>

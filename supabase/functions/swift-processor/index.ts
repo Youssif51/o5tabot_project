@@ -79,6 +79,25 @@ function convertPlaintextToHtml(text: string): string {
   return html;
 }
 
+async function fetchImageAsBase64(url: string): Promise<string | null> {
+  try {
+    const cleanUrl = url ? url.split('?')[0] : url;
+    const res = await fetch(cleanUrl);
+    if (!res.ok) return null;
+    const arrayBuffer = await res.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = "";
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binary);
+  } catch (e) {
+    console.error("Failed to fetch image as base64:", url, e);
+    return null;
+  }
+}
+
 // Caching variables (in-memory)
 let cachedToken = null;
 let tokenExpiryTime = 0; // Epoch timestamp in seconds
@@ -557,19 +576,38 @@ Deno.serve(async (req) => {
       ? [{ name: "Options", values: shopifyVariants.map(v => v.option1) }]
       : [];
 
-    // تجهيز الصور (Images) - إزالة prefix (data:image/jpeg;base64,) إذا كان موجوداً
-    // تجهيز الصور (Images) - إزالة prefix (data:image/jpeg;base64,) إذا كان موجوداً وإعطاء اسم
-    const shopifyImages = (images || []).map((img, idx) => {
-      const matches = img.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-      const base64Data = matches ? matches[2] : (img.includes("base64,") ? img.split("base64,")[1] : img);
-      return { 
-        attachment: base64Data,
-        filename: `product-image-${idx + 1}.jpg`
-      };
-    });
+    // تجهيز الصور (Images) - تحويل الروابط الخارجية إلى base64 attachments أو إرسال المرفوع مباشرة من الجهاز
+    const shopifyImages = [];
+    for (let idx = 0; idx < (images || []).length; idx++) {
+      const img = images[idx];
+      if (typeof img === 'string' && (img.startsWith("http://") || img.startsWith("https://"))) {
+        const base64Data = await fetchImageAsBase64(img);
+        if (base64Data) {
+          shopifyImages.push({
+            attachment: base64Data,
+            filename: `product-image-${idx + 1}.jpg`,
+            position: idx + 1
+          });
+        } else {
+          shopifyImages.push({
+            src: img,
+            position: idx + 1
+          });
+        }
+      } else if (typeof img === 'string') {
+        const matches = img.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        const base64Data = matches ? matches[2] : (img.includes("base64,") ? img.split("base64,")[1] : img);
+        shopifyImages.push({
+          attachment: base64Data,
+          filename: `product-image-${idx + 1}.jpg`,
+          position: idx + 1
+        });
+      }
+    }
 
     // 3. تجهيز الـ Payload بالطريقة التي تفهمها شوبيفاي
-    const shopifyPayload = {
+    // تنبيه هام جداً: عند التعديل (update)، لا يتم وضع مصفوفة الصور داخل طلب الـ PUT الرئيسي لمنع شوبيفاي من مسح صور المنتج الحالية
+    const shopifyPayload: any = {
       product: {
         title: name,
         body_html: convertPlaintextToHtml(description) || "منتج مضاف من نظام إدارة المخزون",
@@ -578,11 +616,157 @@ Deno.serve(async (req) => {
         tags: tags || "",
         status: status || "draft",
         published: status === "active",
-        variants: shopifyVariants,
-        ...(shopifyOptions.length > 0 && { options: shopifyOptions }),
-        ...(shopifyImages.length > 0 && { images: shopifyImages })
+        ...(shopifyVariants.length > 0 && { variants: shopifyVariants }),
+        ...(shopifyOptions.length > 0 && { options: shopifyOptions })
       }
     };
+
+    // يتم إضافة مصفوفة الصور فقط عند إنشاء منتج جديد لأول مرة (POST)
+    if (action !== 'update') {
+      if (shopifyImages.length > 0) {
+        shopifyPayload.product.images = shopifyImages;
+      }
+    }
+
+    // إذا كان إجراء تعديل لمواكبة رفع الصور الجديدة وإعادة ترتيب الصور الحالية في شوبيفاي
+    if (action === 'update' && shopify_id && images && Array.isArray(images)) {
+      try {
+        // 1. جلب كافة الصور الحالية للمنتج من شوبيفاي مع الـ IDs والـ Positions
+        const getImgsRes = await fetch(
+          `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/products/${shopify_id}/images.json`,
+          {
+            method: "GET",
+            headers: { "X-Shopify-Access-Token": accessToken }
+          }
+        );
+        
+        let existingShopifyImages: any[] = [];
+        if (getImgsRes.ok) {
+          const imgsData = await getImgsRes.json();
+          existingShopifyImages = imgsData.images || [];
+        }
+
+        // دالة مساعدة لاستخراج الجزء الأساسي من اسم ملف الصورة
+        const getFilenameFromUrl = (urlStr: string) => {
+          if (!urlStr || typeof urlStr !== 'string') return '';
+          const cleanUrl = urlStr.split('?')[0];
+          return cleanUrl.substring(cleanUrl.lastIndexOf('/') + 1).toLowerCase();
+        };
+
+        // 2. المرور على قائمة الصور القادمة من الفرونت إند حسب الترتيب الجديد (index + 1)
+        for (let idx = 0; idx < images.length; idx++) {
+          const img = images[idx];
+          const targetPosition = idx + 1;
+
+          if (typeof img === 'string' && img.startsWith('data:')) {
+            // صورة جديدة تماماً بـ base64 -> نقوم برفعها لشوبيفاي مع تعيين الترتيب مباشرة
+            const matches = img.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+            const base64Data = matches ? matches[2] : (img.includes("base64,") ? img.split("base64,")[1] : img);
+            
+            await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/products/${shopify_id}/images.json`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Shopify-Access-Token": accessToken
+              },
+              body: JSON.stringify({
+                image: {
+                  attachment: base64Data,
+                  filename: `product-image-${Date.now()}-${idx + 1}.jpg`,
+                  position: targetPosition
+                }
+              })
+            });
+          } else if (typeof img === 'string' && (img.startsWith('http://') || img.startsWith('https://'))) {
+            // صورة موجودة مسبقاً برابط -> البحث عنها في صور شوبيفاي الحالية
+            const targetFilename = getFilenameFromUrl(img);
+            const matchedShopifyImg = existingShopifyImages.find(ex => {
+              if (ex.src === img) return true;
+              const exFilename = getFilenameFromUrl(ex.src);
+              return exFilename && targetFilename && (exFilename === targetFilename || img.includes(exFilename) || ex.src.includes(targetFilename));
+            });
+
+            if (matchedShopifyImg) {
+              // إذا كانت الصورة موجودة في شوبيفاي وتغير موقعها -> تحديث الترتيب عبر PUT
+              if (matchedShopifyImg.position !== targetPosition) {
+                await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/products/${shopify_id}/images/${matchedShopifyImg.id}.json`, {
+                  method: "PUT",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "X-Shopify-Access-Token": accessToken
+                  },
+                  body: JSON.stringify({
+                    image: {
+                      id: matchedShopifyImg.id,
+                      position: targetPosition
+                    }
+                  })
+                });
+              }
+            } else {
+              // إذا كانت الصورة غير موجودة إطلاقاً في شوبيفاي -> جلب ملف الصورة وتحويله لـ Base64 ورفعه كـ attachment
+              const base64Data = await fetchImageAsBase64(img);
+              if (base64Data) {
+                await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/products/${shopify_id}/images.json`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "X-Shopify-Access-Token": accessToken
+                  },
+                  body: JSON.stringify({
+                    image: {
+                      attachment: base64Data,
+                      filename: `product-image-${Date.now()}-${idx + 1}.jpg`,
+                      position: targetPosition
+                    }
+                  })
+                });
+              } else {
+                // Fallback to src
+                await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/products/${shopify_id}/images.json`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "X-Shopify-Access-Token": accessToken
+                  },
+                  body: JSON.stringify({
+                    image: {
+                      src: img,
+                      position: targetPosition
+                    }
+                  })
+                });
+              }
+            }
+          }
+        }
+
+        // 3. حذف الصور التي تمت إزالتها في الفرونت إند من شوبيفاي
+        for (const exImg of existingShopifyImages) {
+          const exFilename = getFilenameFromUrl(exImg.src);
+          const stillExists = images.some(img => {
+            if (typeof img !== 'string') return false;
+            if (img.startsWith('data:')) return false; // الصور المرفوعة حديثاً لا تطابق الروابط القديمة
+            if (exImg.src === img) return true;
+            const targetFilename = getFilenameFromUrl(img);
+            return exFilename && targetFilename && (exFilename === targetFilename || img.includes(exFilename) || exImg.src.includes(targetFilename));
+          });
+
+          if (!stillExists) {
+            try {
+              await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/products/${shopify_id}/images/${exImg.id}.json`, {
+                method: "DELETE",
+                headers: { "X-Shopify-Access-Token": accessToken }
+              });
+            } catch (deleteErr) {
+              console.error(`Failed to delete image ${exImg.id} from Shopify:`, deleteErr);
+            }
+          }
+        }
+      } catch (imgUpdateErr) {
+        console.error("Failed to sync images order to Shopify:", imgUpdateErr);
+      }
+    }
 
     // 4. إرسال الطلب إلى Shopify Admin API بناءً على الإجراء
     const apiUrl = (action === 'update' && shopify_id) 
@@ -735,6 +919,24 @@ Deno.serve(async (req) => {
       }
     }
 
+    // 5.4 جلب صور المنتج النهائية للحصول على روابط CDN الحديثة لشوبيفاي
+    let finalImages = [];
+    try {
+      const finalImgsRes = await fetch(
+        `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/products/${shopify_product_id}/images.json`,
+        {
+          method: "GET",
+          headers: { "X-Shopify-Access-Token": accessToken }
+        }
+      );
+      if (finalImgsRes.ok) {
+        const finalImgsData = await finalImgsRes.json();
+        finalImages = (finalImgsData.images || []).map((img: any) => (img.src || '').split('?')[0]);
+      }
+    } catch (e) {
+      console.error("Failed to fetch final product images from Shopify:", e);
+    }
+
     // 6. الرد بالنجاح وإرجاع البيانات
       return new Response(
         JSON.stringify({
@@ -742,6 +944,7 @@ Deno.serve(async (req) => {
           message: "تم تنفيذ العملية بنجاح في شوبيفاي",
           shopify_product_id: shopifyData.product.id,
           variants_map: shopifyData.product.variants.map(v => ({ sku: v.sku, id: v.id })),
+          images: finalImages,
           warnings: inventoryWarnings
         }),
         {
