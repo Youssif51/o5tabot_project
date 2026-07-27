@@ -12,20 +12,30 @@ export default function Sidebar() {
         return (state.currentUser.permissions || []).includes(perm);
     };
 
-    const pendingShopifyCount = (state.orders || []).filter(o => o.status === 'Pending' && o.source === 'shopify').length;
+    const isOrderReviewed = (o) => {
+        if (!o) return false;
+        if (o.is_reviewed || o.isReviewed) return true;
+        if (o.address) {
+            if (typeof o.address === 'object') return !!(o.address.isReviewed || o.address.is_reviewed || o.address.bostaDeliveryId || o.address.trackingNumber || o.address.bostaTrackingNumber);
+            if (typeof o.address === 'string') {
+                try {
+                    const p = JSON.parse(o.address);
+                    return !!(p?.isReviewed || p?.is_reviewed || p?.bostaDeliveryId || p?.trackingNumber || p?.bostaTrackingNumber);
+                } catch(e) {}
+            }
+        }
+        return false;
+    };
+
+    const pendingShopifyCount = (state.orders || []).filter(o => 
+        o.status === 'Pending' && o.source === 'shopify' && !isOrderReviewed(o)
+    ).length;
     const pendingDepositCount = (state.orders || []).filter(o => 
         o.depositReceiverId === state.currentUser?.id && 
         o.depositStatus === 'pending' &&
         (parseFloat(o.deposit) || 0) > 0
     ).length;
-    // Cancelled orders where this admin still needs to confirm deposit return
-    const pendingRefundCount = (state.orders || []).filter(o =>
-        o.depositReceiverId === state.currentUser?.id &&
-        o.status === 'Cancelled' &&
-        (parseFloat(o.deposit) || 0) > 0 &&
-        o.depositRefundStatus === 'awaiting_return'
-    ).length;
-    const totalDepositAlerts = pendingDepositCount + pendingRefundCount;
+    const totalDepositAlerts = pendingDepositCount;
 
     const navItems = [
         { id: 'dashboard', name: t('dashboard'), icon: 'Home.png', perm: 'view_dashboard' },

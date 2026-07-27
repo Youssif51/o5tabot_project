@@ -1,450 +1,690 @@
 import React, { useContext, useState } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
+import { formatProductDisplayName } from '../../utils/productUtils';
 import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
 
 export default function ReportsView() {
     const { state, t } = useContext(AppContext);
-    const currency = state.storeSettings.currency || '$';
+    const currency = state.storeSettings.currency || 'EGP';
 
-    // Interactive Chart State
-    const [hoveredMonthIdx, setHoveredMonthIdx] = useState(5); // Default to today (index 5)
+    // Time filter state: 'today', 'week', 'month', 'all'
+    const [timeFilter, setTimeFilter] = useState('month');
+    const [prodPage, setProdPage] = useState(1);
+    const [hoveredDayIdx, setHoveredDayIdx] = useState(6);
     const [isCatModalOpen, setIsCatModalOpen] = useState(false);
     const [isProdModalOpen, setIsProdModalOpen] = useState(false);
 
-    // Calculate last 6 days
-    const getDays = () => {
+    // Helper date matcher
+    const isDateInPeriod = (dateStr, period) => {
+        if (!dateStr) return false;
+        if (period === 'all') return true;
+
+        try {
+            const orderDate = new Date(dateStr);
+            orderDate.setHours(0, 0, 0, 0);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const diffDays = (today - orderDate) / (1000 * 60 * 60 * 24);
+
+            if (period === 'today') return diffDays === 0;
+            if (period === 'week') return diffDays >= 0 && diffDays < 7;
+            if (period === 'month') return diffDays >= 0 && diffDays < 30;
+        } catch (e) {
+            return false;
+        }
+        return true;
+    };
+
+    // Calculate last 7 days for the interactive trend chart
+    const getDaysList = () => {
         const list = [];
-        for (let i = 5; i >= 0; i--) {
+        for (let i = 6; i >= 0; i--) {
             const d = new Date();
             d.setDate(d.getDate() - i);
             list.push(getLocalDateString(d));
         }
         return list;
     };
-    const last6Days = getDays();
+    const last7Days = getDaysList();
 
-    // Helper to calculate order profit
-    const getOrderProfit = (ord) => {
-        let cost = 0;
-        ord.items.forEach(item => {
+    // Calculate order profit with pro-rata discount consideration
+    const getOrderProfitDetails = (ord) => {
+        let grossValue = 0;
+        let cogs = 0;
+
+        (ord.items || []).forEach(item => {
+            const rawPrice = parseFloat(item.price) || 0;
+            const qty = parseInt(item.quantity) || 1;
+            grossValue += rawPrice * qty;
+
             let itemCost = item.costAtTimeOfSale || 0;
             if (!itemCost) {
                 state.products.forEach(p => {
-                    let vr = p.variants.find(v => v.sku === item.variantSku);
-                    if (vr) itemCost = vr.wholesalePrice || 0;
+                    let vr = (p.variants || []).find(v => v.sku === item.variantSku);
+                    if (vr) itemCost = vr.averageCost || vr.wholesalePrice || 0;
                 });
             }
-            cost += item.quantity * itemCost;
+            cogs += qty * itemCost;
         });
-        return ord.totalValue - cost;
+
+        const discount = parseFloat(ord.discount_value) || 0;
+        const netRevenue = Math.max(0, ord.totalValue || (grossValue - discount));
+        const netProfit = netRevenue - cogs;
+
+        return { grossValue, discount, cogs, netRevenue, netProfit };
     };
 
-    const graphWidth = 900; 
-    const graphHeight = 180; 
-    const paddingX = 50;
-    const paddingY = 40;
-    const spacingX = graphWidth / (last6Days.length - 1);
+    // 1. Overall Metrics Calculation according to timeFilter
+    let totalGrossSales = 0;
+    let totalDiscounts = 0;
+    let totalNetRevenue = 0;
+    let totalCOGS = 0;
+    let totalOrdersCount = 0;
 
-    const rawData = last6Days.map(dateStr => {
-        let revenue = 0;
-        let profit = 0;
-        (state.orders || []).forEach(ord => {
-            if (ord.date === dateStr && ord.status !== 'Cancelled' && ord.status !== 'Draft') {
-                revenue += ord.totalValue;
-                profit += getOrderProfit(ord);
-            }
-        });
-        return { dateStr, revenue, profit };
+    (state.orders || []).forEach(ord => {
+        if (ord.status !== 'Cancelled' && ord.status !== 'Draft') {
+            if (!isDateInPeriod(ord.date, timeFilter)) return;
+            totalOrdersCount++;
+            const details = getOrderProfitDetails(ord);
+            totalGrossSales += details.grossValue;
+            totalDiscounts += details.discount;
+            totalNetRevenue += details.netRevenue;
+            totalCOGS += details.cogs;
+        }
     });
 
-    const maxRev = Math.max(...rawData.map(d => d.revenue));
-    const maxProf = Math.max(...rawData.map(d => d.profit));
+    // Calculate Waste Cost for the period
+    let totalWasteCost = 0;
+    (state.wastes || []).forEach(w => {
+        if (!isDateInPeriod(w.date, timeFilter)) return;
+        totalWasteCost += (w.totalCost || w.cost || ((w.quantity || 1) * (w.unitCost || w.costPrice || 0)) || 0);
+    });
+
+    const netRealizedProfit = totalNetRevenue - totalCOGS - totalWasteCost;
+    const profitMarginPercent = totalNetRevenue > 0 ? ((netRealizedProfit / totalNetRevenue) * 100).toFixed(1) : '0.0';
+
+    // 2. Chart Data (Last 7 Days)
+    const chartRawData = last7Days.map(dateStr => {
+        let dayRevenue = 0;
+        let dayProfit = 0;
+        let dayOrders = 0;
+
+        (state.orders || []).forEach(ord => {
+            if (ord.date === dateStr && ord.status !== 'Cancelled' && ord.status !== 'Draft') {
+                dayOrders++;
+                const details = getOrderProfitDetails(ord);
+                dayRevenue += details.netRevenue;
+                dayProfit += details.netProfit;
+            }
+        });
+        return { dateStr, dayRevenue, dayProfit, dayOrders };
+    });
+
+    const graphWidth = 920;
+    const graphHeight = 160;
+    const paddingX = 40;
+    const paddingY = 30;
+    const spacingX = graphWidth / (last7Days.length - 1);
+
+    const maxRev = Math.max(...chartRawData.map(d => d.dayRevenue));
+    const maxProf = Math.max(...chartRawData.map(d => d.dayProfit));
     const maxVal = Math.max(100, maxRev, maxProf);
     const scaleMax = Math.ceil(maxVal / 100) * 100;
 
-    const monthData = rawData.map((d, idx) => {
+    const chartNodes = chartRawData.map((d, idx) => {
         const x = paddingX + idx * spacingX;
-        const revY = paddingY + graphHeight - (d.revenue / scaleMax) * graphHeight;
-        const profY = paddingY + graphHeight - (d.profit / scaleMax) * graphHeight;
+        const revY = paddingY + graphHeight - (d.dayRevenue / scaleMax) * graphHeight;
+        const profY = paddingY + graphHeight - (Math.max(0, d.dayProfit) / scaleMax) * graphHeight;
         const parts = d.dateStr.split('-');
-        const name = `${parts[1]}-${parts[2]}`;
+        const name = `${parts[1]}/${parts[2]}`;
 
         return {
             name,
             x,
             revY,
             profY,
-            revenue: d.revenue,
-            profit: d.profit,
-            display: d.revenue.toLocaleString('en-US')
+            revenue: d.dayRevenue,
+            profit: d.dayProfit,
+            orders: d.dayOrders
         };
     });
 
-    // --- Dynamic calculations from mock DB states to populate the mockup metrics ---
-    let totalSalesVal = 0;
-    let totalPurchaseVal = 0;
-    state.orders.forEach(ord => {
+    const hoveredData = chartNodes[hoveredDayIdx] || chartNodes[chartNodes.length - 1];
+
+    // SVG Line paths
+    const revLinePath = chartNodes.map((d, idx) => `${idx === 0 ? 'M' : 'L'} ${d.x} ${d.revY}`).join(' ');
+    const profLinePath = chartNodes.map((d, idx) => `${idx === 0 ? 'M' : 'L'} ${d.x} ${d.profY}`).join(' ');
+
+    const revAreaPath = `${revLinePath} L ${chartNodes[chartNodes.length - 1].x} ${paddingY + graphHeight} L ${chartNodes[0].x} ${paddingY + graphHeight} Z`;
+    const profAreaPath = `${profLinePath} L ${chartNodes[chartNodes.length - 1].x} ${paddingY + graphHeight} L ${chartNodes[0].x} ${paddingY + graphHeight} Z`;
+
+    // 3. Category Breakdown (Real Data)
+    const categoryStats = {};
+    (state.orders || []).forEach(ord => {
         if (ord.status !== 'Cancelled' && ord.status !== 'Draft') {
-            totalSalesVal += ord.totalValue;
-        }
-    });
+            if (!isDateInPeriod(ord.date, timeFilter)) return;
+            const ordDetails = getOrderProfitDetails(ord);
+            const ordSubtotal = ordDetails.grossValue || 1;
+            const ordDiscount = ordDetails.discount || 0;
 
-    state.products.forEach(p => {
-        p.variants.forEach(v => {
-            const qty = (v.stock.Sulur || 0);
-            totalPurchaseVal += qty * (v.averageCost || v.wholesalePrice || 0);
-        });
-    });
+            (ord.items || []).forEach(item => {
+                const prod = (state.products || []).find(p => (p.variants || []).some(v => v.sku === item.variantSku));
+                const catName = prod ? prod.category : 'عام';
+                const itemRawTotal = (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
+                const itemNetShare = Math.max(0, itemRawTotal - ((itemRawTotal / ordSubtotal) * ordDiscount));
 
-    let totalProfitVal = 0;
-    state.orders.forEach(ord => {
-        if (ord.status !== 'Cancelled' && ord.status !== 'Draft') {
-            totalProfitVal += getOrderProfit(ord);
-        }
-    });
-
-    const netProfit = totalProfitVal;
-
-    const categorySales = {};
-    state.products.forEach(p => {
-        categorySales[p.category] = (categorySales[p.category] || 0) + 15000;
-    });
-    state.orders.forEach(ord => {
-        if (ord.status !== 'Cancelled' && ord.status !== 'Draft') {
-            ord.items.forEach(item => {
-                const prod = state.products.find(p => p.variants.some(v => v.sku === item.variantSku));
-                if (prod) {
-                    categorySales[prod.category] = (categorySales[prod.category] || 0) + (item.quantity * item.price);
+                if (!categoryStats[catName]) {
+                    categoryStats[catName] = { name: catName, revenue: 0, itemsSold: 0 };
                 }
+                categoryStats[catName].revenue += itemNetShare;
+                categoryStats[catName].itemsSold += parseInt(item.quantity) || 1;
             });
         }
     });
 
-    const bestCategories = Object.keys(categorySales).map(cat => ({
-        name: cat,
-        turnover: categorySales[cat],
-        increase: cat === 'Groceries' ? '3.2%' : cat === 'Instant food' ? '2.0%' : '1.5%'
-    })).sort((a,b) => b.turnover - a.turnover);
+    const sortedCategories = Object.values(categoryStats).sort((a, b) => b.revenue - a.revenue);
 
-    const productSales = {};
-    state.orders.forEach(ord => {
+    // 4. Product Profitability Breakdown (Real Data)
+    const productStats = {};
+    (state.orders || []).forEach(ord => {
         if (ord.status !== 'Cancelled' && ord.status !== 'Draft') {
-            ord.items.forEach(item => {
-                productSales[item.variantSku] = (productSales[item.variantSku] || 0) + item.quantity;
+            if (!isDateInPeriod(ord.date, timeFilter)) return;
+            const ordDetails = getOrderProfitDetails(ord);
+            const ordSubtotal = ordDetails.grossValue || 1;
+            const ordDiscount = ordDetails.discount || 0;
+
+            (ord.items || []).forEach(item => {
+                const sku = item.variantSku;
+                let prodName = sku;
+                let catName = 'عام';
+                let unitCost = item.costAtTimeOfSale || 0;
+
+                state.products.forEach(p => {
+                    const vr = (p.variants || []).find(v => v.sku === sku);
+                    if (vr) {
+                        prodName = formatProductDisplayName(p.name, vr.name);
+                        catName = p.category;
+                        if (!unitCost) unitCost = vr.averageCost || vr.wholesalePrice || 0;
+                    }
+                });
+
+                const qty = parseInt(item.quantity) || 1;
+                const itemRawTotal = (parseFloat(item.price) || 0) * qty;
+                const itemNetRevenue = Math.max(0, itemRawTotal - ((itemRawTotal / ordSubtotal) * ordDiscount));
+                const itemCOGS = qty * unitCost;
+                const itemProfit = itemNetRevenue - itemCOGS;
+
+                if (!productStats[sku]) {
+                    productStats[sku] = {
+                        sku,
+                        name: prodName,
+                        category: catName,
+                        qtySold: 0,
+                        netRevenue: 0,
+                        cogs: 0,
+                        netProfit: 0
+                    };
+                }
+                productStats[sku].qtySold += qty;
+                productStats[sku].netRevenue += itemNetRevenue;
+                productStats[sku].cogs += itemCOGS;
+                productStats[sku].netProfit += itemProfit;
             });
         }
     });
 
-    const bestProducts = [];
-    state.products.forEach(p => {
-        p.variants.forEach(v => {
-            const soldQty = productSales[v.sku] || 0;
-            if (soldQty > 0 || bestProducts.length < 4) {
-                const stockQty = (v.stock.Sulur || 0);
-                const marginVal = v.retailPrice > 0 ? ((v.retailPrice - v.wholesalePrice) / v.retailPrice * 100).toFixed(1) : 0;
-                bestProducts.push({
-                    name: `${p.name} - ${v.name}`,
-                    id: p.id,
-                    category: p.category,
-                    qty: `${stockQty} Packets`,
-                    turnover: soldQty * v.retailPrice || 12000,
-                    increase: soldQty > 5 ? '2.3%' : '1.3%',
-                    margin: `${marginVal}%`
-                });
-            }
-        });
-    });
-    const displayProducts = bestProducts.sort((a,b) => b.turnover - a.turnover).slice(0, 4);
-
-    const hoveredData = monthData[hoveredMonthIdx];
+    const sortedProducts = Object.values(productStats).map(p => {
+        const marginPct = p.netRevenue > 0 ? ((p.netProfit / p.netRevenue) * 100).toFixed(1) : '0.0';
+        return { ...p, marginPct: parseFloat(marginPct) };
+    }).sort((a, b) => b.netProfit - a.netProfit);
 
     return (
         <div id="reports-view" className="view-pane active">
             
-            {/* Top Grid: Overview Cards & Best Selling Category */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1.8fr 1fr', gap: '24px', marginBottom: '24px' }}>
-                
-                {/* Overview Card */}
-                <div className="glass-card" style={{ padding: '24px' }}>
-                    <h3 style={{ fontSize: '16px', color: 'var(--text-primary)', marginBottom: '20px' }}>{t('overview')}</h3>
-                    
-                    {/* Row 1 Metrics */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px', marginBottom: '28px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '20px' }}>
-                        <div>
-                            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--text-primary)' }}>{currency} {netProfit.toLocaleString('en-US', {maximumFractionDigits:0})}</div>
-                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>{t('totalProfit')}</div>
-                        </div>
-                        <div>
-                            <div style={{ fontSize: '20px', fontWeight: 700, color: 'var(--gold-primary)' }}>{currency} {(totalSalesVal * 0.85).toLocaleString('en-US', {maximumFractionDigits:0})}</div>
-                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>{t('revenue')}</div>
-                        </div>
-                        <div>
-                            <div style={{ fontSize: '20px', fontWeight: 700, color: '#a084dc' }}>{currency} {totalSalesVal.toLocaleString('en-US', {maximumFractionDigits:0})}</div>
-                            <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>{t('sales')}</div>
-                        </div>
-                    </div>
+            {/* View Header Bar */}
+            <div className="page-header" style={{ marginBottom: '20px' }}>
+                <div className="page-title-group">
+                    <h2>{t('reports')} والتحليلات المالية المستهدفة</h2>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        تحليل صافي أرباح المتجر بعد خصم التكلفة، الهالك، وتوزيع الخصومات نسبياً
+                    </p>
+                </div>
 
-                    {/* Row 2 Metrics */}
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '14px', fontSize: '13px' }}>
-                        <div>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency} {totalPurchaseVal.toLocaleString('en-US', {maximumFractionDigits:0})}</div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{t('purchaseValue')}</div>
-                        </div>
-                        <div>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency} {totalSalesVal.toLocaleString('en-US', {maximumFractionDigits:0})}</div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{t('salesValue')}</div>
-                        </div>
-                        <div>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency} {(netProfit * 0.15).toLocaleString('en-US', {maximumFractionDigits:0})}</div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{t('momProfit')}</div>
-                        </div>
-                        <div>
-                            <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency} {(netProfit * 1.8).toLocaleString('en-US', {maximumFractionDigits:0})}</div>
-                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '4px' }}>{t('yoyProfit')}</div>
-                        </div>
+                {/* Time Range Filter Pills */}
+                <div style={{ display: 'flex', gap: '8px', background: 'var(--glass-bg)', padding: '4px 6px', borderRadius: 'var(--radius-xl)', border: '1px solid var(--glass-border)' }}>
+                    {[
+                        { id: 'today', label: 'اليوم' },
+                        { id: 'week', label: 'هذا الأسبوع' },
+                        { id: 'month', label: 'هذا الشهر' },
+                        { id: 'all', label: 'كل الأوقات' }
+                    ].map(btn => (
+                        <button
+                            key={btn.id}
+                            onClick={() => { setTimeFilter(btn.id); setProdPage(1); }}
+                            className={`btn ${timeFilter === btn.id ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{
+                                padding: '6px 14px',
+                                fontSize: '0.82rem',
+                                borderRadius: 'var(--radius-lg)'
+                            }}
+                        >
+                            {btn.label}
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            {/* Financial Metrics Cards Grid - Executive Ambient Glow (Theme Compatible) */}
+            <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                
+                {/* Net Realized Profit */}
+                <div className="glass-card" style={{ 
+                    padding: '20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(46, 213, 115, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(46, 213, 115, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(46, 213, 115, 0.05)'
+                }}>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', marginBottom: '8px' }}>
+                        صافي الأرباح الحقيقية
+                    </div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--color-success)', letterSpacing: '-0.5px' }}>
+                        {currency} {netRealizedProfit.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--glass-border)', fontSize: '0.75rem' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>هامش الربح</span>
+                        <span className={`badge ${parseFloat(profitMarginPercent) >= 20 ? 'badge-success' : 'badge-warning'}`}>
+                            {profitMarginPercent}%
+                        </span>
                     </div>
                 </div>
 
-                {/* Best Selling Category Card */}
-                <div className="glass-card" style={{ padding: '24px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-                        <h3 style={{ fontSize: '16px', color: 'var(--text-primary)' }}>{t('bestSellingCategory')}</h3>
-                        <a href="#" onClick={(e) => { e.preventDefault(); setIsCatModalOpen(true); }} style={{ fontSize: '12px', color: 'var(--gold-primary)', fontWeight: 600 }}>{t('seeAll')}</a>
+                {/* Gross Sales */}
+                <div className="glass-card" style={{ 
+                    padding: '20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(212, 175, 55, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(212, 175, 55, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(212, 175, 55, 0.05)'
+                }}>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', marginBottom: '8px' }}>
+                        إجمالي المبيعات قبل الخصم
                     </div>
-                    <div className="table-wrapper">
-                        <table className="custom-table" style={{ fontSize: '12px' }}>
-                            <thead>
-                                <tr>
-                                    <th>{t('categories')}</th>
-                                    <th>{t('turnover')}</th>
-                                    <th style={{ textAlign: 'right' }}>{t('increase')}</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {bestCategories.slice(0, 3).map((cat, idx) => (
-                                    <tr key={`best-cat-${idx}`}>
-                                        <td style={{ fontWeight: 500 }}>{cat.name}</td>
-                                        <td>{currency} {cat.turnover.toLocaleString('en-US', {maximumFractionDigits:0})}</td>
-                                        <td style={{ textAlign: 'right', color: 'var(--color-success)', fontWeight: 600 }}>{cat.increase}</td>
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--gold-primary)', letterSpacing: '-0.5px' }}>
+                        {currency} {totalGrossSales.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--glass-border)', fontSize: '0.75rem' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>الأوردرات الناجحة</span>
+                        <span style={{ fontWeight: '700', color: 'var(--text-primary)' }}>{totalOrdersCount} أوردر</span>
+                    </div>
+                </div>
+
+                {/* Total Discounts */}
+                <div className="glass-card" style={{ 
+                    padding: '20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(30, 144, 255, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(30, 144, 255, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(30, 144, 255, 0.05)'
+                }}>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', marginBottom: '8px' }}>
+                        إجمالي الخصومات المطبقة
+                    </div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--color-info)', letterSpacing: '-0.5px' }}>
+                        {currency} {totalDiscounts.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--glass-border)', fontSize: '0.75rem' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>التوزيع</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>موزعة نسبياً</span>
+                    </div>
+                </div>
+
+                {/* COGS */}
+                <div className="glass-card" style={{ 
+                    padding: '20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(160, 132, 220, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(160, 132, 220, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(160, 132, 220, 0.05)'
+                }}>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', marginBottom: '8px' }}>
+                        تكلفة المباع (COGS)
+                    </div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#a084dc', letterSpacing: '-0.5px' }}>
+                        {currency} {totalCOGS.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--glass-border)', fontSize: '0.75rem' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>المخزون</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>التكلفة الفعلية</span>
+                    </div>
+                </div>
+
+                {/* Waste Loss */}
+                <div className="glass-card" style={{ 
+                    padding: '20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(255, 71, 87, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(255, 71, 87, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(255, 71, 87, 0.05)'
+                }}>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', marginBottom: '8px' }}>
+                        خسائر الهالك والتالف
+                    </div>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--color-danger)', letterSpacing: '-0.5px' }}>
+                        {currency} {totalWasteCost.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                    </div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--glass-border)', fontSize: '0.75rem' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>الربحية</span>
+                        <span style={{ color: 'var(--color-danger)' }}>مخصومة بالكامل</span>
                     </div>
                 </div>
 
             </div>
 
-            {/* Profit & Revenue SVG Line Chart */}
-            <div className="glass-card" style={{ padding: '24px', marginBottom: '24px', position: 'relative' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <h3 style={{ fontSize: '16px', color: 'var(--text-primary)' }}>{t('profitAndRevenue')}</h3>
-                    <button className="btn btn-secondary" style={{ padding: '6px 14px', fontSize: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <i className="fa-regular fa-calendar"></i> {t('weekly')}
-                    </button>
-                </div>
+            {/* Middle Section: Chart & Categories */}
+            <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 1fr', gap: '20px', marginBottom: '24px' }}>
+                
+                {/* Interactive Dual-Curve SVG Chart */}
+                <div className="glass-card" style={{ padding: '24px', position: 'relative' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <div>
+                            <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                                حركة المبيعات وصافي الأرباح اليومية (آخر 7 أيام)
+                            </h3>
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>مرر المؤشر فوق النودز لعرض التفاصيل اليومية</span>
+                        </div>
+                    </div>
 
-                {/* SVG Double-Line Curve Chart */}
-                <div style={{ width: '100%', height: '240px', position: 'relative' }}>
-                    <svg viewBox="0 0 1000 240" width="100%" height="100%" style={{ overflow: 'visible' }}>
-                        {/* Horizontal Grid lines */}
-                        <line x1="50" y1="40" x2="950" y2="40" className="grid-line" strokeWidth="1" />
-                        <line x1="50" y1="100" x2="950" y2="100" className="grid-line" strokeWidth="1" />
-                        <line x1="50" y1="160" x2="950" y2="160" className="grid-line" strokeWidth="1" />
-                        <line x1="50" y1="220" x2="950" y2="220" className="grid-line" strokeWidth="1.5" />
+                    <div style={{ width: '100%', height: '220px', position: 'relative' }}>
+                        <svg viewBox="0 0 1000 220" width="100%" height="100%" style={{ overflow: 'visible' }}>
+                            <defs>
+                                <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#1e90ff" stopOpacity="0.35" />
+                                    <stop offset="100%" stopColor="#1e90ff" stopOpacity="0.0" />
+                                </linearGradient>
+                                <linearGradient id="profGrad" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stopColor="#2ed573" stopOpacity="0.3" />
+                                    <stop offset="100%" stopColor="#2ed573" stopOpacity="0.0" />
+                                </linearGradient>
+                            </defs>
 
-                        {/* Y-Axis scale text */}
-                        <text x="15" y="45" fill="var(--text-muted)" fontSize="11">{(scaleMax * 1.0).toLocaleString('en-US', {maximumFractionDigits:0})}</text>
-                        <text x="15" y="105" fill="var(--text-muted)" fontSize="11">{(scaleMax * 0.75).toLocaleString('en-US', {maximumFractionDigits:0})}</text>
-                        <text x="15" y="165" fill="var(--text-muted)" fontSize="11">{(scaleMax * 0.5).toLocaleString('en-US', {maximumFractionDigits:0})}</text>
-                        <text x="15" y="225" fill="var(--text-muted)" fontSize="11">{(scaleMax * 0.25).toLocaleString('en-US', {maximumFractionDigits:0})}</text>
+                            {/* Horizontal Grid lines */}
+                            <line x1="40" y1="30" x2="960" y2="30" stroke="var(--glass-border)" strokeWidth="1" />
+                            <line x1="40" y1="85" x2="960" y2="85" stroke="var(--glass-border)" strokeWidth="1" />
+                            <line x1="40" y1="140" x2="960" y2="140" stroke="var(--glass-border)" strokeWidth="1" />
+                            <line x1="40" y1="195" x2="960" y2="195" stroke="var(--glass-border-hover)" strokeWidth="1.5" />
 
-                        {/* Chart Line 1: Revenue (Blue line/curve) */}
-                        <path 
-                            d={monthData.map((d, idx) => `${idx === 0 ? 'M' : 'L'} ${d.x} ${d.revY}`).join(' ')} 
-                            fill="none" 
-                            stroke="rgba(46, 122, 243, 0.85)" 
-                            strokeWidth="3.5" 
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                        />
+                            {/* Area Gradient Fills */}
+                            <path d={revAreaPath} fill="url(#revGrad)" />
+                            <path d={profAreaPath} fill="url(#profGrad)" />
 
-                        {/* Chart Line 2: Profit (Gold line/curve) */}
-                        <path 
-                            d={monthData.map((d, idx) => `${idx === 0 ? 'M' : 'L'} ${d.x} ${d.profY}`).join(' ')} 
-                            fill="none" 
-                            stroke="rgba(245, 215, 127, 0.8)" 
-                            strokeWidth="3.5" 
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                        />
+                            {/* Revenue Line */}
+                            <path d={revLinePath} fill="none" stroke="var(--color-info)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
 
-                        {/* Dashed laser vertical guide for selected tooltip node */}
-                        {hoveredMonthIdx !== null && monthData[hoveredMonthIdx] && (
-                            <line 
-                                x1={monthData[hoveredMonthIdx].x} 
-                                y1={40} 
-                                x2={monthData[hoveredMonthIdx].x} 
-                                y2={220} 
-                                stroke="rgba(46, 122, 243, 0.45)" 
-                                strokeWidth="1.5" 
-                                strokeDasharray="4 4" 
-                            />
-                        )}
-                        
-                        {/* Tooltip dots on the curve nodes */}
-                        {hoveredMonthIdx !== null && monthData[hoveredMonthIdx] && (
-                            <>
-                                <circle 
-                                    cx={monthData[hoveredMonthIdx].x} 
-                                    cy={monthData[hoveredMonthIdx].revY} 
-                                    r="6.5" 
-                                    fill="rgba(46, 122, 243, 1)" 
-                                    stroke="#fff" 
-                                    strokeWidth="2" 
-                                />
-                                <circle 
-                                    cx={monthData[hoveredMonthIdx].x} 
-                                    cy={monthData[hoveredMonthIdx].profY} 
-                                    r="6.5" 
-                                    fill="rgba(245, 215, 127, 1)" 
-                                    stroke="#fff" 
-                                    strokeWidth="2" 
-                                />
-                            </>
-                        )}
+                            {/* Profit Line */}
+                            <path d={profLinePath} fill="none" stroke="var(--color-success)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
 
-                        {/* X-Axis labels & Invisible Hover Columns */}
-                        {monthData.map((m, idx) => {
-                            const isHovered = hoveredMonthIdx === idx;
-                            return (
-                                <g key={`month-lbl-${idx}`}>
-                                    <text 
-                                        x={m.x} 
-                                        y="240" 
-                                        fill={isHovered ? "var(--gold-primary)" : "var(--text-muted)"} 
-                                        fontSize="11" 
-                                        fontWeight={isHovered ? "600" : "400"}
+                            {/* Active Hover Guide Line & Circles */}
+                            {hoveredDayIdx !== null && chartNodes[hoveredDayIdx] && (
+                                <>
+                                    <line
+                                        x1={chartNodes[hoveredDayIdx].x}
+                                        y1={30}
+                                        x2={chartNodes[hoveredDayIdx].x}
+                                        y2={195}
+                                        stroke="var(--gold-primary)"
+                                        strokeWidth="1.5"
+                                        strokeDasharray="4 4"
+                                    />
+                                    <circle cx={chartNodes[hoveredDayIdx].x} cy={chartNodes[hoveredDayIdx].revY} r="6" fill="var(--color-info)" stroke="#fff" strokeWidth="2.5" />
+                                    <circle cx={chartNodes[hoveredDayIdx].x} cy={chartNodes[hoveredDayIdx].profY} r="6" fill="var(--color-success)" stroke="#fff" strokeWidth="2.5" />
+                                </>
+                            )}
+
+                            {/* X-Axis Day Labels & Hover Hotspots */}
+                            {chartNodes.map((m, idx) => (
+                                <g key={`chart-col-${idx}`}>
+                                    <text
+                                        x={m.x}
+                                        y="215"
+                                        fill={hoveredDayIdx === idx ? "var(--gold-primary)" : "var(--text-muted)"}
+                                        fontSize="11"
+                                        fontWeight={hoveredDayIdx === idx ? "700" : "400"}
                                         textAnchor="middle"
                                     >
                                         {m.name}
                                     </text>
-
-                                    {/* Column Hover triggers */}
-                                    <rect 
-                                        x={m.x - 70} 
-                                        y="40" 
-                                        width="140" 
-                                        height="180" 
-                                        fill="transparent" 
+                                    <rect
+                                        x={m.x - 65}
+                                        y="30"
+                                        width="130"
+                                        height="165"
+                                        fill="transparent"
                                         style={{ cursor: 'pointer' }}
-                                        onMouseEnter={() => setHoveredMonthIdx(idx)}
+                                        onMouseEnter={() => setHoveredDayIdx(idx)}
                                     />
                                 </g>
-                            );
-                        })}
-                    </svg>
+                            ))}
+                        </svg>
 
-                    {/* Styled Floating Tooltip box positioned dynamically */}
-                    {hoveredMonthIdx !== null && (
-                        <div style={{
-                            position: 'absolute',
-                            left: `${monthData[hoveredMonthIdx].x / 1000 * 100}%`,
-                            top: '20px',
-                            transform: 'translateX(-50%)',
-                            background: 'var(--glass-bg)',
-                            border: '1px solid var(--glass-border)',
-                            borderRadius: '6px',
-                            padding: '10px 14px',
-                            fontSize: '12px',
-                            pointerEvents: 'none',
-                            boxShadow: '0 8px 24px rgba(0,0,0,0.15)',
-                            lineHeight: 1.5,
-                            zIndex: 10,
-                            transition: 'left 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-                            backdropFilter: 'var(--blur)'
-                        }}>
-                            <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>{t('details')}</div>
-                            <div style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '13px' }}>{hoveredData.display}</div>
-                            <div style={{ color: 'var(--gold-primary)', fontSize: '11px', fontWeight: 600 }}>{hoveredData.name}</div>
-                            <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between', marginTop: '4px', fontSize: '11px' }}>
-                                <span style={{ color: 'rgba(46, 122, 243, 0.85)' }}>{t('revenue')}:</span>
-                                <strong style={{ color: 'var(--text-primary)' }}>{currency} {hoveredData.revenue.toLocaleString('en-US')}</strong>
+                        {/* Glassmorphism Dynamic Floating Tooltip */}
+                        {hoveredData && (
+                            <div style={{
+                                position: 'absolute',
+                                left: `${(hoveredData.x / 1000) * 100}%`,
+                                top: '12px',
+                                transform: 'translateX(-50%)',
+                                background: 'var(--glass-bg-hover)',
+                                border: '1px solid var(--gold-border-focus)',
+                                borderRadius: 'var(--radius-xl)',
+                                padding: '10px 14px',
+                                fontSize: '12px',
+                                pointerEvents: 'none',
+                                boxShadow: '0 12px 30px rgba(0, 0, 0, 0.4)',
+                                zIndex: 10,
+                                backdropFilter: 'var(--blur)',
+                                transition: 'left 0.15s cubic-bezier(0.2, 0.8, 0.2, 1)'
+                            }}>
+                                <div style={{ color: 'var(--gold-primary)', fontWeight: '700', fontSize: '0.85rem', marginBottom: '4px' }}>
+                                    تاريخ: {hoveredData.name} ({hoveredData.orders} أوردر)
+                                </div>
+                                <div style={{ display: 'flex', gap: '14px', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: '3px' }}>
+                                    <span style={{ color: 'var(--color-info)' }}>صافي الإيراد:</span>
+                                    <strong style={{ color: 'var(--text-primary)' }}>{currency} {hoveredData.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}</strong>
+                                </div>
+                                <div style={{ display: 'flex', gap: '14px', justifyContent: 'space-between', fontSize: '0.78rem' }}>
+                                    <span style={{ color: 'var(--color-success)' }}>صافي الربح:</span>
+                                    <strong style={{ color: 'var(--text-primary)' }}>{currency} {hoveredData.profit.toLocaleString('en-US', { maximumFractionDigits: 0 })}</strong>
+                                </div>
                             </div>
-                            <div style={{ display: 'flex', gap: '10px', justifyContent: 'space-between', fontSize: '11px' }}>
-                                <span style={{ color: 'var(--gold-primary)' }}>{t('profit')}:</span>
-                                <strong style={{ color: 'var(--text-primary)' }}>{currency} {hoveredData.profit.toLocaleString('en-US')}</strong>
-                            </div>
+                        )}
+                    </div>
+
+                    {/* Chart Color Legends */}
+                    <div style={{ display: 'flex', justifyContent: 'center', gap: '28px', marginTop: '16px', fontSize: '0.82rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-info)' }}>
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--color-info)' }}></span>
+                            صافي الإيرادات
                         </div>
-                    )}
-                </div>
-
-                {/* Legend */}
-                <div style={{ display: 'flex', justifyContent: 'center', gap: '24px', marginTop: '16px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'rgba(46, 122, 243, 0.85)', display: 'inline-block' }}></span>
-                        {t('revenue')}
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                        <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'rgba(245, 215, 127, 0.8)', display: 'inline-block' }}></span>
-                        {t('profit')}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--color-success)' }}>
+                            <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--color-success)' }}></span>
+                            صافي الربح
+                        </div>
                     </div>
                 </div>
+
+                {/* Category Performance Breakdown */}
+                <div className="glass-card" style={{ padding: '24px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                        <h3 style={{ fontSize: '1rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                            مبيعات الأقسام
+                        </h3>
+                        {sortedCategories.length > 4 && (
+                            <button onClick={() => setIsCatModalOpen(true)} style={{ background: 'none', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', fontSize: '0.82rem', fontWeight: '600' }}>
+                                عرض الكل
+                            </button>
+                        )}
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                        {sortedCategories.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                                لا توجد مبيعات مسجلة في هذه الفترة
+                            </div>
+                        ) : (
+                            sortedCategories.slice(0, 5).map((cat, idx) => {
+                                const catPct = totalNetRevenue > 0 ? ((cat.revenue / totalNetRevenue) * 100).toFixed(1) : 0;
+                                return (
+                                    <div key={`cat-row-${idx}`} style={{ background: 'var(--glass-bg)', padding: '10px 14px', borderRadius: 'var(--radius-lg)', border: '1px solid var(--glass-border)' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '4px' }}>
+                                            <span style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{cat.name}</span>
+                                            <span style={{ fontWeight: '700', color: 'var(--gold-primary)' }}>{currency} {cat.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                            <span>الكمية المباعة: {cat.itemsSold} قطعة</span>
+                                            <span>الحصة: {catPct}%</span>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                </div>
+
             </div>
 
-            {/* Bottom Section: Best Selling Product Table */}
-            <div className="glass-card" style={{ padding: '24px', overflow: 'hidden' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                    <h3 style={{ fontSize: '16px', color: 'var(--text-primary)' }}>{t('bestSellingProduct')}</h3>
-                    <a href="#" onClick={(e) => { e.preventDefault(); setIsProdModalOpen(true); }} style={{ fontSize: '12px', color: 'var(--gold-primary)', fontWeight: 600 }}>{t('seeAll')}</a>
-                </div>
-                <div className="table-wrapper" style={{ overflowX: 'auto' }}>
-                    <table className="custom-table" style={{ fontSize: '13px', whiteSpace: 'nowrap', textAlign: 'right' }}>
-                        <thead>
-                            <tr>
-                                <th>{t('products')}</th>
-                                <th>{t('productId')}</th>
-                                <th>{t('categories')}</th>
-                                <th>{t('quantityInHand')}</th>
-                                <th>{t('turnover')}</th>
-                                <th>{t('margin')}</th>
-                                <th>{t('increase')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {displayProducts.map((p, idx) => (
-                                <tr key={`best-prod-${idx}`}>
-                                    <td style={{ fontWeight: 600, color: 'var(--gold-primary)' }}>{p.name}</td>
-                                    <td style={{ fontFamily: 'monospace' }}>{p.id}</td>
-                                    <td>{p.category}</td>
-                                    <td>{p.qty}</td>
-                                    <td style={{ fontWeight: 600 }}>{currency} {p.turnover.toLocaleString('en-US', {maximumFractionDigits:0})}</td>
-                                    <td><span className="badge badge-success">{p.margin}</span></td>
-                                    <td style={{ color: 'var(--color-success)', fontWeight: 600 }}>{p.increase}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            {/* Modals for See All */}
-            <Modal isOpen={isCatModalOpen} onClose={() => setIsCatModalOpen(false)} title={t('bestSellingCategory')} width="600px">
+            {/* Bottom Table: Real Product Profitability Breakdown */}
+            {(() => {
+                const top50Products = sortedProducts.slice(0, 50);
+                const itemsPerPage = 5;
+                const totalProdPages = Math.ceil(top50Products.length / itemsPerPage) || 1;
+                const currentPageProducts = top50Products.slice((prodPage - 1) * itemsPerPage, prodPage * itemsPerPage);
+
+                return (
+                    <div className="glass-card" style={{ padding: '24px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+                            <div>
+                                <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
+                                    أعلى الأصناف والمنتجات ربحية (Product Profitability)
+                                </h3>
+                                <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                                    محسوبة بالصافي الفعلي لكل قطعة (عرض أعلى 50 صنفاً ربحية - 5 منتجات لكل صفحة)
+                                </p>
+                            </div>
+
+                            {sortedProducts.length > 5 && (
+                                <button onClick={() => setIsProdModalOpen(true)} className="btn btn-secondary" style={{ padding: '8px 14px', fontSize: '0.82rem' }}>
+                                    عرض جميع المنتجات ({sortedProducts.length})
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="table-wrapper" style={{ overflowX: 'auto' }}>
+                            <table className="custom-table" style={{ fontSize: '0.88rem', whiteSpace: 'nowrap' }}>
+                                <thead>
+                                    <tr>
+                                        <th style={{ textAlign: 'right' }}>المنتج والصنف</th>
+                                        <th style={{ textAlign: 'right' }}>رمز SKU</th>
+                                        <th style={{ textAlign: 'right' }}>القسم</th>
+                                        <th style={{ textAlign: 'center' }}>الكمية المباعة</th>
+                                        <th style={{ textAlign: 'center' }}>صافي الإيراد</th>
+                                        <th style={{ textAlign: 'center' }}>تكلفة المباع (COGS)</th>
+                                        <th style={{ textAlign: 'center' }}>صافي الربح</th>
+                                        <th style={{ textAlign: 'center' }}>نسبة الهامش</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {currentPageProducts.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="8" style={{ textAlign: 'center', padding: '36px', color: 'var(--text-muted)' }}>
+                                                لا توجد بيانات مبيعات مطابقة للفترة المحددة
+                                            </td>
+                                        </tr>
+                                    ) : (
+                                        currentPageProducts.map((prod, idx) => (
+                                            <tr key={`prod-profit-${idx}`}>
+                                                <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{prod.name}</td>
+                                                <td style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{prod.sku}</td>
+                                                <td>{prod.category}</td>
+                                                <td style={{ textAlign: 'center', fontWeight: '700' }}>{prod.qtySold}</td>
+                                                <td style={{ textAlign: 'center', fontWeight: '600', color: 'var(--color-info)' }}>
+                                                    {currency} {prod.netRevenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                                                </td>
+                                                <td style={{ textAlign: 'center', color: '#a084dc' }}>
+                                                    {currency} {prod.cogs.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                                                </td>
+                                                <td style={{ textAlign: 'center', fontWeight: '700', color: prod.netProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                                                    {currency} {prod.netProfit.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                                                </td>
+                                                <td style={{ textAlign: 'center' }}>
+                                                    <span className={`badge ${prod.marginPct >= 30 ? 'badge-success' : prod.marginPct >= 15 ? 'badge-warning' : 'badge-danger'}`}>
+                                                        {prod.marginPct}%
+                                                    </span>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Pagination Controls */}
+                        {top50Products.length > 0 && (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '16px', paddingTop: '16px', borderTop: '1px solid var(--glass-border)', flexWrap: 'wrap', gap: '12px' }}>
+                                <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                                    عرض <strong>{((prodPage - 1) * itemsPerPage) + 1} - {Math.min(prodPage * itemsPerPage, top50Products.length)}</strong> من أصل <strong>{top50Products.length}</strong> منتج أعلى ربحية
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <button
+                                        className="btn btn-secondary"
+                                        onClick={() => setProdPage(prev => Math.max(1, prev - 1))}
+                                        disabled={prodPage === 1}
+                                        style={{ padding: '6px 14px', fontSize: '0.8rem', opacity: prodPage === 1 ? 0.4 : 1, cursor: prodPage === 1 ? 'not-allowed' : 'pointer' }}
+                                    >
+                                        <i className="fa-solid fa-chevron-right"></i> السابق
+                                    </button>
+
+                                    <span style={{ fontSize: '0.82rem', fontWeight: '700', color: 'var(--gold-primary)', padding: '0 8px' }}>
+                                        {prodPage} / {totalProdPages}
+                                    </span>
+
+                                    <button
+                                        className="btn btn-secondary"
+                                        onClick={() => setProdPage(prev => Math.min(totalProdPages, prev + 1))}
+                                        disabled={prodPage >= totalProdPages}
+                                        style={{ padding: '6px 14px', fontSize: '0.8rem', opacity: prodPage >= totalProdPages ? 0.4 : 1, cursor: prodPage >= totalProdPages ? 'not-allowed' : 'pointer' }}
+                                    >
+                                        التالي <i className="fa-solid fa-chevron-left"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                );
+            })()}
+
+            {/* Modals for All Categories & All Products */}
+            <Modal isOpen={isCatModalOpen} onClose={() => setIsCatModalOpen(false)} title="تقرير مبيعات الأقسام التفصيلي" width="600px">
                 <div className="table-wrapper" style={{ maxHeight: '60vh', overflowY: 'auto' }}>
-                    <table className="custom-table" style={{ fontSize: '12px' }}>
+                    <table className="custom-table" style={{ fontSize: '0.85rem' }}>
                         <thead>
                             <tr>
-                                <th>{t('categories')}</th>
-                                <th>{t('turnover')}</th>
-                                <th style={{ textAlign: 'right' }}>{t('increase')}</th>
+                                <th>اسم القسم</th>
+                                <th>الكمية المباعة</th>
+                                <th style={{ textAlign: 'right' }}>صافي الإيراد</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {bestCategories.slice(0, 15).map((cat, idx) => (
-                                <tr key={`modal-cat-${idx}`}>
-                                    <td style={{ fontWeight: 500 }}>{cat.name}</td>
-                                    <td>{currency} {cat.turnover.toLocaleString('en-US', {maximumFractionDigits:0})}</td>
-                                    <td style={{ textAlign: 'right', color: 'var(--color-success)', fontWeight: 600 }}>{cat.increase}</td>
+                            {sortedCategories.map((cat, idx) => (
+                                <tr key={`mod-cat-${idx}`}>
+                                    <td style={{ fontWeight: '600' }}>{cat.name}</td>
+                                    <td>{cat.itemsSold} قطعة</td>
+                                    <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--gold-primary)' }}>
+                                        {currency} {cat.revenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
@@ -452,36 +692,49 @@ export default function ReportsView() {
                 </div>
             </Modal>
 
-            <Modal isOpen={isProdModalOpen} onClose={() => setIsProdModalOpen(false)} title={t('bestSellingProduct')} width="1000px">
-                <div className="table-wrapper" style={{ maxHeight: '60vh', overflowY: 'auto', overflowX: 'auto' }}>
-                    <table className="custom-table" style={{ fontSize: '13px', whiteSpace: 'nowrap', textAlign: 'right' }}>
+            <Modal isOpen={isProdModalOpen} onClose={() => setIsProdModalOpen(false)} title="ربحية جميع المنتجات والأصناف" width="1000px">
+                <div className="table-wrapper" style={{ maxHeight: '65vh', overflowY: 'auto', overflowX: 'auto' }}>
+                    <table className="custom-table" style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                         <thead>
                             <tr>
-                                <th>{t('products')}</th>
-                                <th>{t('productId')}</th>
-                                <th>{t('categories')}</th>
-                                <th>{t('quantityInHand')}</th>
-                                <th>{t('turnover')}</th>
-                                <th>{t('margin')}</th>
-                                <th>{t('increase')}</th>
+                                <th style={{ textAlign: 'right' }}>المنتج والصنف</th>
+                                <th style={{ textAlign: 'right' }}>SKU</th>
+                                <th style={{ textAlign: 'right' }}>القسم</th>
+                                <th style={{ textAlign: 'center' }}>الكمية المباعة</th>
+                                <th style={{ textAlign: 'center' }}>صافي الإيراد</th>
+                                <th style={{ textAlign: 'center' }}>تكلفة المباع (COGS)</th>
+                                <th style={{ textAlign: 'center' }}>صافي الربح</th>
+                                <th style={{ textAlign: 'center' }}>نسبة الهامش</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {displayProducts.slice(0, 15).map((p, idx) => (
-                                <tr key={`modal-prod-${idx}`}>
-                                    <td style={{ fontWeight: 600, color: 'var(--gold-primary)' }}>{p.name}</td>
-                                    <td style={{ fontFamily: 'monospace' }}>{p.id}</td>
-                                    <td>{p.category}</td>
-                                    <td>{p.qty}</td>
-                                    <td style={{ fontWeight: 600 }}>{currency} {p.turnover.toLocaleString('en-US', {maximumFractionDigits:0})}</td>
-                                    <td><span className="badge badge-success">{p.margin}</span></td>
-                                    <td style={{ color: 'var(--color-success)', fontWeight: 600 }}>{p.increase}</td>
+                            {sortedProducts.map((prod, idx) => (
+                                <tr key={`mod-prod-${idx}`}>
+                                    <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{prod.name}</td>
+                                    <td style={{ fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{prod.sku}</td>
+                                    <td>{prod.category}</td>
+                                    <td style={{ textAlign: 'center', fontWeight: '700' }}>{prod.qtySold}</td>
+                                    <td style={{ textAlign: 'center', fontWeight: '600', color: 'var(--color-info)' }}>
+                                        {currency} {prod.netRevenue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                                    </td>
+                                    <td style={{ textAlign: 'center', color: '#a084dc' }}>
+                                        {currency} {prod.cogs.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                                    </td>
+                                    <td style={{ textAlign: 'center', fontWeight: '700', color: prod.netProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                                        {currency} {prod.netProfit.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                                    </td>
+                                    <td style={{ textAlign: 'center' }}>
+                                        <span className={`badge ${prod.marginPct >= 30 ? 'badge-success' : prod.marginPct >= 15 ? 'badge-warning' : 'badge-danger'}`}>
+                                            {prod.marginPct}%
+                                        </span>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
             </Modal>
+
         </div>
     );
 }

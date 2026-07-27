@@ -8,6 +8,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
     const { state, addProduct, editProduct, syncShopifyCollections, t, showAlert } = useContext(AppContext);
 
     // Form states
+    const [isSubmitting, setIsSubmitting] = useState(false);
     const [shopifyCollectionIds, setShopifyCollectionIds] = useState([]);
     const [showCollectionDropdown, setShowCollectionDropdown] = useState(false);
     const [syncingCollections, setSyncingCollections] = useState(false);
@@ -61,29 +62,29 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 setCategory(prod.category);
                 setUnit(prod.unit || 'Piece');
                 
-                // Handle both old single image and new array
+                // Handle both old single image and new array or JSON object
+                let loadedImages = [];
                 if (prod.images && Array.isArray(prod.images) && prod.images.length > 0) {
-                    setImages(prod.images.filter(img => img && img.startsWith && (img.startsWith('data:') || img.startsWith('http'))));
-                } else if (prod.image && typeof prod.image === 'string') {
-                    // Try to parse JSON array first
-                    try {
-                        const parsed = JSON.parse(prod.image);
-                        if (Array.isArray(parsed) && parsed.length > 0) {
-                            setImages(parsed.filter(img => img && img.startsWith && (img.startsWith('data:') || img.startsWith('http'))));
-                        } else {
-                            setImages([]);
+                    loadedImages = prod.images;
+                } else if (prod.image) {
+                    if (typeof prod.image === 'string') {
+                        try {
+                            const parsed = JSON.parse(prod.image);
+                            if (Array.isArray(parsed)) {
+                                loadedImages = parsed;
+                            } else if (parsed && typeof parsed === 'object' && Array.isArray(parsed.images)) {
+                                loadedImages = parsed.images;
+                            }
+                        } catch {
+                            if (prod.image.startsWith('data:') || prod.image.startsWith('http')) {
+                                loadedImages = [prod.image];
+                            }
                         }
-                    } catch {
-                        // Not JSON, check if it's a valid image string
-                        if (prod.image.startsWith('data:') || prod.image.startsWith('http')) {
-                            setImages([prod.image]);
-                        } else {
-                            setImages([]);
-                        }
+                    } else if (typeof prod.image === 'object' && Array.isArray(prod.image.images)) {
+                        loadedImages = prod.image.images;
                     }
-                } else {
-                    setImages([]);
                 }
+                setImages(loadedImages.filter(img => img && typeof img === 'string' && (img.startsWith('data:') || img.startsWith('http'))));
                 
                 setVendor(prod.vendor || '');
                 setTags(prod.tags || '');
@@ -227,76 +228,93 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
         document.getElementById('product-image-uploader-input').click();
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        if (isSubmitting) return;
+
         if (!name || !productId) {
             showAlert("اسم المنتج وكود المنتج مطلوبان لحفظ الصنف.");
             return;
         }
 
-        // Auto-generate SKUs and Barcodes internally
-        const mappedVariants = variants.map((v, idx) => {
-            const cleanId = productId.replace('PROD-', '').replace(/[^a-zA-Z0-9]/g, '');
-            const generatedSku = v.sku || `SKU-${cleanId}-${idx + 1}`;
-            const generatedBarcode = v.barcode || `${Math.floor(100000000000 + Math.random() * 900000000000)}`;
-            return {
-                sku: generatedSku,
-                name: hasVariants ? (v.name || 'Standard Option') : 'Standard Option',
-                barcode: generatedBarcode,
-                wholesalePrice: parseFloat(v.wholesalePrice) || 0,
-                retailPrice: parseFloat(v.retailPrice) || 0,
-                reorderLimit: parseInt(v.reorderLimit) || 0,
-                shopify_id: v.shopify_id,
-                stock: {
-                    Sulur: parseInt(v.stockSulur) || 0,
-                    Singanallur: 0
-                }
-            };
-        });
-
-        // Expiry Date is set to far future so it never triggers alerts
-        const mappedBatches = [];
-        mappedVariants.forEach((v, idx) => {
-            const totalQty = v.stock.Sulur;
-            if (totalQty > 0) {
-                mappedBatches.push({
-                    batchId: `B-${v.sku.substring(0, 8).replace(/[^a-zA-Z0-9]/g, '')}-${idx}`,
-                    variantSku: v.sku,
-                    expiryDate: '2099-12-31',
-                    quantity: totalQty,
-                    warehouse: 'Sulur'
-                });
+        for (const v of variants) {
+            if ((parseFloat(v.wholesalePrice) || 0) < 0 || (parseFloat(v.retailPrice) || 0) < 0) {
+                showAlert("عفواً، لا يمكن إدخال أسعار بالسالب.");
+                return;
             }
-        });
-
-        const originalProduct = editProductId ? state.products.find(p => p.id === editProductId) : null;
-        const productObj = {
-            id: productId,
-            name,
-            category,
-            unit,
-            images,
-            vendor,
-            tags,
-            // Keep old image prop as stringified version for database backwards compatibility if needed
-            image: JSON.stringify(images), 
-            createdDate: originalProduct ? (originalProduct.createdDate || getLocalDateString()) : getLocalDateString(),
-            createdBy: originalProduct ? (originalProduct.createdBy || 'sfsf') : (state.currentUser ? state.currentUser.name : 'sfsf'),
-            description: description,
-            status: status,
-            shopifyCollectionIds: shopifyCollectionIds,
-            variants: mappedVariants,
-            batches: mappedBatches,
-            suppliers: originalProduct ? (originalProduct.suppliers || []) : [],
-            shopify_id: originalProduct ? originalProduct.shopify_id : undefined
-        };
-
-        if (editProductId) {
-            editProduct(productObj);
-        } else {
-            addProduct(productObj);
+            if ((parseInt(v.stockSulur) || 0) < 0) {
+                showAlert("عفواً، لا يمكن إدخال كميات مخزون بالسالب.");
+                return;
+            }
         }
-        onClose();
+
+        setIsSubmitting(true);
+        try {
+            // Auto-generate SKUs and Barcodes internally
+            const mappedVariants = variants.map((v, idx) => {
+                const cleanId = productId.replace('PROD-', '').replace(/[^a-zA-Z0-9]/g, '');
+                const generatedSku = v.sku || `SKU-${cleanId}-${idx + 1}`;
+                const generatedBarcode = v.barcode || `${Math.floor(100000000000 + Math.random() * 900000000000)}`;
+                return {
+                    sku: generatedSku,
+                    name: hasVariants ? (v.name || 'Standard Option') : 'Standard Option',
+                    barcode: generatedBarcode,
+                    wholesalePrice: parseFloat(v.wholesalePrice) || 0,
+                    retailPrice: parseFloat(v.retailPrice) || 0,
+                    reorderLimit: parseInt(v.reorderLimit) || 0,
+                    shopify_id: v.shopify_id,
+                    stock: {
+                        Sulur: Math.max(0, parseInt(v.stockSulur) || 0),
+                        Singanallur: 0
+                    }
+                };
+            });
+
+            // Expiry Date is set to far future so it never triggers alerts
+            const mappedBatches = [];
+            mappedVariants.forEach((v, idx) => {
+                const totalQty = v.stock.Sulur;
+                if (totalQty > 0) {
+                    mappedBatches.push({
+                        batchId: `B-${v.sku.substring(0, 8).replace(/[^a-zA-Z0-9]/g, '')}-${idx}`,
+                        variantSku: v.sku,
+                        expiryDate: '2099-12-31',
+                        quantity: totalQty,
+                        warehouse: 'Sulur'
+                    });
+                }
+            });
+
+            const originalProduct = editProductId ? state.products.find(p => p.id === editProductId) : null;
+            const productObj = {
+                id: productId,
+                name,
+                category,
+                unit,
+                images,
+                vendor,
+                tags,
+                image: JSON.stringify(images), 
+                createdDate: originalProduct ? (originalProduct.createdDate || getLocalDateString()) : getLocalDateString(),
+                createdBy: originalProduct ? (originalProduct.createdBy || 'sfsf') : (state.currentUser ? state.currentUser.name : 'sfsf'),
+                description: description,
+                status: status,
+                shopifyCollectionIds: shopifyCollectionIds,
+                variants: mappedVariants,
+                batches: mappedBatches,
+                suppliers: originalProduct ? (originalProduct.suppliers || []) : [],
+                shopify_id: originalProduct ? originalProduct.shopify_id : undefined
+            };
+
+            if (editProductId) {
+                await editProduct(productObj);
+            } else {
+                await addProduct(productObj);
+            }
+            onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (

@@ -39,21 +39,33 @@ export default function RestockModal({ isOpen, onClose, product, variant }) {
         }
     }, [quantity, unitCost, variant]);
 
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     if (!isOpen || !variant || !product) return null;
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!quantity || parseInt(quantity) <= 0) {
-            alert("Please enter a valid quantity.");
+        if (isSubmitting) return;
+
+        const qtyVal = parseInt(quantity) || 0;
+        const costVal = parseFloat(unitCost) || 0;
+
+        if (!quantity || qtyVal <= 0) {
+            alert("عفواً، يرجى إدخال كمية توريد صحيحة أكبر من الصفر.");
             return;
         }
-        if (!unitCost || parseFloat(unitCost) < 0) {
-            alert("Please enter a valid cost.");
+        if (unitCost === '' || costVal < 0) {
+            alert("عفواً، يرجى إدخال سعر تكلفة صحيح.");
             return;
         }
         
-        restockVariant(product.id, variant.sku, quantity, unitCost, 'Sulur', notes);
-        onClose();
+        setIsSubmitting(true);
+        try {
+            await restockVariant(product.id, variant.sku, qtyVal, costVal, 'Sulur', notes);
+            onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (

@@ -27,8 +27,25 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
 
     if (!state.currentUser) return null;
 
+    const isOrderReviewed = (o) => {
+        if (!o) return false;
+        if (o.is_reviewed || o.isReviewed) return true;
+        if (o.address) {
+            if (typeof o.address === 'object') return !!(o.address.isReviewed || o.address.is_reviewed || o.address.bostaDeliveryId || o.address.trackingNumber || o.address.bostaTrackingNumber);
+            if (typeof o.address === 'string') {
+                try {
+                    const p = JSON.parse(o.address);
+                    return !!(p?.isReviewed || p?.is_reviewed || p?.bostaDeliveryId || p?.trackingNumber || p?.bostaTrackingNumber);
+                } catch(e) {}
+            }
+        }
+        return false;
+    };
+
     // 1. Compute pending Shopify orders
-    const pendingShopifyOrders = (state.orders || []).filter(o => o.status === 'Pending' && o.source === 'shopify');
+    const pendingShopifyOrders = (state.orders || []).filter(o => 
+        o.status === 'Pending' && o.source === 'shopify' && !isOrderReviewed(o)
+    );
 
     // 2. Compute low stock items
     const lowStockItems = [];
@@ -54,23 +71,8 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
         (parseFloat(o.deposit) || 0) > 0
     );
 
-    // 3b. Cancelled orders where this admin still needs to return the deposit
-    const pendingMyRefunds = (state.orders || []).filter(o =>
-        o.depositReceiverId === state.currentUser?.id &&
-        o.status === 'Cancelled' &&
-        (parseFloat(o.deposit) || 0) > 0 &&
-        o.depositRefundStatus === 'awaiting_return'
-    );
-
     // 4. Combine notifications
     const notificationsList = [
-        ...pendingMyRefunds.map(o => ({
-            id: `refund-${o.id}`,
-            type: 'refund',
-            title: '⚠️ إعادة عربون مطلوبة',
-            text: `الطلب #${o.id} للعميل ${o.client} تم إلغاؤه — أعد عربون ${o.deposit} ${state.storeSettings?.currency || 'EGP'} وأكد بسكرين شوت`,
-            targetView: 'depositConfirm'
-        })),
         ...pendingMyDeposits.map(o => ({
             id: `deposit-${o.id}`,
             type: 'deposit',
@@ -80,15 +82,18 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
                 : `تأكيد استلام عربون بقيمة ${o.deposit} ج.م للطلب #${o.id} للعميل ${o.client}`,
             targetView: 'supabaseTasks'
         })),
-        ...pendingShopifyOrders.map(o => ({
-            id: `shopify-${o.id}`,
-            type: 'shopify',
-            title: language === 'en' ? 'New Shopify Order' : 'طلب شوبيفاي معلق جديد',
-            text: language === 'en' 
-                ? `Order ${o.id} for ${o.client} (${o.totalValue.toLocaleString('en-US', {maximumFractionDigits: 2})} EGP)`
-                : `طلب جديد بقيمة ${o.totalValue.toLocaleString('en-US', {maximumFractionDigits: 2})} ج.م للعميل ${o.client}`,
-            targetView: 'shopifyPending'
-        })),
+        ...pendingShopifyOrders.map(o => {
+            const val = parseFloat(o.totalValue || o.total_value) || 0;
+            return {
+                id: `shopify-${o.id}`,
+                type: 'shopify',
+                title: language === 'en' ? 'New Shopify Order' : 'طلب شوبيفاي معلق جديد',
+                text: language === 'en' 
+                    ? `Order ${o.id} for ${o.client || 'Customer'} (${val.toLocaleString('en-US', {maximumFractionDigits: 2})} EGP)`
+                    : `طلب جديد بقيمة ${val.toLocaleString('en-US', {maximumFractionDigits: 2})} ج.م للعميل ${o.client || 'عميل'}`,
+                targetView: 'shopifyPending'
+            };
+        }),
         ...lowStockItems.map(item => ({
             id: `stock-${item.sku}`,
             type: 'lowstock',

@@ -66,6 +66,8 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
         });
     });
 
+    const [formCreditLimit, setFormCreditLimit] = useState(0);
+
     const handleOpenAdd = () => {
         setIsEditMode(false);
         setFormId('');
@@ -74,6 +76,7 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
         setFormPhone('');
         setFormPaid(0);
         setFormDebt(0);
+        setFormCreditLimit(0);
         setIsFormOpen(true);
     };
 
@@ -85,6 +88,7 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
         setFormPhone(sup.phone || '');
         setFormPaid(sup.paid);
         setFormDebt(sup.debt);
+        setFormCreditLimit(sup.creditLimit || sup.credit_limit || 0);
         setIsFormOpen(true);
     };
 
@@ -105,6 +109,8 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
             phone: formPhone,
             paid: parseFloat(formPaid) || 0,
             debt: parseFloat(formDebt) || 0,
+            creditLimit: parseFloat(formCreditLimit) || 0,
+            credit_limit: parseFloat(formCreditLimit) || 0,
             suppliedVariants: isNew ? [] : (state.suppliers.find(s => s.id === formId)?.suppliedVariants || []),
             createdBy: isNew ? (state.currentUser ? state.currentUser.name : 'sfsf') : (state.suppliers.find(s => s.id === formId)?.createdBy || 'sfsf')
         };
@@ -205,6 +211,22 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
             createdBy: state.currentUser ? state.currentUser.name : 'sfsf'
         };
 
+        const targetSup = state.suppliers.find(s => s.id === poSupplierId);
+        if (targetSup && (targetSup.creditLimit || targetSup.credit_limit) > 0) {
+            const limit = targetSup.creditLimit || targetSup.credit_limit;
+            const projectedDebt = (targetSup.debt || 0) + totalCost;
+            if (projectedDebt > limit) {
+                showConfirm(
+                    `تنبيه: إجمالي مديونية المورد (${projectedDebt.toLocaleString()} ${currency}) ستتجاوز الحد الائتماني المسموح به (${limit.toLocaleString()} ${currency}). هل تريد المتابعة وتأكيد الفاتورة رغم ذلك؟`,
+                    () => {
+                        recordPurchaseOrder(newPO);
+                        setIsPoOpen(false);
+                    }
+                );
+                return;
+            }
+        }
+
         recordPurchaseOrder(newPO);
         setIsPoOpen(false);
     };
@@ -246,38 +268,46 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
             </div>
 
             {/* Summary Metrics Cards */}
-            <div className="metrics-grid">
-                <div className="glass-card metric-card">
-                    <div className="metric-glow-decor"></div>
-                    <div className="metric-info">
-                        <h3>{t('totalActiveSuppliers')}</h3>
-                        <div className="metric-value">{state.suppliers.length}</div>
-                    </div>
-                    <div className="metric-icon-box"><i className="fa-solid fa-handshake"></i></div>
+            <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                <div className="glass-card" style={{ 
+                    padding: '20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(212, 175, 55, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(212, 175, 55, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(212, 175, 55, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '8px' }}>{t('totalActiveSuppliers')}</span>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--gold-primary)', letterSpacing: '-0.5px' }}>{state.suppliers.length}</div>
                 </div>
-                <div className="glass-card metric-card">
-                    <div className="metric-glow-decor"></div>
-                    <div className="metric-info">
-                        <h3>{t('outstandingLiabilities')}</h3>
-                        <div className="metric-value" style={{ color: 'var(--color-danger)' }}>{currency} {totalDebt.toLocaleString('en-US', {maximumFractionDigits: 0})}</div>
-                    </div>
-                    <div className="metric-icon-box"><i className="fa-solid fa-receipt"></i></div>
+                <div className="glass-card" style={{ 
+                    padding: '20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(255, 71, 87, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(255, 71, 87, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(255, 71, 87, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '8px' }}>{t('outstandingLiabilities')}</span>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--color-danger)', letterSpacing: '-0.5px' }}>{currency} {totalDebt.toLocaleString('en-US', {maximumFractionDigits: 0})}</div>
                 </div>
-                <div className="glass-card metric-card">
-                    <div className="metric-glow-decor"></div>
-                    <div className="metric-info">
-                        <h3>{t('totalPaidAssets')}</h3>
-                        <div className="metric-value" style={{ color: 'var(--color-success)' }}>{currency} {totalPaid.toLocaleString('en-US', {maximumFractionDigits: 0})}</div>
-                    </div>
-                    <div className="metric-icon-box"><i className="fa-solid fa-circle-check"></i></div>
+                <div className="glass-card" style={{ 
+                    padding: '20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(46, 213, 115, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(46, 213, 115, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(46, 213, 115, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '8px' }}>{t('totalPaidAssets')}</span>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--color-success)', letterSpacing: '-0.5px' }}>{currency} {totalPaid.toLocaleString('en-US', {maximumFractionDigits: 0})}</div>
                 </div>
-                <div className="glass-card metric-card">
-                    <div className="metric-glow-decor"></div>
-                    <div className="metric-info">
-                        <h3>{t('productVarietiesRange')}</h3>
-                        <div className="metric-value">{totalItems} {t('variants')}</div>
-                    </div>
-                    <div className="metric-icon-box"><i className="fa-solid fa-folder-tree"></i></div>
+                <div className="glass-card" style={{ 
+                    padding: '20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(30, 144, 255, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(30, 144, 255, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(30, 144, 255, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '8px' }}>{t('productVarietiesRange')}</span>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--color-info)', letterSpacing: '-0.5px' }}>{totalItems} {t('variants')}</div>
                 </div>
             </div>
 

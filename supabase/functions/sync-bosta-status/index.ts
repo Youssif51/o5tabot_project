@@ -183,8 +183,25 @@ Deno.serve(async (req) => {
     }
 
     // Handle stock if status transition requires it
-    const wasDeducted = ['Completed', 'Partially Delivered', 'Shipped'].includes(previousStatus);
-    const isDeducted = ['Completed', 'Partially Delivered', 'Shipped'].includes(newStatus);
+    const isDeductedStatus = (st: string, addressStr: string, source: string) => {
+      if (!st || st === 'Draft' || st === 'Cancelled') return false;
+      if (['Shipped', 'Completed', 'Processing', 'Delivered', 'Out for Delivery', 'Partially Delivered'].includes(st)) return true;
+      if (st === 'Pending') {
+        const isManual = source !== 'shopify';
+        let isReviewed = false;
+        if (addressStr && addressStr.startsWith('{')) {
+          try {
+            const p = JSON.parse(addressStr);
+            isReviewed = !!(p?.isReviewed || p?.is_reviewed);
+          } catch(e) {}
+        }
+        return isManual || isReviewed;
+      }
+      return true;
+    };
+
+    const wasDeducted = isDeductedStatus(previousStatus, order.address || "", order.source || "");
+    const isDeducted = isDeductedStatus(newStatus, order.address || "", order.source || "");
     const isCancelled = newStatus === 'Cancelled';
     const wasCancelled = previousStatus === 'Cancelled';
 
@@ -199,7 +216,7 @@ Deno.serve(async (req) => {
         for (const item of items) {
           const { data: vData } = await supabaseAdmin
             .from('product_variants')
-            .select('stock_sulur, product_id, shopify_id')
+            .select('stock_sulur, product_id, shopify_id, average_cost')
             .eq('sku', item.variant_sku)
             .single();
 
@@ -214,6 +231,7 @@ Deno.serve(async (req) => {
             // 2. Local Restock (only if it was previously deducted locally)
             if (wasDeducted) {
               const newStock = (vData.stock_sulur || 0) + (item.quantity || 0);
+              const uCost = vData.average_cost || 0;
               await supabaseAdmin
                 .from('product_variants')
                 .update({ stock_sulur: newStock })
@@ -222,12 +240,15 @@ Deno.serve(async (req) => {
               await supabaseAdmin
                 .from('stock_ledger')
                 .insert([{
-                  date: new Date().toISOString().split('T')[0],
+                  order_id: orderId,
+                  date: new Date().toISOString(),
                   product_id: vData.product_id,
                   variant_sku: item.variant_sku,
                   warehouse: order.warehouse || 'Sulur',
                   type: 'Return',
                   quantity: item.quantity,
+                  unit_cost: uCost,
+                  total_cost: uCost * Math.abs(item.quantity || 0),
                   balance_after: newStock
                 }]);
             }

@@ -3,6 +3,7 @@ import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 import { deduplicateProductName } from '../../utils/productUtils';
 import ProductInfo from './ProductInfo';
+import InitialStockSetupModal from './InitialStockSetupModal';
 
 export default function InventoryList({ 
     globalSearch, 
@@ -13,6 +14,9 @@ export default function InventoryList({
 }) {
     const { state, showToast, t, deleteProduct, showConfirm } = useContext(AppContext);
     
+    // Initial Stock & Price Setup modal control
+    const [isInitialStockOpen, setIsInitialStockOpen] = useState(false);
+
     // View mode: 'list' or 'inspect'
     const [viewMode, setViewMode] = useState('list');
     const [inspectId, setInspectId] = useState(null);
@@ -133,32 +137,27 @@ export default function InventoryList({
     });
 
     const handleExportCSV = () => {
-        let csvContent = "data:text/csv;charset=utf-8,";
-        csvContent += "Product Name,Category,Variant SKU,Barcode,Wholesale Price,Retail Price,Stock\r\n";
-        
-        state.products.forEach(p => {
-            p.variants.forEach(vr => {
-                const row = [
-                    `"${p.name}"`,
-                    `"${p.category}"`,
-                    `"${vr.sku}"`,
-                    `"${vr.barcode || ""}"`,
-                    vr.wholesalePrice,
-                    vr.retailPrice,
-                    vr.stock.Sulur
-                ].join(",");
-                csvContent += row + "\r\n";
-            });
-        });
+        const headers = ["اسم المنتج", "القسم", "رمز SKU", "الباركود", "سعر التكلفة", "سعر البيع", "المخزون المتوفر"];
+        const rows = filteredList.map(item => [
+            `"${item.productName}"`,
+            `"${item.category || ''}"`,
+            `"${item.sku}"`,
+            `"${item.barcode || ''}"`,
+            item.wholesalePrice || 0,
+            item.retailPrice || 0,
+            item.stock?.Sulur || 0
+        ]);
 
-        const encodedUri = encodeURI(csvContent);
+        const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
-        link.setAttribute("href", encodedUri);
-        link.setAttribute("download", `octabot_inventory_report_${new Date().toISOString().substring(0,10)}.csv`);
+        link.setAttribute("href", url);
+        link.setAttribute("download", `تقرير_المخزون_${getLocalDateString()}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        showToast("CSV exported successfully.");
+        showToast("تم تصدير تقرير المخزون المفلتر بنجاح", "success");
     };
 
     if (viewMode === 'inspect') {
@@ -184,63 +183,66 @@ export default function InventoryList({
                 </div>
             </div>
             
-            <div className="metrics-grid" style={{ marginBottom: '24px' }}>
+            <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', marginBottom: '24px' }}>
                 {/* Collections */}
-                <div className="glass-card metric-card">
-                    <div className="metric-glow-decor"></div>
-                    <div className="metric-info">
-                        <h3 style={{ color: 'var(--gold-primary)' }}>المجموعات</h3>
-                        <div className="metric-value">{collectionsCount}</div>
-                        <div className="metric-change" style={{ color: 'var(--text-muted)' }}>Collections</div>
-                    </div>
+                <div className="glass-card" style={{ 
+                    padding: '20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(212, 175, 55, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(212, 175, 55, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(212, 175, 55, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '8px' }}>المجموعات</span>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--gold-primary)', letterSpacing: '-0.5px' }}>{collectionsCount}</div>
                 </div>
 
                 {/* Total Products */}
-                <div className="glass-card metric-card">
-                    <div className="metric-glow-decor"></div>
-                    <div className="metric-info">
-                        <h3 style={{ color: 'var(--color-warning)' }}>{t('totalProducts')}</h3>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '20px' }}>
-                            <div className="metric-value">{totalProductsCount}</div>
-                            <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                                {currency} {totalInvValue.toLocaleString('en-US', {maximumFractionDigits: 0})} <span style={{ color: 'var(--text-muted)' }}>{t('revenue')}</span>
-                            </div>
-                        </div>
-                        <div className="metric-change" style={{ color: 'var(--text-muted)' }}>Last 7 days</div>
+                <div className="glass-card" style={{ 
+                    padding: '20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(30, 144, 255, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(30, 144, 255, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(30, 144, 255, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '8px' }}>{t('totalProducts')}</span>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--color-info)', letterSpacing: '-0.5px' }}>{totalProductsCount}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                        قيمة الإيراد: <strong>{currency} {totalInvValue.toLocaleString('en-US', {maximumFractionDigits: 0})}</strong>
                     </div>
                 </div>
 
                 {/* Top Selling */}
-                <div className="glass-card metric-card">
-                    <div className="metric-glow-decor"></div>
-                    <div className="metric-info">
-                        <h3 style={{ color: '#a084dc' }}>{t('topSelling')}</h3>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '20px' }}>
-                            <div className="metric-value">{topSellingCount}</div>
-                            <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                                {currency} {topSellingCost.toLocaleString('en-US', {maximumFractionDigits: 0})} <span style={{ color: 'var(--text-muted)' }}>{t('cost')}</span>
-                            </div>
-                        </div>
-                        <div className="metric-change" style={{ color: 'var(--text-muted)' }}>Last 7 days</div>
+                <div className="glass-card" style={{ 
+                    padding: '20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(160, 132, 220, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(160, 132, 220, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(160, 132, 220, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '8px' }}>{t('topSelling')}</span>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#a084dc', letterSpacing: '-0.5px' }}>{topSellingCount}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                        إجمالي التكلفة: <strong>{currency} {topSellingCost.toLocaleString('en-US', {maximumFractionDigits: 0})}</strong>
                     </div>
                 </div>
 
                 {/* Low Stocks */}
                 <div 
-                    className="glass-card metric-card" 
+                    className="glass-card" 
                     onClick={() => { setStockFilter(stockFilter === 'low' ? 'all' : 'low'); setCurrentPage(1); }}
-                    style={{ cursor: 'pointer', border: stockFilter === 'low' ? '1px solid var(--color-danger)' : '1px solid transparent', transition: 'border 0.3s ease' }}
+                    style={{ 
+                        padding: '20px', 
+                        borderRadius: '16px',
+                        border: stockFilter === 'low' ? '1px solid var(--color-danger)' : '1px solid rgba(255, 71, 87, 0.25)', 
+                        background: 'radial-gradient(circle at top right, rgba(255, 71, 87, 0.12) 0%, var(--glass-bg) 80%)',
+                        boxShadow: '0 8px 24px rgba(255, 71, 87, 0.05)',
+                        cursor: 'pointer'
+                    }}
                 >
-                    <div className="metric-glow-decor"></div>
-                    <div className="metric-info">
-                        <h3 style={{ color: 'var(--color-danger)' }}>{t('lowStocks')}</h3>
-                        <div style={{ display: 'flex', alignItems: 'baseline', gap: '20px' }}>
-                            <div className="metric-value">{lowStocksCount}</div>
-                            <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                                {outOfStockCount} <span style={{ color: 'var(--text-muted)' }}>{t('notInStock')}</span>
-                            </div>
-                        </div>
-                        <div className="metric-change" style={{ color: 'var(--text-muted)' }}>{t('ordered')}</div>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '8px' }}>{t('lowStocks')}</span>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--color-danger)', letterSpacing: '-0.5px' }}>{lowStocksCount}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                        نفذت بالكامل: <strong style={{ color: 'var(--color-danger)' }}>{outOfStockCount}</strong>
                     </div>
                 </div>
             </div>
@@ -272,6 +274,9 @@ export default function InventoryList({
                         <div style={{ display: 'flex', gap: '10px' }}>
                             <button className="btn btn-primary" onClick={onOpenAddProduct}>
                                 {t('addProduct')}
+                            </button>
+                            <button className="btn btn-secondary" onClick={() => setIsInitialStockOpen(true)}>
+                                ضبط الرصيد الافتتاحي والأسعار
                             </button>
                             <button className="btn btn-secondary" onClick={() => setShowFilters(!showFilters)}>
                                 <i className="fa-solid fa-sliders"></i> {t('filters')}
@@ -578,6 +583,8 @@ export default function InventoryList({
                     </div>
                 </div>
             )}
+
+            <InitialStockSetupModal isOpen={isInitialStockOpen} onClose={() => setIsInitialStockOpen(false)} />
         </div>
     );
 }

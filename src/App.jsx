@@ -374,16 +374,23 @@ export default function App() {
                     } />
 
                     <Route path="/reports" element={
-                        <ReportsView />
+                        state.currentUser?.role === 'SuperAdmin' ? (
+                            <ReportsView />
+                        ) : (
+                            <Navigate to="/dashboard" replace />
+                        )
                     } />
-
 
                     <Route path="/depositConfirm" element={
                         <DepositConfirmList />
                     } />
 
                     <Route path="/store" element={
-                        <StoreSettings />
+                        state.currentUser?.role === 'SuperAdmin' ? (
+                            <StoreSettings />
+                        ) : (
+                            <Navigate to="/dashboard" replace />
+                        )
                     } />
 
                     <Route path="/marketing" element={

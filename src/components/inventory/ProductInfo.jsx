@@ -631,9 +631,9 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                     <tr>
                                         <th>التاريخ</th>
                                         <th>النوع</th>
-                                        <th>النوع (Variant)</th>
-                                        <th>التغيير</th>
-                                        <th>تكلفة القطعة (Unit Cost)</th>
+                                        <th>النوع (VARIANT)</th>
+                                        <th>التغير</th>
+                                        <th>تكلفة القطعة (UNIT COST)</th>
                                         <th>إجمالي التكلفة</th>
                                         <th>الرصيد بعد الحركة</th>
                                         <th>ملاحظات</th>
@@ -641,37 +641,74 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                 </thead>
                                 <tbody>
                                     {(() => {
-                                        const productHistory = (state.stockLedger || []).filter(log => log.product_id === productId || log.productId === productId);
-                                        productHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
-                                        
-                                        if (productHistory.length === 0) {
-                                            productHistory.push({
-                                                date: new Date().toISOString(),
-                                                type: 'Restock',
-                                                variant_sku: product.variants[0]?.sku || 'MOCK-SKU',
-                                                quantity: 50,
-                                                unit_cost: 45.5,
-                                                total_cost: 2275,
-                                                balance_after: 150,
-                                                notes: 'دفعة تجريبية (Mock Data)'
+                                        const rawLogs = (state.stockLedger || []).filter(log => {
+                                            const pId = log.product_id || log.productId;
+                                            return String(pId) === String(productId);
+                                        });
+
+                                        // Group by variant_sku to calculate accurate running balance per variant
+                                        const logsByVariant = {};
+                                        rawLogs.forEach(log => {
+                                            const sku = log.variant_sku || log.variantSku || 'DEFAULT';
+                                            if (!logsByVariant[sku]) logsByVariant[sku] = [];
+                                            logsByVariant[sku].push({ ...log });
+                                        });
+
+                                        const processedLogs = [];
+
+                                        Object.keys(logsByVariant).forEach(sku => {
+                                            const variantLogs = logsByVariant[sku];
+
+                                            // Sort ASC (oldest first)
+                                            variantLogs.sort((a, b) => {
+                                                const dA = new Date(a.date || a.created_at).getTime();
+                                                const dB = new Date(b.date || b.created_at).getTime();
+                                                if (dA !== dB) return dA - dB;
+                                                return (a.id || 0) - (b.id || 0);
                                             });
-                                            productHistory.push({
-                                                date: new Date(Date.now() - 86400000).toISOString(),
-                                                type: 'Sale',
-                                                variant_sku: product.variants[0]?.sku || 'MOCK-SKU',
-                                                quantity: -2,
-                                                unit_cost: 40,
-                                                total_cost: 80,
-                                                balance_after: 100,
-                                                notes: 'طلب رقم #8291 (Mock Data)'
+
+                                            let runningBalance = 0;
+                                            if (variantLogs.length > 0) {
+                                                const first = variantLogs[0];
+                                                const firstBal = first.balance_after ?? first.balanceAfter;
+                                                const firstQty = first.quantity || 0;
+                                                if (firstBal !== undefined && firstBal !== null && !isNaN(firstBal)) {
+                                                    runningBalance = Math.max(0, Number(firstBal) - firstQty);
+                                                }
+                                            }
+
+                                            variantLogs.forEach(log => {
+                                                const qty = log.quantity || 0;
+                                                runningBalance += qty;
+                                                log.calculated_balance_after = runningBalance;
+                                                processedLogs.push(log);
                                             });
+                                        });
+
+                                        // Sort DESC (newest first for display)
+                                        processedLogs.sort((a, b) => {
+                                            const dA = new Date(a.date || a.created_at).getTime();
+                                            const dB = new Date(b.date || b.created_at).getTime();
+                                            if (dA !== dB) return dB - dA;
+                                            return (b.id || 0) - (a.id || 0);
+                                        });
+
+                                        if (processedLogs.length === 0) {
+                                            return (
+                                                <tr>
+                                                    <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '20px' }}>
+                                                        لا توجد حركات مخزنية مسجلة.
+                                                    </td>
+                                                </tr>
+                                            );
                                         }
-                                        
-                                        return productHistory.map((log, idx) => {
+
+                                        return processedLogs.map((log, idx) => {
                                             const qty = log.quantity || 0;
                                             const uCost = log.unit_cost || log.unitCost || 0;
                                             const tCost = log.total_cost || log.totalCost || 0;
                                             const isIncrease = qty > 0;
+                                            
                                             const typeLabel = {
                                                 'Sale': 'بيع',
                                                 'Return': 'مرتجع',
@@ -688,7 +725,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                             return (
                                                 <tr key={idx}>
                                                     <td style={{ whiteSpace: 'nowrap' }}>
-                                                        {new Date(log.date).toLocaleString('en-GB', { 
+                                                        {new Date(log.date || log.created_at).toLocaleString('en-GB', { 
                                                             day: '2-digit', month: '2-digit', year: 'numeric', 
                                                             hour: '2-digit', minute: '2-digit', hour12: true 
                                                         })}
@@ -700,7 +737,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                     </td>
                                                     <td>{uCost !== undefined && uCost !== null ? `${parseFloat(uCost).toFixed(2)} ج.م.` : '0.00 ج.م.'}</td>
                                                     <td>{tCost !== undefined && tCost !== null ? `${parseFloat(tCost).toFixed(2)} ج.م.` : '0.00 ج.م.'}</td>
-                                                    <td style={{ fontWeight: 'bold' }}>{log.balance_after || log.balanceAfter || 0}</td>
+                                                    <td style={{ fontWeight: 'bold' }}>{log.calculated_balance_after}</td>
                                                     <td style={{ color: '#aaa' }}>{log.notes || '-'}</td>
                                                 </tr>
                                             );

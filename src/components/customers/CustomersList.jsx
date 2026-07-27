@@ -157,32 +157,36 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
             </div>
 
             {/* Summary Metrics Cards */}
-            <div className="metrics-grid">
-                <div className="glass-card metric-card">
-                    <div className="metric-glow-decor"></div>
-                    <div className="metric-info">
-                        <h3>{t('totalCustomers')}</h3>
-                        <div className="metric-value">{state.customers.length}</div>
-                    </div>
-                    <div className="metric-icon-box"><i className="fa-solid fa-users"></i></div>
+            <div className="metrics-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                <div className="glass-card" style={{ 
+                    padding: '20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(30, 144, 255, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(30, 144, 255, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(30, 144, 255, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '8px' }}>{t('totalCustomers')}</span>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--color-info)', letterSpacing: '-0.5px' }}>{state.customers.length}</div>
                 </div>
-                <div className="glass-card metric-card">
-                    <div className="metric-glow-decor"></div>
-                    <div className="metric-info">
-                        <h3>{t('vipCustomers')}</h3>
-                        <div className="metric-value" style={{ color: 'var(--gold-primary)' }}>{vipCount}</div>
-                    </div>
-                    <div className="metric-icon-box" style={{ background: 'rgba(212, 175, 55, 0.15)', color: 'var(--gold-primary)' }}>
-                        <i className="fa-solid fa-crown"></i>
-                    </div>
+                <div className="glass-card" style={{ 
+                    padding: '20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(212, 175, 55, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(212, 175, 55, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(212, 175, 55, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '8px' }}>{t('vipCustomers')}</span>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--gold-primary)', letterSpacing: '-0.5px' }}>{vipCount}</div>
                 </div>
-                <div className="glass-card metric-card">
-                    <div className="metric-glow-decor"></div>
-                    <div className="metric-info">
-                        <h3>{t('totalPurchases')}</h3>
-                        <div className="metric-value" style={{ color: 'var(--color-success)' }}>{currency} {totalPurchases.toLocaleString('en-US', {minimumFractionDigits: 0})}</div>
-                    </div>
-                    <div className="metric-icon-box"><i className="fa-solid fa-chart-line"></i></div>
+                <div className="glass-card" style={{ 
+                    padding: '20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(46, 213, 115, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(46, 213, 115, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(46, 213, 115, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '8px' }}>{t('totalPurchases')}</span>
+                    <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--color-success)', letterSpacing: '-0.5px' }}>{currency} {totalPurchases.toLocaleString('en-US', {minimumFractionDigits: 0})}</div>
                 </div>
             </div>
 

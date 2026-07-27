@@ -61,9 +61,11 @@ function normalizePhone(phoneStr: string | null | undefined): string {
 }
 
 // Dynamically resolve, match, link or create local variant from Shopify line item
-async function resolveLocalVariantSku(supabase: any, item: any, shopifyProductId: string, productName: string): Promise<string> {
+async function resolveLocalVariantSku(supabase: any, item: any, shopifyProductId: string, productName: string, trace: string[]): Promise<string> {
   const titleLower = (productName || "").toLowerCase();
-  const isDigital = ["tiktok", "pubg", "coins", "uc", "top-up", "top up", "bundle", "prime plus"].some(kw => titleLower.includes(kw));
+  const words = titleLower.split(/[\s_\-\/\.\,]+/);
+  const isDigital = ["tiktok", "pubg", "coins", "top-up", "top up", "bundle", "prime plus"].some(kw => titleLower.includes(kw)) || words.includes("uc");
+  trace.push(`isDigital = ${isDigital}`);
   if (isDigital) {
     return "DIGITAL-ITEM";
   }
@@ -71,55 +73,62 @@ async function resolveLocalVariantSku(supabase: any, item: any, shopifyProductId
   const shopifyVariantId = String(item.variant_id);
   const itemSku = item.sku ? item.sku.trim() : "";
   const variantTitle = item.variant_title || "Standard Option";
+  trace.push(`shopifyVariantId = ${shopifyVariantId}, itemSku = ${itemSku}, variantTitle = ${variantTitle}`);
 
   // Step 1: Check by shopify_id in product_variants
-  const { data: vByShopifyId } = await supabase
+  const { data: vByShopifyId, error: e1 } = await supabase
     .from("product_variants")
     .select("sku")
     .eq("shopify_id", shopifyVariantId)
     .maybeSingle();
+  trace.push(`Step 1 (by shopify_id): found = ${!!vByShopifyId}, error = ${e1 ? JSON.stringify(e1) : 'none'}`);
   if (vByShopifyId) return vByShopifyId.sku;
 
   // Step 2: Check by SKU in product_variants
   if (itemSku) {
-    const { data: vBySku } = await supabase
+    const { data: vBySku, error: e2 } = await supabase
       .from("product_variants")
       .select("sku, product_id")
       .eq("sku", itemSku)
       .maybeSingle();
+    trace.push(`Step 2 (by SKU): found = ${!!vBySku}, error = ${e2 ? JSON.stringify(e2) : 'none'}`);
     if (vBySku) {
       // Link them permanently since SKU matches
-      await supabase.from("product_variants").update({ shopify_id: shopifyVariantId }).eq("sku", itemSku);
-      await supabase.from("products").update({ shopify_id: shopifyProductId }).eq("id", vBySku.product_id);
+      const { error: up1 } = await supabase.from("product_variants").update({ shopify_id: shopifyVariantId }).eq("sku", itemSku);
+      const { error: up2 } = await supabase.from("products").update({ shopify_id: shopifyProductId }).eq("id", vBySku.product_id);
+      trace.push(`Step 2: updates error = ${up1 ? JSON.stringify(up1) : 'none'} / ${up2 ? JSON.stringify(up2) : 'none'}`);
       return vBySku.sku;
     }
   }
 
   // Step 3: Check by Product Name + Variant Name
-  const { data: pByName } = await supabase
+  const { data: pByName, error: e3 } = await supabase
     .from("products")
     .select("id")
     .ilike("name", productName.trim())
     .maybeSingle();
+  trace.push(`Step 3 products (by name): found = ${!!pByName}, error = ${e3 ? JSON.stringify(e3) : 'none'}`);
 
   if (pByName) {
-    const { data: vByName } = await supabase
+    const { data: vByName, error: e4 } = await supabase
       .from("product_variants")
       .select("sku")
       .eq("product_id", pByName.id)
       .ilike("name", variantTitle.trim() === "Default Title" ? "Standard Option" : variantTitle.trim())
       .maybeSingle();
+    trace.push(`Step 3 variants (by product_id & name): found = ${!!vByName}, error = ${e4 ? JSON.stringify(e4) : 'none'}`);
     
     if (vByName) {
       // Link them permanently
-      await supabase.from("product_variants").update({ shopify_id: shopifyVariantId }).eq("sku", vByName.sku);
-      await supabase.from("products").update({ shopify_id: shopifyProductId }).eq("id", pByName.id);
+      const { error: up1 } = await supabase.from("product_variants").update({ shopify_id: shopifyVariantId }).eq("sku", vByName.sku);
+      const { error: up2 } = await supabase.from("products").update({ shopify_id: shopifyProductId }).eq("id", pByName.id);
+      trace.push(`Step 3: updates error = ${up1 ? JSON.stringify(up1) : 'none'} / ${up2 ? JSON.stringify(up2) : 'none'}`);
       return vByName.sku;
     }
   }
 
   // Step 4: Dynamically import/create product and variant if no match found
-  console.log(`Product/Variant not found locally. Dynamically importing "${productName}" - "${variantTitle}"`);
+  trace.push(`Step 4: Dynamically importing...`);
   
   let localProductId = crypto.randomUUID();
   if (pByName) {
@@ -311,6 +320,89 @@ Deno.serve(async (req) => {
       .maybeSingle();
 
     if (existingOrder) {
+      if (topic.includes("cancelled") || payload.cancelled_at) {
+        console.log(`Updating order ${shopifyOrderId} status to Cancelled via Webhook...`);
+        
+        // 1. Check if order has a deposit
+        const { data: orderDetails } = await supabase
+          .from("orders")
+          .select("deposit, deposit_receiver_id, deposit_status")
+          .eq("id", existingOrder.id)
+          .maybeSingle();
+
+        const dbUpdate: Record<string, any> = { status: "Cancelled" };
+        if (
+          orderDetails && 
+          (parseFloat(orderDetails.deposit) || 0) > 0 && 
+          orderDetails.deposit_receiver_id &&
+          (orderDetails.deposit_status === 'confirmed' || orderDetails.deposit_status === 'received' || orderDetails.deposit_status === 'pending')
+        ) {
+          dbUpdate.deposit_refund_status = 'awaiting_return';
+        }
+
+        await supabase.from("orders").update(dbUpdate).eq("id", existingOrder.id);
+
+        // 2. Check if stock was already restored (type: 'Return' ledger entry exists for this order)
+        const { data: existingReturnLedger } = await supabase
+          .from("stock_ledger")
+          .select("id")
+          .eq("order_id", existingOrder.id)
+          .eq("type", "Return")
+          .limit(1);
+
+        const wasRestored = existingReturnLedger && existingReturnLedger.length > 0;
+
+        if (wasRestored) {
+          console.log(`Stock was already restored for order ${existingOrder.id}. Skipping restoration to prevent double-restocking.`);
+        } else {
+          // Restore stock in local ERP database for each item in the cancelled order
+          const lineItems = payload.line_items || [];
+          for (const item of lineItems) {
+            const shopifyVariantId = String(item.variant_id);
+            const qty = parseInt(item.quantity) || 1;
+            
+            const { data: variant } = await supabase
+              .from("product_variants")
+              .select("sku, stock_sulur, average_cost, wholesale_price, product_id")
+              .eq("shopify_id", shopifyVariantId)
+              .maybeSingle();
+              
+            if (variant) {
+              const currentStock = typeof variant.stock_sulur === 'number' ? variant.stock_sulur : 0;
+              const newStock = currentStock + qty;
+              
+              await supabase
+                .from("product_variants")
+                .update({ stock_sulur: newStock })
+                .eq("sku", variant.sku);
+                
+              const uCost = parseFloat(variant.average_cost) || parseFloat(variant.wholesale_price) || 0;
+              const tCost = uCost * qty;
+              
+              await supabase.from("stock_ledger").insert([{
+                order_id: existingOrder.id,
+                date: new Date().toISOString(),
+                product_id: variant.product_id,
+                variant_sku: variant.sku,
+                warehouse: "Sulur",
+                type: "Return",
+                quantity: qty,
+                unit_cost: uCost,
+                total_cost: tCost,
+                balance_after: newStock
+              }]);
+              
+              console.log(`Restored local ERP stock for SKU ${variant.sku} via Webhook cancellation: ${currentStock} -> ${newStock} (+${qty})`);
+            }
+          }
+        }
+
+        return new Response(JSON.stringify({ success: true, message: "Order cancelled and stock restored successfully." }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+
       console.log(`Order ${shopifyOrderId} already processed. Skipping.`);
       return new Response(JSON.stringify({ success: true, message: "Order already processed." }), {
         status: 200,
@@ -456,10 +548,15 @@ Deno.serve(async (req) => {
     // 6. Enrich and insert line items
     const lineItems = payload.line_items || [];
     const orderItemsToInsert = [];
+    const traceLogs: string[] = [];
+    console.log(`shopify-webhook: processing ${lineItems.length} line items...`);
 
     for (const item of lineItems) {
-      // Safely map/link/create the variant to resolve local SKU
-      const resolvedSku = await resolveLocalVariantSku(supabase, item, String(item.product_id), item.title || item.name || "Shopify Product");
+      console.log(`shopify-webhook: resolving variant for item SKU = ${item.sku}, variant_id = ${item.variant_id}`);
+      const itemTrace: string[] = [];
+      const resolvedSku = await resolveLocalVariantSku(supabase, item, String(item.product_id), item.title || item.name || "Shopify Product", itemTrace);
+      traceLogs.push(`SKU ${item.sku}: ` + itemTrace.join(" -> "));
+      console.log(`shopify-webhook: resolved SKU = ${resolvedSku}`);
       if (resolvedSku === "DIGITAL-ITEM") {
         console.log(`Skipping digital line item: ${item.title}`);
         continue;
@@ -467,12 +564,13 @@ Deno.serve(async (req) => {
 
       // Find variant average cost for inventory reports
       let costAtTimeOfSale = 0;
-      const { data: variant } = await supabase
+      const { data: variant, error: vErr } = await supabase
         .from("product_variants")
         .select("average_cost, wholesale_price")
         .eq("sku", resolvedSku)
         .maybeSingle();
       
+      console.log(`shopify-webhook: query variant average_cost for ${resolvedSku} result:`, variant, vErr);
       if (variant) {
         costAtTimeOfSale = parseFloat(variant.average_cost) || parseFloat(variant.wholesale_price) || 0;
       }
@@ -486,6 +584,8 @@ Deno.serve(async (req) => {
       });
     }
 
+    console.log(`shopify-webhook: orderItemsToInsert count = ${orderItemsToInsert.length}`);
+
     if (orderItemsToInsert.length > 0) {
       const { error: oiErr } = await supabase
         .from("order_items")
@@ -493,6 +593,9 @@ Deno.serve(async (req) => {
       
       if (oiErr) {
         console.error("Error inserting order items:", oiErr);
+        traceLogs.push(`Insert order_items error: ${JSON.stringify(oiErr)}`);
+      } else {
+        traceLogs.push(`Successfully inserted ${orderItemsToInsert.length} order_items`);
       }
     }
 

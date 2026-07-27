@@ -61,8 +61,14 @@ export default function MetricsRow({ timeFilter = 'all' }) {
             });
         }
     });
-    
-    let salesProfit = salesRevenue - salesCost;
+
+    let wasteCost = 0;
+    (state.wastes || []).forEach(w => {
+        if (!isDateInPeriod(w.date, timeFilter)) return;
+        wasteCost += (w.totalCost || w.cost || (w.quantity * (w.unitCost || w.costPrice || 0)) || 0);
+    });
+
+    let salesProfit = salesRevenue - salesCost - wasteCost;
 
     // 2. Inventory Summary calculations
     let invQty = 0;

@@ -65,3 +65,17 @@ export const formatProductDisplayName = (productName, variantName) => {
 
     return `${pName} - ${vName}`;
 };
+
+export const normalizePhone = (phone) => {
+    if (!phone) return '';
+    let clean = String(phone).replace(/[^\d+]/g, '').trim();
+    if (clean.startsWith('+20')) {
+        clean = '0' + clean.slice(3);
+    } else if (clean.startsWith('0020')) {
+        clean = '0' + clean.slice(4);
+    } else if (clean.startsWith('20') && clean.length === 12) {
+        clean = '0' + clean.slice(2);
+    }
+    return clean;
+};
+

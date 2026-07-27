@@ -1,13 +1,22 @@
 import { formatProductDisplayName } from '../../utils/productUtils';
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 
 export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrder, onOpenEditOrder }) {
-    const { state, updateOrderStatus, deleteOrder, showToast, logActivity, setCurrentView, t, showConfirm, addCustomer, setCustomerSpam, syncBostaStatus, updateDepositStatus, updateOrderProperties, settleAdminsCustody } = useContext(AppContext);
+    const { state, updateOrderStatus, deleteOrder, showToast, logActivity, setCurrentView, t, showConfirm, addCustomer, setCustomerSpam, syncBostaStatus, updateDepositStatus, updateOrderProperties, settleAdminsCustody, fetchMissingOrderItems } = useContext(AppContext);
     
     // Expanded rows state (keeps track of order IDs that are expanded)
     const [expandedOrderIds, setExpandedOrderIds] = useState({});
+
+    // Auto-fetch missing items for orders
+    React.useEffect(() => {
+        (state.orders || []).forEach(ord => {
+            if ((!ord.items || ord.items.length === 0) && ord.id) {
+                fetchMissingOrderItems(ord.id);
+            }
+        });
+    }, [state.orders]);
     
     // Filters & Search
     const [deliveryStatusFilter, setDeliveryStatusFilter] = useState('all');
@@ -19,41 +28,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
 
     // Status inline dropdown open state
     const [activeDropdownOrderId, setActiveDropdownOrderId] = useState(null);
-
-    // Pagination
-    const [currentPage, setCurrentPage] = useState(1);
-    const pageSize = 10;
-
-    const currency = state.storeSettings.currency || 'EGP';
-    const activeSearch = globalSearch || '';
-
-    const formatOrderTime = (createdAt) => {
-        if (!createdAt) return '';
-        try {
-            const dateObj = new Date(createdAt);
-            if (isNaN(dateObj.getTime())) return '';
-            let hours = dateObj.getHours();
-            const minutes = dateObj.getMinutes().toString().padStart(2, '0');
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            hours = hours % 12;
-            hours = hours ? hours : 12;
-            return `${hours}:${minutes} ${ampm}`;
-        } catch (e) {
-            return '';
-        }
-    };
-
-
-    // Deterministic Customer Code Generator
-    const getCustomerCode = (name) => {
-        if (!name) return 'CUS-0000';
-        let hash = 0;
-        for (let i = 0; i < name.length; i++) {
-            hash = name.charCodeAt(i) + ((hash << 5) - hash);
-        }
-        const code = Math.abs(hash % 10000).toString().padStart(4, '0');
-        return `CUS-${code}`;
-    };
+    const [updatingOrdersMap, setUpdatingOrdersMap] = useState({});
 
     // Helper to parse address JSON structure safely (handles Object or String)
     const parseAddressData = (addressData) => {
@@ -96,6 +71,103 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode, bostaStateName, bostaStateCode, bostaTrackingNumber, bostaExceptionReason };
     };
 
+    const handleStatusChange = async (orderId, newStatus, bostaTrackingNumber) => {
+        if (updatingOrdersMap[orderId]) return;
+
+        if (newStatus === 'Cancelled') {
+            showConfirm(
+                "هل أنت متأكد من إلغاء هذا الطلب؟ سيتم إرجاع الكميات المباعة إلى المخزون تلقائياً وإلغاء الأوردر في شوبيفاي.",
+                async () => {
+                    setUpdatingOrdersMap(prev => ({ ...prev, [orderId]: true }));
+                    try {
+                        await updateOrderStatus(orderId, newStatus);
+                        showToast("تم إلغاء الطلب وإعادة الكميات للمخزون بنجاح", "warning");
+                        if (bostaTrackingNumber) {
+                            setTimeout(() => {
+                                syncBostaStatus(orderId, bostaTrackingNumber);
+                            }, 2000);
+                        }
+                    } finally {
+                        setUpdatingOrdersMap(prev => {
+                            const next = { ...prev };
+                            delete next[orderId];
+                            return next;
+                        });
+                    }
+                }
+            );
+            return;
+        }
+
+        setUpdatingOrdersMap(prev => ({ ...prev, [orderId]: true }));
+        try {
+            await updateOrderStatus(orderId, newStatus);
+            showToast("تم تحديث حالة الطلب بنجاح", "success");
+            if (bostaTrackingNumber) {
+                setTimeout(() => {
+                    syncBostaStatus(orderId, bostaTrackingNumber);
+                }, 2000);
+            }
+        } finally {
+            setUpdatingOrdersMap(prev => {
+                const next = { ...prev };
+                delete next[orderId];
+                return next;
+            });
+        }
+    };
+
+    // Automatic background sync for active Bosta orders so admin never needs to manually refresh
+    useEffect(() => {
+        const syncActiveBostaOrders = () => {
+            (state.orders || []).forEach(ord => {
+                const { bostaTrackingNumber, bostaStateCode } = parseAddressData(ord.address);
+                if (bostaTrackingNumber && ord.status !== 'Completed' && ord.status !== 'Cancelled' && Number(bostaStateCode) !== 45 && Number(bostaStateCode) !== 49) {
+                    syncBostaStatus(ord.id, bostaTrackingNumber, true); // silent background sync
+                }
+            });
+        };
+
+        syncActiveBostaOrders();
+        const interval = setInterval(syncActiveBostaOrders, 45000);
+        return () => clearInterval(interval);
+    }, [state.orders?.length]);
+
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = 10;
+
+    const currency = state.storeSettings.currency || 'EGP';
+    const activeSearch = globalSearch || '';
+
+    const formatOrderTime = (createdAt) => {
+        if (!createdAt) return '';
+        try {
+            const dateObj = new Date(createdAt);
+            if (isNaN(dateObj.getTime())) return '';
+            let hours = dateObj.getHours();
+            const minutes = dateObj.getMinutes().toString().padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            return `${hours}:${minutes} ${ampm}`;
+        } catch (e) {
+            return '';
+        }
+    };
+
+
+    // Deterministic Customer Code Generator
+    const getCustomerCode = (name) => {
+        if (!name) return 'CUS-0000';
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) {
+            hash = name.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const code = Math.abs(hash % 10000).toString().padStart(4, '0');
+        return `CUS-${code}`;
+    };
+
     const normalizePhoneNumber = (phoneStr) => {
         if (!phoneStr) return '';
         const trimmed = phoneStr.trim();
@@ -127,27 +199,27 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         // If it's a Bosta shipment (has a Bosta state code)
         if (bostaStateCode !== null) {
             switch (Number(bostaStateCode)) {
-                case 10: return { label: 'طلب استلام جديد', className: 'badge-warning' };
-                case 11: return { label: 'بانتظار خط السير', className: 'badge-warning' };
-                case 20: return { label: 'اتحدد مندوب', className: 'badge-info' };
-                case 21: return { label: 'المندوب استلم الشحنة', className: 'badge-info' };
-                case 22: return { label: 'جاري الاستلام من العميل', className: 'badge-info' };
-                case 23: return { label: 'تم الاستلام من المشتري', className: 'badge-info' };
-                case 24: return { label: 'وصلت مخزن بوسطة', className: 'badge-info' };
-                case 25: return { label: 'مكتمل في بوسطة', className: 'badge-success' };
-                case 30: return { label: 'في الطريق بين الفروع', className: 'badge-info' };
-                case 40: return { label: 'جاري الاستلام', className: 'badge-info' };
-                case 41: return { label: 'خرجت للتوصيل للعميل', className: 'badge-gold' };
-                case 45: return { label: 'تم التسليم بنجاح', className: 'badge-success' };
-                case 46: return { label: 'مرتجع للتاجر', className: 'badge-danger' };
-                case 47: return { label: 'تعذر التوصيل (مشكلة)', className: 'badge-danger' };
-                case 48: return { label: 'فشل التوصيل نهائياً', className: 'badge-danger' };
-                case 49: return { label: 'ملغي في بوسطة', className: 'badge-danger' };
-                case 60: return { label: 'تمت إعادتها للمخزن', className: 'badge-danger' };
-                case 100: return { label: 'شحنة مفقودة', className: 'badge-danger' };
-                case 101: return { label: 'شحنة تالفة', className: 'badge-danger' };
-                case 102: return { label: 'شحنة تحت التحقيق', className: 'badge-warning' };
-                case 103: return { label: 'بانتظار إجراء التاجر', className: 'badge-warning' };
+                case 10: return { label: 'طلب بيك اب جديد', className: 'badge-warning' };
+                case 11: return { label: 'في انتظار الاستلام', className: 'badge-warning' };
+                case 20: return { label: 'تم استلام الأوردر', className: 'badge-info' };
+                case 21: return { label: 'تم استلام الأوردر', className: 'badge-info' };
+                case 22: return { label: 'قيد التنفيذ', className: 'badge-info' };
+                case 23: return { label: 'تم استلام الأوردر', className: 'badge-info' };
+                case 24: return { label: 'تم تخزينه', className: 'badge-info' };
+                case 25: return { label: 'تم بنجاح', className: 'badge-success' };
+                case 30: return { label: 'قيد التنفيذ', className: 'badge-info' };
+                case 40: return { label: 'قيد التنفيذ', className: 'badge-info' };
+                case 41: return { label: 'متجه للعميل', className: 'badge-gold' };
+                case 45: return { label: 'تم بنجاح', className: 'badge-success' };
+                case 46: return { label: 'مرتجعاتك العائدة', className: 'badge-danger' };
+                case 47: return { label: 'في انتظار متابعتك', className: 'badge-warning' };
+                case 48: return { label: 'لم يتم بنجاح', className: 'badge-danger' };
+                case 49: return { label: 'لم يتم بنجاح', className: 'badge-danger' };
+                case 60: return { label: 'تم الاسترجاع', className: 'badge-danger' };
+                case 100: return { label: 'غير ناجح', className: 'badge-danger' };
+                case 101: return { label: 'غير ناجح', className: 'badge-danger' };
+                case 102: return { label: 'متوقف مؤقتاً', className: 'badge-warning' };
+                case 103: return { label: 'في انتظار متابعتك', className: 'badge-warning' };
                 default: return { label: bostaStateName || `حالة ${bostaStateCode}`, className: 'badge-info' };
             }
         }
@@ -288,14 +360,38 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
 
     const todayStr = getLocalDateString();
     const todayOrdersCount = filteredOrders.filter(o => o.date === todayStr).length;
-    const pendingShopifyOrders = (state.orders || []).filter(o => o.status === 'Pending' && o.source === 'shopify');
+    const isOrderReviewed = (o) => {
+        if (!o) return false;
+        if (o.is_reviewed || o.isReviewed) return true;
+        if (o.address) {
+            if (typeof o.address === 'object') return !!(o.address.isReviewed || o.address.is_reviewed || o.address.bostaDeliveryId || o.address.trackingNumber || o.address.bostaTrackingNumber);
+            if (typeof o.address === 'string') {
+                try {
+                    const p = JSON.parse(o.address);
+                    return !!(p?.isReviewed || p?.is_reviewed || p?.bostaDeliveryId || p?.trackingNumber || p?.bostaTrackingNumber);
+                } catch(e) {}
+            }
+        }
+        return false;
+    };
+
+    const pendingShopifyOrders = (state.orders || []).filter(o => 
+        o.status === 'Pending' && o.source === 'shopify' && !isOrderReviewed(o)
+    );
 
     // Toggle Row Expansion
     const toggleRow = (orderId) => {
+        const isWillExpand = !expandedOrderIds[orderId];
         setExpandedOrderIds(prev => ({
             ...prev,
-            [orderId]: !prev[orderId]
+            [orderId]: isWillExpand
         }));
+        if (isWillExpand) {
+            const target = (state.orders || []).find(o => o.id === orderId);
+            if (!target || !target.items || target.items.length === 0) {
+                fetchMissingOrderItems(orderId);
+            }
+        }
     };
 
     // Row Delete confirmation
@@ -448,21 +544,45 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
 
             {/* 5. SUMMARY BAR METRIC CARDS */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-                <div className="glass-card" style={{ padding: '16px', borderRight: '4px solid var(--gold-primary)', background: 'var(--glass-bg)' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>إجمالي الطلبات</span>
-                    <strong style={{ fontSize: '20px', color: 'var(--text-primary)' }}>{totalOrdersCount} طلب</strong>
+                <div className="glass-card" style={{ 
+                    padding: '18px 20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(212, 175, 55, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(212, 175, 55, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(212, 175, 55, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '6px' }}>إجمالي الطلبات</span>
+                    <strong style={{ fontSize: '1.45rem', color: 'var(--gold-primary)', fontWeight: '800' }}>{totalOrdersCount} طلب</strong>
                 </div>
-                <div className="glass-card" style={{ padding: '16px', borderRight: '4px solid #2ecc71', background: 'var(--glass-bg)' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>قيمة المبيعات (المؤكدة)</span>
-                    <strong style={{ fontSize: '20px', color: '#2ecc71' }}>{currency} {salesValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
+                <div className="glass-card" style={{ 
+                    padding: '18px 20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(46, 213, 115, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(46, 213, 115, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(46, 213, 115, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '6px' }}>قيمة المبيعات (المؤكدة)</span>
+                    <strong style={{ fontSize: '1.45rem', color: 'var(--color-success)', fontWeight: '800' }}>{currency} {salesValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
                 </div>
-                <div className="glass-card" style={{ padding: '16px', borderRight: '4px solid #e74c3c', background: 'var(--glass-bg)' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>المتبقي للتحصيل</span>
-                    <strong style={{ fontSize: '20px', color: '#e74c3c' }}>{currency} {remainingToCollectTotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
+                <div className="glass-card" style={{ 
+                    padding: '18px 20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(255, 71, 87, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(255, 71, 87, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(255, 71, 87, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '6px' }}>المتبقي للتحصيل</span>
+                    <strong style={{ fontSize: '1.45rem', color: 'var(--color-danger)', fontWeight: '800' }}>{currency} {remainingToCollectTotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
                 </div>
-                <div className="glass-card" style={{ padding: '16px', borderRight: '4px solid #3498db', background: 'var(--glass-bg)' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '4px' }}>طلبات اليوم</span>
-                    <strong style={{ fontSize: '20px', color: '#3498db' }}>{todayOrdersCount} طلب</strong>
+                <div className="glass-card" style={{ 
+                    padding: '18px 20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(30, 144, 255, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(30, 144, 255, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(30, 144, 255, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '6px' }}>طلبات اليوم</span>
+                    <strong style={{ fontSize: '1.45rem', color: 'var(--color-info)', fontWeight: '800' }}>{todayOrdersCount} طلب</strong>
                 </div>
             </div>
 
@@ -563,23 +683,23 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                             className="form-select" 
                             style={{ flex: '1', minWidth: '180px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '10px' }} 
                             value={deliveryStatusFilter} 
-                            onChange={(e) => { setDeliveryStatusFilter(e.target.value); setCurrentPage(1); }}
-                        >
+                            onChange={(e) => { setDeliveryStatusFilter(e.target.value); setCurrentPage(1); }}>
                             <option value="all" style={{ background: 'var(--bg-secondary)' }}>كل حالات التوصيل</option>
                             <option value="Draft" style={{ background: 'var(--bg-secondary)' }}>مسودة</option>
                             <option value="Pending" style={{ background: 'var(--bg-secondary)' }}>قيد الانتظار</option>
-                            <option value="10" style={{ background: 'var(--bg-secondary)' }}>طلب استلام جديد</option>
-                            <option value="20" style={{ background: 'var(--bg-secondary)' }}>اتحدد مندوب</option>
-                            <option value="21" style={{ background: 'var(--bg-secondary)' }}>المندوب استلم الشحنة</option>
-                            <option value="24" style={{ background: 'var(--bg-secondary)' }}>وصلت مخزن بوسطة</option>
-                            <option value="30" style={{ background: 'var(--bg-secondary)' }}>في الطريق بين الفروع</option>
-                            <option value="41" style={{ background: 'var(--bg-secondary)' }}>خرجت للتوصيل للعميل</option>
-                            <option value="45" style={{ background: 'var(--bg-secondary)' }}>تم التسليم بنجاح</option>
-                            <option value="47" style={{ background: 'var(--bg-secondary)' }}>تعذر التوصيل (مشكلة)</option>
-                            <option value="49" style={{ background: 'var(--bg-secondary)' }}>ملغي في بوسطة</option>
-                            <option value="48" style={{ background: 'var(--bg-secondary)' }}>فشل التوصيل نهائياً</option>
-                            <option value="100" style={{ background: 'var(--bg-secondary)' }}>شحنة مفقودة</option>
-                            <option value="101" style={{ background: 'var(--bg-secondary)' }}>شحنة تالفة</option>
+                            <option value="10" style={{ background: 'var(--bg-secondary)' }}>جديد</option>
+                            <option value="11" style={{ background: 'var(--bg-secondary)' }}>في انتظار الاستلام</option>
+                            <option value="21" style={{ background: 'var(--bg-secondary)' }}>تم استلام الأوردر</option>
+                            <option value="24" style={{ background: 'var(--bg-secondary)' }}>تم تخزينه</option>
+                            <option value="30" style={{ background: 'var(--bg-secondary)' }}>قيد التنفيذ</option>
+                            <option value="41" style={{ background: 'var(--bg-secondary)' }}>متجه للعميل</option>
+                            <option value="46" style={{ background: 'var(--bg-secondary)' }}>مرتجعاتك العائدة</option>
+                            <option value="102" style={{ background: 'var(--bg-secondary)' }}>متوقف مؤقتاً</option>
+                            <option value="103" style={{ background: 'var(--bg-secondary)' }}>في انتظار متابعتك</option>
+                            <option value="45" style={{ background: 'var(--bg-secondary)' }}>تم بنجاح</option>
+                            <option value="100" style={{ background: 'var(--bg-secondary)' }}>غير ناجح</option>
+                            <option value="60" style={{ background: 'var(--bg-secondary)' }}>تم الاسترجاع</option>
+                            <option value="48" style={{ background: 'var(--bg-secondary)' }}>لم يتم بنجاح</option>
                         </select>
 
                         <select 
@@ -873,14 +993,8 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                                         showToast("لا يمكن شحن الطلب قبل تأكيد استلام العربون من الأدمن المستلم", "warning");
                                                                                         return;
                                                                                     }
-                                                                                    updateOrderStatus(ord.id, st);
                                                                                     setActiveDropdownOrderId(null);
-                                                                                    showToast("تم تحديث حالة الطلب بنجاح", "success");
-                                                                                    if (bostaTrackingNumber) {
-                                                                                        setTimeout(() => {
-                                                                                            syncBostaStatus(ord.id, bostaTrackingNumber);
-                                                                                        }, 2000);
-                                                                                    }
+                                                                                    handleStatusChange(ord.id, st, bostaTrackingNumber);
                                                                                 }}
                                                                                 style={{
                                                                                     padding: '8px 10px',
@@ -904,9 +1018,21 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                         {/* Edit order */}
                                                         <button 
                                                              className="action-btn-circle" 
-                                                             style={{ background: 'var(--glass-bg-hover)', color: 'var(--text-primary)', borderColor: 'var(--glass-border-hover)' }}
-                                                             onClick={() => onOpenEditOrder(ord.id)}
-                                                             title="تعديل الطلب"
+                                                             style={{ 
+                                                                 background: ord.status === 'Cancelled' ? 'rgba(255,255,255,0.03)' : 'var(--glass-bg-hover)', 
+                                                                 color: ord.status === 'Cancelled' ? 'var(--text-muted)' : 'var(--text-primary)', 
+                                                                 borderColor: ord.status === 'Cancelled' ? 'rgba(255,255,255,0.05)' : 'var(--glass-border-hover)',
+                                                                 cursor: ord.status === 'Cancelled' ? 'not-allowed' : 'pointer',
+                                                                 opacity: ord.status === 'Cancelled' ? 0.5 : 1
+                                                             }}
+                                                              onClick={() => {
+                                                                  if (ord.status === 'Cancelled') {
+                                                                      showToast("الطلبات الملغية لا يمكن التعديل عليها", "warning");
+                                                                      return;
+                                                                  }
+                                                                  onOpenEditOrder(ord.id);
+                                                              }}
+                                                             title={ord.status === 'Cancelled' ? "لا يمكن تعديل الطلبات الملغية" : "تعديل الطلب"}
                                                          >
                                                              <i className="fa-solid fa-pen-to-square"></i>
                                                          </button>
@@ -978,6 +1104,16 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                     <div><strong>المحافظة:</strong> {ord.governorate || 'غير مسجل'}</div>
                                                                     <div><strong>العنوان بالتفصيل:</strong> {detailAddress || 'غير مسجل'}</div>
                                                                     <div><strong>سجل الطلب بواسطة:</strong> <span style={{ color: 'var(--gold-primary)' }}>{ord.createdBy || 'sfsf'}</span></div>
+                                                                    {ord.discount_reason && (
+                                                                        <div style={{ marginTop: '4px', borderTop: '1px dashed var(--glass-border)', paddingTop: '4px' }}>
+                                                                            <strong>سبب الخصم:</strong> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{ord.discount_reason}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {ord.discount_reason_details && (
+                                                                        <div>
+                                                                            <strong>تفاصيل الخصم:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ord.discount_reason_details}</span>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             </div>
 
@@ -1042,14 +1178,13 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                 </div>
                                                             </div>
                                                         </div>
-
-                                                        {/* Shopify Pending Approval Action Banner */}
-                                                        {ord.status === 'Pending' && ord.source === 'shopify' && (
+                                                        {/* Shopify Pending Notice - Directs admin to Shopify Pending section */}
+                                                        {ord.status === 'Pending' && ord.source === 'shopify' && !isOrderReviewed(ord) && (
                                                             <div style={{
                                                                 marginTop: '20px',
-                                                                padding: '16px 20px',
-                                                                background: 'linear-gradient(135deg, rgba(212,175,55,0.04), rgba(46,204,113,0.06))',
-                                                                border: '1px solid rgba(212,175,55,0.2)',
+                                                                padding: '14px 20px',
+                                                                background: 'linear-gradient(135deg, rgba(212,175,55,0.08), rgba(212,175,55,0.02))',
+                                                                border: '1px solid rgba(212,175,55,0.3)',
                                                                 borderRadius: '8px',
                                                                 display: 'flex',
                                                                 justifyContent: 'space-between',
@@ -1058,96 +1193,29 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                                 flexWrap: 'wrap'
                                                             }}>
                                                                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                                                                    <i className="fa-solid fa-circle-exclamation" style={{ color: 'var(--gold-primary)', fontSize: '18px' }}></i>
-                                                                    <span style={{ fontSize: '12.5px', color: 'var(--text-primary)', fontWeight: 500 }}>
-                                                                        هذا الطلب قادم من شوبيفاي ومعلق بانتظار موافقتك. الموافقة ستقوم بخصم المخزون وتأكيد الطلب.
+                                                                    <i className="fa-solid fa-store" style={{ color: 'var(--gold-primary)', fontSize: '18px' }}></i>
+                                                                    <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 500 }}>
+                                                                        هذا الطلب قادم من شوبيفاي ومعلق بانتظار المراجعة والموافقة من قسم <strong>طلبات شوبيفاي</strong>.
                                                                     </span>
                                                                 </div>
-                                                                <div style={{ display: 'flex', gap: '10px' }}>
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            showConfirm('هل أنت متأكد من الموافقة على هذا الطلب وتأكيده للخصم من المخزون؟', () => {
-                                                                                updateOrderStatus(ord.id, 'Shipped');
-                                                                                showToast('تمت الموافقة على الطلب وتأكيده وخصم الكميات بنجاح!', 'success');
-                                                                            });
-                                                                        }}
-                                                                        className="btn"
-                                                                        style={{
-                                                                            background: '#2ecc71',
-                                                                            color: 'white',
-                                                                            border: 'none',
-                                                                            padding: '8px 16px',
-                                                                            borderRadius: '6px',
-                                                                            fontWeight: 'bold',
-                                                                            fontSize: '12px',
-                                                                            cursor: 'pointer',
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            gap: '6px',
-                                                                            transition: 'transform 0.1s ease'
-                                                                        }}
-                                                                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                                                                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                                                                    >
-                                                                        <i className="fa-solid fa-circle-check"></i>
-                                                                        موافقة وتأكيد الطلب
-                                                                    </button>
-                                                                    <button
-                                                                        onClick={(e) => {
-                                                                            e.stopPropagation();
-                                                                            showConfirm('هل أنت متأكد من رفض وإلغاء هذا الطلب؟', (flagAsSpam) => {
-                                                                                updateOrderStatus(ord.id, 'Cancelled');
-                                                                                showToast('تم إلغاء الطلب بنجاح', 'warning');
-                                                                                if (flagAsSpam) {
-                                                                                    console.log('🚨 Spam flag enabled for order', ord.id);
-                                                                                    const { phone } = parseAddressData(ord.address);
-                                                                                    const normPhone = normalizePhoneNumber(phone);
-                                                                                    const cust = (state.customers || []).find(c => c.id === ord.customer_id || (normPhone && normalizePhoneNumber(c.phone) === normPhone));
-                                                                                    if (cust) {
-                                                                                        console.log('🔍 Found existing customer:', cust.id, cust.name);
-                                                                                        setCustomerSpam(cust.id, true);
-                                                                                        logActivity("customer", `Flagged customer ${cust.name} as spam upon order rejection.`);
-                                                                                    } else {
-                                                                                        console.log('➕ Creating new spam customer for:', ord.client, normPhone);
-                                                                                        const newCust = {
-                                                                                            id: crypto.randomUUID(),
-                                                                                            name: ord.client || "عميل جديد",
-                                                                                            phone: normPhone || "00000000000",
-                                                                                            governorate: ord.governorate || "",
-                                                                                            customer_type: 'Regular',
-                                                                                            total_purchases: 0,
-                                                                                            orders_count: 0,
-                                                                                            is_spam: true
-                                                                                        };
-                                                                                        addCustomer(newCust);
-                                                                                        logActivity("customer", `Created spam customer profile for ${newCust.name} (${newCust.phone}) upon order rejection.`);
-                                                                                    }
-                                                                                }
-                                                                            }, null, { showSpamToggle: true });
-                                                                        }}
-                                                                        className="btn"
-                                                                        style={{
-                                                                            background: '#e74c3c',
-                                                                            color: 'white',
-                                                                            border: 'none',
-                                                                            padding: '8px 16px',
-                                                                            borderRadius: '6px',
-                                                                            fontWeight: 'bold',
-                                                                            fontSize: '12px',
-                                                                            cursor: 'pointer',
-                                                                            display: 'flex',
-                                                                            alignItems: 'center',
-                                                                            gap: '6px',
-                                                                            transition: 'transform 0.1s ease'
-                                                                        }}
-                                                                        onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.02)'}
-                                                                        onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                                                                    >
-                                                                        <i className="fa-solid fa-circle-xmark"></i>
-                                                                        رفض وإلغاء الطلب
-                                                                    </button>
-                                                                </div>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        setCurrentView('shopify_pending');
+                                                                    }}
+                                                                    className="btn btn-gold"
+                                                                    style={{
+                                                                        padding: '8px 16px',
+                                                                        fontSize: '12px',
+                                                                        fontWeight: 'bold',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        gap: '6px'
+                                                                    }}
+                                                                >
+                                                                    <i className="fa-solid fa-arrow-left"></i>
+                                                                    الانتقال إلى طلبات شوبيفاي للمراجعة
+                                                                </button>
                                                             </div>
                                                         )}
 

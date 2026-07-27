@@ -74,6 +74,22 @@ Deno.serve(async (req) => {
       console.log("Bosta Cancel Response:", JSON.stringify(bostaData));
 
       if (!bostaRes.ok) {
+        const isAlreadyCancelledOrNotFound = 
+          bostaRes.status === 404 || 
+          (bostaData && typeof bostaData.message === 'string' && (
+            bostaData.message.toLowerCase().includes("not found") || 
+            bostaData.message.toLowerCase().includes("cannot be cancelled") ||
+            bostaData.message.toLowerCase().includes("already cancelled")
+          ));
+
+        if (isAlreadyCancelledOrNotFound) {
+          console.log(`Bosta delivery ${bostaDeliveryId} is already cancelled or not found. Treating as success.`);
+          return new Response(JSON.stringify({ success: true, message: "Delivery already cancelled or not found." }), {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders }
+          });
+        }
+
         return new Response(JSON.stringify({ error: bostaData.message || "Failed to cancel delivery.", bostaRaw: bostaData }), {
           status: 400,
           headers: { "Content-Type": "application/json", ...corsHeaders }

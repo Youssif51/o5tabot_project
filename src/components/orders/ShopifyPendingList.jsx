@@ -2,15 +2,55 @@ import React, { useContext, useState, useEffect, useRef } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { formatProductDisplayName } from '../../utils/productUtils';
+import { getBostaDistrictDisplayName, filterAndSortBostaDistricts, getBostaAddressSuggestions } from '../../utils/bostaUtils';
 import bostaData from '../../../محافظات/المناطق التابعه لكل محافظة.json';
 
 import { supabase } from '../../utils/supabase';
 
 export default function ShopifyPendingList() {
-    const { state, updateOrderStatus, updateOrderProperties, approveOrderWithBosta, showToast, showConfirm, addCustomer, setCustomerSpam, logActivity } = useContext(AppContext);
+    const { state, updateOrderStatus, updateOrderProperties, approveOrderWithBosta, deductOrderStock, fetchMissingOrderItems, showToast, showConfirm, addCustomer, setCustomerSpam, logActivity } = useContext(AppContext);
     const [globalSearch, setGlobalSearch] = useState('');
     const [expandedOrderIds, setExpandedOrderIds] = useState({});
     
+    // Auto-fetch missing items for pending orders
+    useEffect(() => {
+        (state.orders || []).forEach(ord => {
+            if ((!ord.items || ord.items.length === 0) && ord.id) {
+                fetchMissingOrderItems(ord.id);
+            }
+        });
+    }, [state.orders]);
+
+    // Inject horizontal scrollbar/slider styles
+    useEffect(() => {
+        const styleId = 'shopify-pending-suggestions-slider';
+        if (!document.getElementById(styleId)) {
+            const style = document.createElement('style');
+            style.id = styleId;
+            style.innerHTML = `
+                .custom-horizontal-slider::-webkit-scrollbar {
+                    height: 5px !important;
+                }
+                .custom-horizontal-slider::-webkit-scrollbar-track {
+                    background: rgba(255, 255, 255, 0.02) !important;
+                    border-radius: 10px !important;
+                }
+                .custom-horizontal-slider::-webkit-scrollbar-thumb {
+                    background: rgba(56, 189, 248, 0.3) !important;
+                    border-radius: 10px !important;
+                }
+                .custom-horizontal-slider::-webkit-scrollbar-thumb:hover {
+                    background: rgba(56, 189, 248, 0.5) !important;
+                }
+            `;
+            document.head.appendChild(style);
+        }
+        return () => {
+            const existing = document.getElementById(styleId);
+            if (existing) existing.remove();
+        };
+    }, []);
+
     const [selectedCities, setSelectedCities] = useState({}); // { [orderId]: CityObject }
     const [selectedDistricts, setSelectedDistricts] = useState({}); // { [orderId]: DistrictObject }
     const [customDeposits, setCustomDeposits] = useState({}); // { [orderId]: string/number }
@@ -86,7 +126,18 @@ export default function ShopifyPendingList() {
 
     // Filter Logic: only pending Shopify orders
     const pendingOrders = (state.orders || []).filter(ord => {
-        if (ord.status !== 'Pending' || ord.source !== 'shopify') return false;
+        let isReviewed = ord.is_reviewed || ord.isReviewed;
+        if (!isReviewed && ord.address) {
+            if (typeof ord.address === 'object') {
+                isReviewed = ord.address.isReviewed || ord.address.is_reviewed || ord.address.bostaDeliveryId || ord.address.trackingNumber || ord.address.bostaTrackingNumber;
+            } else if (typeof ord.address === 'string') {
+                try {
+                    const parsed = JSON.parse(ord.address);
+                    isReviewed = parsed?.isReviewed || parsed?.is_reviewed || parsed?.bostaDeliveryId || parsed?.trackingNumber || parsed?.bostaTrackingNumber;
+                } catch(e) {}
+            }
+        }
+        if (ord.status !== 'Pending' || ord.source !== 'shopify' || isReviewed) return false;
         
         // Search filter
         if (globalSearch.trim() !== '') {
@@ -161,10 +212,17 @@ export default function ShopifyPendingList() {
 
     // Toggle Row Expansion
     const toggleRow = (orderId) => {
+        const isWillExpand = !expandedOrderIds[orderId];
         setExpandedOrderIds(prev => ({
             ...prev,
-            [orderId]: !prev[orderId]
+            [orderId]: isWillExpand
         }));
+        if (isWillExpand) {
+            const target = (state.orders || []).find(o => o.id === orderId);
+            if (!target || !target.items || target.items.length === 0) {
+                fetchMissingOrderItems(orderId);
+            }
+        }
     };
 
     const getProductNameBySku = (sku) => {
@@ -214,9 +272,38 @@ export default function ShopifyPendingList() {
         showConfirm(
             confirmMsg,
             async () => {
-                const originalOrd = pendingOrders.find(o => o.id === ordId);
+                let originalOrd = pendingOrders.find(o => o.id === ordId);
+                // Guard 1: Race condition check for items during webhook sync
+                if (!originalOrd?.items || originalOrd.items.length === 0) {
+                    if (fetchMissingOrderItems) {
+                        showToast('جاري جلب أصناف الطلب من شوبيفاي...', 'info');
+                        await fetchMissingOrderItems(ordId);
+                    }
+                    if (supabase) {
+                        const { data: dbItems } = await supabase.from('order_items').select('*').eq('order_id', ordId);
+                        if (!dbItems || dbItems.length === 0) {
+                            showToast('لم تكتمل مزامنة أصناف هذا الطلب من شوبيفاي بعد، يرجى الانتظار بضع ثوانٍ والإعادة.', 'warning');
+                            return;
+                        }
+                    }
+                }
+                let existingAddrObj = {};
+                if (originalOrd?.address) {
+                    if (typeof originalOrd.address === 'object') {
+                        existingAddrObj = originalOrd.address;
+                    } else if (typeof originalOrd.address === 'string') {
+                        try {
+                            existingAddrObj = JSON.parse(originalOrd.address);
+                        } catch(e) {
+                            existingAddrObj = { detailAddress: originalOrd.address };
+                        }
+                    }
+                }
+
                 const updatedAddrObj = {
-                    ...(originalOrd?.address ? JSON.parse(originalOrd.address) : {}),
+                    ...existingAddrObj,
+                    isReviewed: true,
+                    is_reviewed: true,
                     syncWithBosta: isBostaEnabled,
                     bostaCityCode: city?.cityCode || null,
                     bostaCityName: city?.cityOtherName || '',
@@ -227,14 +314,18 @@ export default function ShopifyPendingList() {
                 const addressStr = JSON.stringify(updatedAddrObj);
 
                 if (!isBostaEnabled) {
-                    // Bosta Sync is DISABLED by user
+                    // Deduct stock for local approval
+                    if (originalOrd) {
+                        await deductOrderStock(originalOrd);
+                    }
+
                     if (supabase) {
                         try {
                             await supabase.from('orders').update({
                                 deposit: depositAmount,
                                 deposit_receiver_id: receiverId,
                                 deposit_status: depositStatus,
-                                status: depositStatus === 'pending' ? 'Pending' : 'Completed',
+                                status: 'Pending',
                                 address: addressStr
                             }).eq('id', ordId);
                         } catch (err) {
@@ -246,20 +337,22 @@ export default function ShopifyPendingList() {
                         deposit: depositAmount,
                         depositReceiverId: receiverId,
                         depositStatus: depositStatus,
-                        status: depositStatus === 'pending' ? 'Pending' : 'Completed',
+                        status: 'Pending',
+                        is_reviewed: true,
+                        isReviewed: true,
                         address: addressStr
                     });
 
-                    if (depositStatus !== 'pending') {
-                        updateOrderStatus(ordId, 'Completed', addressStr);
-                    }
-
                     showToast(depositStatus === 'pending' 
-                        ? 'تم حفظ الطلب محلياً بانتظار تأكيد العربون (بدون إرسال لبوسطة).' 
-                        : 'تم اعتماد الطلب وتسجيله على السيستم بنجاح (بدون إرسال لبوسطة).', 'success');
+                        ? 'تم حفظ الطلب محلياً وخصم الكميات بانتظار تأكيد العربون (بدون إرسال لبوسطة).' 
+                        : 'تم اعتماد وتأكيد بيانات الطلب محلياً وخصم الكميات من المخزون ونقله إلى المبيعات بقائه (قيد الانتظار).', 'success');
                 } else {
                     // Bosta Sync is ENABLED
                     if (depositStatus === 'pending') {
+                        if (originalOrd) {
+                            await deductOrderStock(originalOrd);
+                        }
+
                         if (supabase) {
                             try {
                                 await supabase.from('orders').update({
@@ -275,10 +368,12 @@ export default function ShopifyPendingList() {
                                     depositReceiverId: receiverId,
                                     depositStatus: 'pending',
                                     status: 'Pending',
+                                    is_reviewed: true,
+                                    isReviewed: true,
                                     address: addressStr
                                 });
 
-                                showToast('تم حفظ الطلب بنجاح وهو بانتظار تأكيد استلام العربون من الأدمن المختار قبل الشحن.', 'success');
+                                showToast('تم حفظ الطلب وخصم الكميات بنجاح وهو بانتظار تأكيد استلام العربون من الأدمن المختار قبل الشحن.', 'success');
                             } catch (err) {
                                 console.error('Error saving pending shopify order:', err);
                                 showToast('حدث خطأ أثناء حفظ الطلب', 'error');
@@ -295,6 +390,9 @@ export default function ShopifyPendingList() {
                         }, depositAmount, receiverId, depositStatus);
                     }
                 }
+                
+                // Collapse expanded drawer cleanly
+                setExpandedOrderIds(prev => ({ ...prev, [ordId]: false }));
             }
         );
     };
@@ -304,6 +402,7 @@ export default function ShopifyPendingList() {
         e.stopPropagation();
         showConfirm('هل أنت متأكد من رفض وإلغاء هذا الطلب؟', (flagAsSpam) => {
             updateOrderStatus(ordId, 'Cancelled');
+            setExpandedOrderIds(prev => ({ ...prev, [ordId]: false }));
             showToast('تم إلغاء الطلب بنجاح', 'warning');
             if (flagAsSpam) {
                 console.log('🚨 Spam flag enabled for Shopify order', ordId);
@@ -365,26 +464,35 @@ export default function ShopifyPendingList() {
 
             {/* 3. METRICS ROW */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-                <div className="glass-card" style={{ padding: '18px', borderRight: '4px solid #2ecc71', background: 'var(--glass-bg)', position: 'relative', overflow: 'hidden' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>عدد الطلبات في الانتظار</span>
-                    <strong style={{ fontSize: '24px', color: 'var(--text-primary)' }}>{pendingCount} طلبات</strong>
-                    <div style={{ position: 'absolute', top: '16px', left: '16px', fontSize: '28px', color: 'rgba(46,204,113,0.1)' }}>
-                        <i className="fa-solid fa-hourglass-half"></i>
-                    </div>
+                <div className="glass-card" style={{ 
+                    padding: '18px 20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(46, 213, 115, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(46, 213, 115, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(46, 213, 115, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '6px' }}>عدد الطلبات في الانتظار</span>
+                    <strong style={{ fontSize: '1.45rem', color: 'var(--color-success)', fontWeight: '800' }}>{pendingCount} طلبات</strong>
                 </div>
-                <div className="glass-card" style={{ padding: '18px', borderRight: '4px solid var(--gold-primary)', background: 'var(--glass-bg)', position: 'relative', overflow: 'hidden' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>إجمالي القيمة المعلقة</span>
-                    <strong style={{ fontSize: '24px', color: 'var(--gold-primary)' }}>{currency} {pendingValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
-                    <div style={{ position: 'absolute', top: '16px', left: '16px', fontSize: '28px', color: 'rgba(212,175,55,0.1)' }}>
-                        <i className="fa-solid fa-coins"></i>
-                    </div>
+                <div className="glass-card" style={{ 
+                    padding: '18px 20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(212, 175, 55, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(212, 175, 55, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(212, 175, 55, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '6px' }}>إجمالي القيمة المعلقة</span>
+                    <strong style={{ fontSize: '1.45rem', color: 'var(--gold-primary)', fontWeight: '800' }}>{currency} {pendingValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
                 </div>
-                <div className="glass-card" style={{ padding: '18px', borderRight: '4px solid #3498db', background: 'var(--glass-bg)', position: 'relative', overflow: 'hidden' }}>
-                    <span style={{ fontSize: '12px', color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>متوسط قيمة الطلب المعلق</span>
-                    <strong style={{ fontSize: '24px', color: '#3498db' }}>{currency} {avgPendingValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
-                    <div style={{ position: 'absolute', top: '16px', left: '16px', fontSize: '28px', color: 'rgba(52,152,219,0.1)' }}>
-                        <i className="fa-solid fa-calculator"></i>
-                    </div>
+                <div className="glass-card" style={{ 
+                    padding: '18px 20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(30, 144, 255, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(30, 144, 255, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(30, 144, 255, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '6px' }}>متوسط قيمة الطلب المعلق</span>
+                    <strong style={{ fontSize: '1.45rem', color: 'var(--color-info)', fontWeight: '800' }}>{currency} {avgPendingValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
                 </div>
             </div>
 
@@ -436,6 +544,7 @@ export default function ShopifyPendingList() {
                             ) : (
                                 paginatedOrders.map(ord => {
                                     const isExpanded = expandedOrderIds[ord.id];
+                                    const isBostaEnabled = bostaSyncMap[ord.id] !== false;
                                     const { phone, detailAddress } = parseAddressData(ord.address);
                                     const totalQty = (ord.items || []).reduce((acc, curr) => acc + curr.quantity, 0);
                                     const matchedCust = (state.customers || []).find(c => c.id === ord.customer_id) || {};
@@ -453,15 +562,9 @@ export default function ShopifyPendingList() {
                                     );
 
                                     // Filter district list based on search
-                                    const cleanDistrictQuery = (districtSearch[ord.id] || '').trim().toLowerCase();
+                                    const cleanDistrictQuery = (districtSearch[ord.id] || '');
                                     const rawDistricts = citySelected ? citySelected.districts || [] : [];
-                                    // Bosta areas with dropOffAvailability = true
-                                    const filteredDistricts = rawDistricts.filter(d => 
-                                        d.dropOffAvailability && (
-                                            d.districtName.toLowerCase().includes(cleanDistrictQuery) ||
-                                            d.districtOtherName.includes(cleanDistrictQuery)
-                                        )
-                                    );
+                                    const filteredDistricts = filterAndSortBostaDistricts(rawDistricts, cleanDistrictQuery);
 
                                     return (
                                         <React.Fragment key={ord.id}>
@@ -517,7 +620,7 @@ export default function ShopifyPendingList() {
                                                     )}
                                                 </td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px' }}>{totalQty} قطع</td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, color: 'var(--gold-primary)' }}>{currency} {ord.totalValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, color: 'var(--gold-primary)' }}>{currency} {(parseFloat(ord.totalValue || ord.total_value) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '12px' }}>
                                                     <span style={{ background: 'rgba(255,255,255,0.04)', padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--glass-border)' }}>
                                                         {ord.paymentMethod || 'COD'}
@@ -580,7 +683,7 @@ export default function ShopifyPendingList() {
                                                         <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '20px', marginBottom: '20px' }}>
                                                             
                                                             {/* Bosta Address Matching Card */}
-                                                            <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: isBostaEnabled ? '2px solid rgba(150,191,72,0.15)' : '2px solid rgba(255,255,255,0.08)', borderRadius: '8px', opacity: isBostaEnabled ? 1 : 0.85 }}>
+                                                            <div className="glass-card" style={{ minWidth: 0, padding: '16px', background: 'var(--glass-bg)', border: isBostaEnabled ? '2px solid rgba(150,191,72,0.15)' : '2px solid rgba(255,255,255,0.08)', borderRadius: '8px', opacity: isBostaEnabled ? 1 : 0.85 }}>
                                                                 <h4 style={{ fontSize: '13px', color: isBostaEnabled ? '#96bf48' : 'var(--text-muted)', marginBottom: '12px', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                                                                     <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                         <i className="fa-solid fa-map-location-dot"></i>
@@ -638,6 +741,56 @@ export default function ShopifyPendingList() {
                                                                         <span style={{ fontSize: '11px', color: 'var(--text-secondary)', display: 'block', marginBottom: '2px' }}>العنوان والمحافظة من شوبيفاي:</span>
                                                                         <strong style={{ fontSize: '12px', color: 'var(--text-primary)' }}>{ord.governorate} - {detailAddress}</strong>
                                                                     </div>
+
+                                                                     {/* Smart Suggestion Chips for Shopify Address */}
+                                                                     {(() => {
+                                                                         const fullAddressStr = `${ord.governorate || ''} ${detailAddress || ''}`.trim();
+                                                                         const suggestions = getBostaAddressSuggestions(fullAddressStr, bostaData.data);
+                                                                         if (suggestions.length === 0) return null;
+
+                                                                         return (
+                                                                             <div style={{ background: 'rgba(56, 189, 248, 0.03)', padding: '10px', borderRadius: '6px', border: '1px solid rgba(56, 189, 248, 0.15)' }}>
+                                                                                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                                                                     <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                                         <i className="fa-solid fa-wand-magic-sparkles"></i> اقتراحات بوسطة للعنوان:
+                                                                                     </span>
+                                                                                     <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>اضغط لاختيار المحافظة والمنطقة</span>
+                                                                                 </div>
+                                                                                 <div className="custom-horizontal-slider" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '8px' }}>
+                                                                                     {suggestions.map((item, idx) => {
+                                                                                         const isSelected = selectedCities[ord.id]?.cityCode === item.city.cityCode && selectedDistricts[ord.id]?.districtId === item.district.districtId;
+                                                                                         return (
+                                                                                             <button
+                                                                                                 key={`shop-sugg-${ord.id}-${idx}`}
+                                                                                                 type="button"
+                                                                                                 onClick={() => {
+                                                                                                     setSelectedCities({ ...selectedCities, [ord.id]: item.city });
+                                                                                                     setSelectedDistricts({ ...selectedDistricts, [ord.id]: item.district });
+                                                                                                 }}
+                                                                                                 style={{
+                                                                                                     background: isSelected ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                                                                                                     border: isSelected ? '1px solid #38bdf8' : '1px dashed rgba(255, 255, 255, 0.2)',
+                                                                                                     borderRadius: '20px',
+                                                                                                     padding: '5px 12px',
+                                                                                                     fontSize: '0.75rem',
+                                                                                                     color: isSelected ? '#38bdf8' : 'var(--text-primary)',
+                                                                                                     cursor: 'pointer',
+                                                                                                     whiteSpace: 'nowrap',
+                                                                                                     display: 'flex',
+                                                                                                     alignItems: 'center',
+                                                                                                     gap: '6px',
+                                                                                                     transition: 'all 0.2s ease'
+                                                                                                 }}
+                                                                                             >
+                                                                                                 <i className={`fa-solid ${isSelected ? 'fa-check' : 'fa-plus'}`} style={{ fontSize: '0.65rem' }}></i>
+                                                                                                 {item.label}
+                                                                                             </button>
+                                                                                         );
+                                                                                     })}
+                                                                                 </div>
+                                                                             </div>
+                                                                         );
+                                                                     })()}
 
                                                                     {/* Governorate Search Dropdown */}
                                                                     <div style={{ position: 'relative' }}>
@@ -730,7 +883,7 @@ export default function ShopifyPendingList() {
                                                                                 opacity: citySelected ? 1 : 0.5
                                                                             }}
                                                                         >
-                                                                            <span>{districtSelected ? `${districtSelected.districtOtherName} (${districtSelected.districtName})` : 'اختر المنطقة...'}</span>
+                                                                            <span>{districtSelected ? getBostaDistrictDisplayName(districtSelected) : 'اختر المنطقة...'}</span>
                                                                             <i className="fa-solid fa-chevron-down" style={{ fontSize: '10px' }}></i>
                                                                         </div>
 
@@ -771,7 +924,7 @@ export default function ShopifyPendingList() {
                                                                                                 style={{ padding: '8px 10px', fontSize: '12px', cursor: 'pointer', borderRadius: '4px', background: districtSelected?.districtId === dist.districtId ? 'rgba(150,191,72,0.15)' : 'transparent' }}
                                                                                                 className="autocomplete-option"
                                                                                             >
-                                                                                                {dist.districtOtherName} ({dist.districtName})
+                                                                                                {getBostaDistrictDisplayName(dist)}
                                                                                             </div>
                                                                                         ))
                                                                                     )}
@@ -867,14 +1020,14 @@ export default function ShopifyPendingList() {
                                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11.5px' }}>
                                                                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                                             <span>إجمالي المنتجات:</span>
-                                                                            <span>{currency} {(ord.totalValue - (ord.shipping_fee || 0)).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                            <span>{currency} {((parseFloat(ord.totalValue || ord.total_value) || 0) - (ord.shipping_fee || 0)).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                         </div>
                                                                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                                                             <span>مصاريف الشحن شوبيفاي:</span>
                                                                             <span>+{currency} {(ord.shipping_fee || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                         </div>
                                                                         {(() => {
-                                                                            const receiverAdmin = (state.users || []).find(u => u.id === (customDepositReceivers[ord.id] || ord.depositReceiverId));
+                                                                            const receiverAdmin = (state.users || []).find(u => u.id === (depositReceivers[ord.id] || ord.depositReceiverId));
                                                                             const depositLabel = receiverAdmin ? `العربون (${receiverAdmin.name})` : 'العربون (Deposit)';
                                                                             const editLabel = receiverAdmin ? `تعديل العربون المدفوع (${receiverAdmin.name})` : 'تعديل العربون المدفوع (Deposit)';
                                                                             return (

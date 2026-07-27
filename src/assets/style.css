@@ -2111,7 +2111,8 @@ input[type=number] {
     }
 
     /* Reset main content margins to occupy full width */
-    .main-content {
+    .main-content,
+    [dir="rtl"] .main-content {
         margin-left: 0 !important;
         margin-right: 0 !important;
         flex: 0 0 100% !important;

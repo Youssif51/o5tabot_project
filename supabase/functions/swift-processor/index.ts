@@ -304,13 +304,32 @@ Deno.serve(async (req) => {
                 })
             });
 
+            let priceRuleId;
             if (!priceRuleRes.ok) {
                 const errData = await priceRuleRes.json().catch(() => null) || await priceRuleRes.text();
-                throw new Error(`Failed to create Price Rule: ${JSON.stringify(errData)}`);
+                const errStr = JSON.stringify(errData);
+                if (errStr.includes("must be unique") || errStr.includes("taken") || priceRuleRes.status === 422) {
+                    // Find the existing price rule by title
+                    const rulesRes = await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/price_rules.json?limit=250`, {
+                        method: "GET",
+                        headers: { "X-Shopify-Access-Token": accessToken }
+                    });
+                    if (rulesRes.ok) {
+                        const rulesData = await rulesRes.json();
+                        const existingRule = (rulesData.price_rules || []).find((r: any) => r.title.toUpperCase() === code.toUpperCase());
+                        if (existingRule) {
+                            priceRuleId = existingRule.id;
+                        }
+                    }
+                }
+                
+                if (!priceRuleId) {
+                    throw new Error(`Failed to create Price Rule: ${JSON.stringify(errData)}`);
+                }
+            } else {
+                const priceRuleData = await priceRuleRes.json();
+                priceRuleId = priceRuleData.price_rule.id;
             }
-
-            const priceRuleData = await priceRuleRes.json();
-            const priceRuleId = priceRuleData.price_rule.id;
 
             // 2. Create Discount Code
             const discountRes = await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/price_rules/${priceRuleId}/discount_codes.json`, {
@@ -328,12 +347,94 @@ Deno.serve(async (req) => {
 
             if (!discountRes.ok) {
                 const errData = await discountRes.json().catch(() => null) || await discountRes.text();
+                const errStr = JSON.stringify(errData);
+                if (errStr.includes("taken") || errStr.includes("must be unique")) {
+                    return new Response(JSON.stringify({ success: true, message: "Discount code already exists and is active on Shopify" }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
+                }
                 throw new Error(`Failed to create Discount Code: ${JSON.stringify(errData)}`);
             }
 
             return new Response(JSON.stringify({ success: true, message: "Discount code created successfully on Shopify" }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
         } catch (err: any) {
             return new Response(JSON.stringify({ error: "Failed to create discount on Shopify", details: err.message }), { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } });
+        }
+      }
+
+      // --- NEW ACTION: check_discount_usage ---
+      if (action === 'check_discount_usage') {
+        const { code } = body;
+        if (!code) {
+            return new Response(JSON.stringify({ error: "Missing required discount code" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } });
+        }
+
+        try {
+            // 1. Fetch all price rules from Shopify to find the one with title === code
+            const rulesRes = await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/price_rules.json?limit=250`, {
+                method: "GET",
+                headers: { "X-Shopify-Access-Token": accessToken }
+            });
+
+            if (!rulesRes.ok) {
+                const errData = await rulesRes.json().catch(() => null) || await rulesRes.text();
+                throw new Error(`Failed to fetch price rules: ${JSON.stringify(errData)}`);
+            }
+
+            const rulesData = await rulesRes.json();
+            const matchingRule = (rulesData.price_rules || []).find((r: any) => r.title.toUpperCase() === code.toUpperCase());
+
+            if (!matchingRule) {
+                return new Response(JSON.stringify({ success: true, times_used: 0, exists: false }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
+            }
+
+            return new Response(JSON.stringify({ 
+                success: true, 
+                times_used: matchingRule.times_used || 0, 
+                usage_limit: matchingRule.usage_limit || null,
+                exists: true 
+            }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
+        } catch (err: any) {
+            return new Response(JSON.stringify({ error: "Failed to check discount usage on Shopify", details: err.message }), { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } });
+        }
+      }
+
+      // --- NEW ACTION: delete_discount ---
+      if (action === 'delete_discount') {
+        const { code } = body;
+        if (!code) {
+            return new Response(JSON.stringify({ error: "Missing required discount code" }), { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } });
+        }
+
+        try {
+            // 1. Fetch all price rules from Shopify to find the one with title === code
+            const rulesRes = await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/price_rules.json?limit=250`, {
+                method: "GET",
+                headers: { "X-Shopify-Access-Token": accessToken }
+            });
+
+            if (!rulesRes.ok) {
+                const errData = await rulesRes.json().catch(() => null) || await rulesRes.text();
+                throw new Error(`Failed to fetch price rules: ${JSON.stringify(errData)}`);
+            }
+
+            const rulesData = await rulesRes.json();
+            const matchingRule = (rulesData.price_rules || []).find((r: any) => r.title.toUpperCase() === code.toUpperCase());
+
+            if (matchingRule) {
+                // 2. Delete the Price Rule on Shopify (which automatically deletes any associated discount codes!)
+                const deleteRes = await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/price_rules/${matchingRule.id}.json`, {
+                    method: "DELETE",
+                    headers: { "X-Shopify-Access-Token": accessToken }
+                });
+
+                if (!deleteRes.ok) {
+                    const errData = await deleteRes.json().catch(() => null) || await deleteRes.text();
+                    throw new Error(`Failed to delete price rule: ${JSON.stringify(errData)}`);
+                }
+            }
+
+            return new Response(JSON.stringify({ success: true, message: "Discount code deleted successfully from Shopify" }), { status: 200, headers: { "Content-Type": "application/json", ...corsHeaders } });
+        } catch (err: any) {
+            return new Response(JSON.stringify({ error: "Failed to delete discount on Shopify", details: err.message }), { status: 500, headers: { "Content-Type": "application/json", ...corsHeaders } });
         }
       }
 
@@ -370,7 +471,7 @@ Deno.serve(async (req) => {
 
     // معالجة تحديث المخزون فقط (Update Stock Only)
     if (action === 'update_stock') {
-      const { shopify_variant_id, stock } = body;
+      const { shopify_variant_id, stock, price } = body;
       if (!shopify_variant_id) {
         return new Response(JSON.stringify({ error: "Missing shopify_variant_id" }), {
           status: 400,
@@ -442,7 +543,26 @@ Deno.serve(async (req) => {
           });
         }
 
-        return new Response(JSON.stringify({ success: true, message: "Stock updated successfully on Shopify" }), {
+        if (price !== undefined && price !== null && parseFloat(price) > 0) {
+          await fetch(
+            `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/variants/${shopify_variant_id}.json`,
+            {
+              method: "PUT",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Shopify-Access-Token": accessToken
+              },
+              body: JSON.stringify({
+                variant: {
+                  id: shopify_variant_id,
+                  price: String(price)
+                }
+              })
+            }
+          );
+        }
+
+        return new Response(JSON.stringify({ success: true, message: "Stock and price updated successfully on Shopify" }), {
           status: 200,
           headers: corsHeaders
         });
@@ -534,6 +654,217 @@ Deno.serve(async (req) => {
         });
       } catch (err: any) {
         return new Response(JSON.stringify({ error: "Error adjusting stock on Shopify", details: err.message }), {
+          status: 500,
+          headers: corsHeaders
+        });
+      }
+    }
+
+    // معالجة إلغاء الطلب في شوبيفاي (Cancel Order in Shopify)
+    if (action === 'cancel_order') {
+      const { shopify_order_id, reason } = body;
+      if (!shopify_order_id) {
+        return new Response(JSON.stringify({ error: "Missing shopify_order_id" }), {
+          status: 400,
+          headers: corsHeaders
+        });
+      }
+      try {
+        console.log(`Cancelling order ${shopify_order_id} in Shopify Admin...`);
+        const cancelRes = await fetch(
+          `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/orders/${shopify_order_id}/cancel.json`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shopify-Access-Token": accessToken
+            },
+            body: JSON.stringify({
+              restock: false, // Prevent Shopify REST API's buggy native restocking. ERP will manually push the correct stock.
+              reason: reason || "customer"
+            })
+          }
+        );
+        const cancelData = await cancelRes.json();
+        if (!cancelRes.ok) {
+          console.warn("Shopify cancel order warning/error:", cancelData);
+          return new Response(JSON.stringify({ success: false, warning: "Failed or order already cancelled on Shopify", details: cancelData }), {
+            status: 200,
+            headers: corsHeaders
+          });
+        }
+
+        return new Response(JSON.stringify({ success: true, message: "Order cancelled successfully in Shopify", data: cancelData }), {
+          status: 200,
+          headers: corsHeaders
+        });
+      } catch (err: any) {
+        console.error("Error cancelling order on Shopify:", err);
+        return new Response(JSON.stringify({ error: "Error cancelling order on Shopify", details: err.message }), {
+          status: 500,
+          headers: corsHeaders
+        });
+      }
+    }
+
+    // معالجة تنفيذ الشحن والطلب في شوبيفاي (Fulfill Order in Shopify to release Committed stock & update On Hand)
+    if (action === 'fulfill_order') {
+      const { shopify_order_id } = body;
+      if (!shopify_order_id) {
+        return new Response(JSON.stringify({ error: "Missing shopify_order_id" }), {
+          status: 400,
+          headers: corsHeaders
+        });
+      }
+      try {
+        console.log(`Fulfilling order ${shopify_order_id} in Shopify...`);
+        // 1. Fetch fulfillment orders for this order
+        const foRes = await fetch(
+          `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/orders/${shopify_order_id}/fulfillment_orders.json`,
+          {
+            method: "GET",
+            headers: { "X-Shopify-Access-Token": accessToken }
+          }
+        );
+        
+        let fulfillmentOrderId = null;
+        if (foRes.ok) {
+          const foData = await foRes.json();
+          const openFo = (foData.fulfillment_orders || []).find((fo: any) => fo.status === 'open' || fo.status === 'in_progress');
+          if (openFo) {
+            fulfillmentOrderId = openFo.id;
+          }
+        }
+
+        let fulfillData: any = null;
+        let fulfillRes: any = null;
+
+        if (fulfillmentOrderId) {
+          // Use modern fulfillment_orders API
+          fulfillRes = await fetch(
+            `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/fulfillments.json`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Shopify-Access-Token": accessToken
+              },
+              body: JSON.stringify({
+                fulfillment: {
+                  line_items_by_fulfillment_order: [
+                    {
+                      fulfillment_order_id: fulfillmentOrderId
+                    }
+                  ]
+                }
+              })
+            }
+          );
+          fulfillData = await fulfillRes.json();
+        } else {
+          // Fallback legacy fulfillment API
+          fulfillRes = await fetch(
+            `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/orders/${shopify_order_id}/fulfillments.json`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Shopify-Access-Token": accessToken
+              },
+              body: JSON.stringify({
+                fulfillment: {
+                  notify_customer: false
+                }
+              })
+            }
+          );
+          fulfillData = await fulfillRes.json();
+        }
+
+        if (!fulfillRes || !fulfillRes.ok) {
+          console.warn("Shopify fulfill order warning/error:", fulfillData);
+          return new Response(JSON.stringify({ success: false, warning: "Order may already be fulfilled or unavailable for fulfillment", details: fulfillData }), {
+            status: 200,
+            headers: corsHeaders
+          });
+        }
+
+        return new Response(JSON.stringify({ success: true, message: "Order fulfilled successfully in Shopify", data: fulfillData }), {
+          status: 200,
+          headers: corsHeaders
+        });
+      } catch (err: any) {
+        console.error("Error fulfilling order on Shopify:", err);
+        return new Response(JSON.stringify({ error: "Error fulfilling order on Shopify", details: err.message }), {
+          status: 500,
+          headers: corsHeaders
+        });
+      }
+    }
+
+    // معالجة تحديث حالة الدفع في شوبيفاي لـ Paid (Mark Payment Received in Shopify)
+    if (action === 'mark_order_paid') {
+      const { shopify_order_id, amount } = body;
+      if (!shopify_order_id) {
+        return new Response(JSON.stringify({ error: "Missing shopify_order_id" }), {
+          status: 400,
+          headers: corsHeaders
+        });
+      }
+      try {
+        console.log(`Marking order ${shopify_order_id} as Paid in Shopify...`);
+        
+        // 1. Fetch order details to get total price if amount not passed
+        let targetAmount = amount;
+        if (!targetAmount) {
+          const ordRes = await fetch(
+            `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/orders/${shopify_order_id}.json`,
+            {
+              method: "GET",
+              headers: { "X-Shopify-Access-Token": accessToken }
+            }
+          );
+          if (ordRes.ok) {
+            const ordData = await ordRes.json();
+            targetAmount = ordData?.order?.total_price || "0.00";
+          }
+        }
+
+        // 2. Post a capture transaction
+        const txRes = await fetch(
+          `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/orders/${shopify_order_id}/transactions.json`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shopify-Access-Token": accessToken
+            },
+            body: JSON.stringify({
+              transaction: {
+                kind: "capture",
+                status: "success",
+                amount: String(targetAmount)
+              }
+            })
+          }
+        );
+        const txData = await txRes.json();
+
+        if (!txRes.ok) {
+          console.warn("Shopify mark order paid warning/error:", txData);
+          return new Response(JSON.stringify({ success: false, warning: "Failed or order already paid on Shopify", details: txData }), {
+            status: 200,
+            headers: corsHeaders
+          });
+        }
+
+        return new Response(JSON.stringify({ success: true, message: "Order payment marked as Paid successfully in Shopify", data: txData }), {
+          status: 200,
+          headers: corsHeaders
+        });
+      } catch (err: any) {
+        console.error("Error marking order paid on Shopify:", err);
+        return new Response(JSON.stringify({ error: "Error marking order paid on Shopify", details: err.message }), {
           status: 500,
           headers: corsHeaders
         });

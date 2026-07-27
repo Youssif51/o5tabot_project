@@ -120,8 +120,25 @@ Deno.serve(async (req) => {
     }
 
     // 3. Handle stock restoration / deduction based on state changes
-    const wasDeducted = previousStatus === 'Completed' || previousStatus === 'Partially Delivered' || previousStatus === 'Shipped';
-    const isDeducted = newStatus === 'Completed' || newStatus === 'Partially Delivered' || newStatus === 'Shipped';
+    const isDeductedStatus = (st: string, addressStr: string, source: string) => {
+      if (!st || st === 'Draft' || st === 'Cancelled') return false;
+      if (['Shipped', 'Completed', 'Processing', 'Delivered', 'Out for Delivery', 'Partially Delivered'].includes(st)) return true;
+      if (st === 'Pending') {
+        const isManual = source !== 'shopify';
+        let isReviewed = false;
+        if (addressStr && addressStr.startsWith('{')) {
+          try {
+            const p = JSON.parse(addressStr);
+            isReviewed = !!(p?.isReviewed || p?.is_reviewed);
+          } catch(e) {}
+        }
+        return isManual || isReviewed;
+      }
+      return true;
+    };
+
+    const wasDeducted = isDeductedStatus(previousStatus, order.address || "", order.source || "");
+    const isDeducted = isDeductedStatus(newStatus, order.address || "", order.source || "");
     const isCancelled = newStatus === 'Cancelled';
 
     const wasCancelled = previousStatus === 'Cancelled';
@@ -129,48 +146,70 @@ Deno.serve(async (req) => {
     if (isCancelled && !wasCancelled) {
       console.log(`Order ${orderId} returned/cancelled. Reverting stock levels...`);
       
+      if (order.shopify_order_id) {
+         try {
+           await supabase.functions.invoke('swift-processor', {
+              body: { action: 'cancel_order', shopify_order_id: order.shopify_order_id }
+           });
+         } catch (e) {
+           console.error("Error cancelling order on Shopify:", e);
+         }
+      }
+      
       // Fetch order items to restock
-      const { data: items } = await supabase
+      const { data: items, error: itemsErr } = await supabase
         .from('order_items')
         .select('*')
         .eq('order_id', orderId);
 
+      console.log(`Bosta Webhook Restock: fetched items count = ${items ? items.length : 0}, error = ${itemsErr ? JSON.stringify(itemsErr) : 'none'}`);
+
       if (items) {
         for (const item of items) {
-          const { data: vData } = await supabase
+          const { data: vData, error: vErr } = await supabase
             .from('product_variants')
-            .select('stock_sulur, product_id, shopify_id')
+            .select('stock_sulur, product_id, shopify_id, average_cost')
             .eq('sku', item.variant_sku)
-            .single();
+            .maybeSingle();
+
+          console.log(`Bosta Webhook Restock: variant SKU = ${item.variant_sku}, found = ${!!vData}, error = ${vErr ? JSON.stringify(vErr) : 'none'}`);
 
           if (vData) {
             // 1. Shopify Restock
             if (vData.shopify_id) {
-                 await supabase.functions.invoke('swift-processor', {
+                 const adjRes = await supabase.functions.invoke('swift-processor', {
                     body: { action: 'adjust_stock', shopify_variant_id: vData.shopify_id, adjustment: item.quantity }
                  });
+                 console.log(`Bosta Webhook Restock: Shopify adjust_stock response:`, adjRes);
             }
 
             // 2. Local Restock
+            console.log(`Bosta Webhook Restock: wasDeducted = ${wasDeducted}`);
             if (wasDeducted) {
               const newStock = (vData.stock_sulur || 0) + (item.quantity || 0);
+              const uCost = vData.average_cost || 0;
               
               // Revert stock
-              await supabase
+              const { error: upErr } = await supabase
                 .from('product_variants')
                 .update({ stock_sulur: newStock })
                 .eq('sku', item.variant_sku);
 
+              console.log(`Bosta Webhook Restock: local stock updated to ${newStock}, error = ${upErr ? JSON.stringify(upErr) : 'none'}`);
+
               // Log inside Stock Ledger
-              await supabase
+              const { error: ledgErr } = await supabase
                 .from('stock_ledger')
                 .insert([{
-                  date: new Date().toISOString().split('T')[0],
+                  order_id: orderId,
+                  date: new Date().toISOString(),
                   product_id: vData.product_id,
                   variant_sku: item.variant_sku,
                   warehouse: order.warehouse || 'Sulur',
                   type: 'Return',
                   quantity: item.quantity,
+                  unit_cost: uCost,
+                  total_cost: uCost * Math.abs(item.quantity || 0),
                   balance_after: newStock
                 }]);
             }
@@ -190,12 +229,13 @@ Deno.serve(async (req) => {
         for (const item of items) {
           const { data: vData } = await supabase
             .from('product_variants')
-            .select('stock_sulur, product_id')
+            .select('stock_sulur, product_id, average_cost')
             .eq('sku', item.variant_sku)
             .single();
 
           if (vData) {
             const newStock = Math.max(0, (vData.stock_sulur || 0) - (item.quantity || 0));
+            const uCost = vData.average_cost || 0;
             
             // Deduct stock
             await supabase
@@ -207,12 +247,15 @@ Deno.serve(async (req) => {
             await supabase
               .from('stock_ledger')
               .insert([{
-                date: new Date().toISOString().split('T')[0],
+                order_id: orderId,
+                date: new Date().toISOString(),
                 product_id: vData.product_id,
                 variant_sku: item.variant_sku,
                 warehouse: order.warehouse || 'Sulur',
                 type: 'Sale',
                 quantity: -item.quantity,
+                unit_cost: uCost,
+                total_cost: uCost * Math.abs(item.quantity || 0),
                 balance_after: newStock
               }]);
           }

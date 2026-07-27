@@ -1,4 +1,5 @@
 import { formatProductDisplayName } from '../../utils/productUtils';
+import { getBostaDistrictDisplayName, filterAndSortBostaDistricts, autoParseAddressToBostaLocation, getBostaAddressSuggestions } from '../../utils/bostaUtils';
 import React, { useContext, useState, useEffect } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
@@ -46,8 +47,13 @@ const calculateBostaShippingFee = (cityName) => {
 };
 
 export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
-    const { state, addOrder, editOrder, showToast, showConfirm, t, validateCoupon, applyCouponUsage, getOrCreateCustomer, approveOrderWithBosta } = useContext(AppContext);
+    const { state, addOrder, editOrder, showToast, showConfirm, t, validateCoupon, applyCouponUsage, checkLiveCouponAvailability, getOrCreateCustomer, approveOrderWithBosta } = useContext(AppContext);
     
+    const isEditMode = !!editOrderId;
+    
+    // Submission Lock State
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
     // Order info
     const [orderId, setOrderId] = useState('');
     const [status, setStatus] = useState('Draft'); // 'Draft', 'Pending', 'Completed'
@@ -65,6 +71,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const [couponDiscountType, setCouponDiscountType] = useState('');
     const [globalDiscountValue, setGlobalDiscountValue] = useState('');
     const [globalDiscountType, setGlobalDiscountType] = useState('Percentage');
+    const [discountReason, setDiscountReason] = useState('');
+    const [discountReasonDetails, setDiscountReasonDetails] = useState('');
     const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
     const [phone, setPhone] = useState('');
     const [secondPhone, setSecondPhone] = useState('');
@@ -72,6 +80,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const [address, setAddress] = useState('');
     
     // Products Table
+    const [initialItemQtyMap, setInitialItemQtyMap] = useState({});
     const [items, setItems] = useState([
         { variantSku: '', quantity: 1, price: 0, discountPercent: 0, discountType: 'Percentage', maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }
     ]);
@@ -239,11 +248,17 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         return Array.from(map.values());
     };
 
+    const normalizePhoneStr = (p) => (p || '').replace(/\D/g, '').replace(/^20/, '0');
     const customerOptions = getCustomerOptions();
-    const filteredCustomers = customerOptions.filter(c => 
-        (c.name || '').toLowerCase().includes((client || '').toLowerCase()) ||
-        (c.phone || '').includes(client || '')
-    );
+    const filteredCustomers = customerOptions.filter(c => {
+        const searchInput = (client || '').trim();
+        if (!searchInput) return true;
+        const normSearch = normalizePhoneStr(searchInput);
+        const normPhone = normalizePhoneStr(c.phone);
+        return (c.name || '').toLowerCase().includes(searchInput.toLowerCase()) ||
+               (normPhone && normSearch && normPhone.includes(normSearch)) ||
+               (c.phone || '').includes(searchInput);
+    });
 
     // Reset all form state variables cleanly
     const resetFormState = () => {
@@ -264,10 +279,13 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         setActiveCityDropdown(false);
         setActiveDistrictDropdown(false);
         setItems([{ variantSku: '', quantity: 1, price: 0, discountPercent: 0, discountType: 'Percentage', maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }]);
+        setInitialItemQtyMap({});
         setShippingFee('');
         setVatEnabled(false);
         setGlobalDiscountValue('');
         setGlobalDiscountType('Percentage');
+        setDiscountReason('');
+        setDiscountReasonDetails('');
         setOriginalAddressObj({});
         setDeposit('');
         // Default receiver to the currently logged-in user when creating a new order
@@ -303,6 +321,9 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     setGlobalDiscountType(parsed.globalDiscountType || 'Percentage');
                     setOriginalAddressObj(parsed.originalObj || {});
                     
+                    setDiscountReason(order.discount_reason || parsed.discountReason || '');
+                    setDiscountReasonDetails(order.discount_reason_details || parsed.discountReasonDetails || '');
+
                     setCouponCode(parsed.appliedCoupon || '');
                     setCustomerId(order.customer_id || null);
                     
@@ -322,42 +343,59 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     setActiveCityDropdown(false);
                     setActiveDistrictDropdown(false);
                     
-                    // Map items
-                    const mappedItems = order.items.map(oi => {
-                        let retailPrice = oi.price;
-                        let maxStock = oi.quantity;
-                        let productName = oi.variantSku;
+                    // Map items safely
+                    const orderItemsList = Array.isArray(order.items) ? order.items : [];
+                    const qtyMap = {};
+                    orderItemsList.forEach(oi => {
+                        const sku = oi.variant_sku || oi.variantSku || oi.sku || '';
+                        if (sku) qtyMap[sku] = (qtyMap[sku] || 0) + (parseInt(oi.quantity) || 1);
+                    });
+                    setInitialItemQtyMap(qtyMap);
+
+                    const mappedItems = orderItemsList.map(oi => {
+                        const itemSku = oi.variant_sku || oi.variantSku || oi.sku || '';
+                        const itemQty = parseInt(oi.quantity) || 1;
+                        const itemPrice = parseFloat(oi.price) || 0;
+                        
+                        let retailPrice = itemPrice;
+                        let maxStock = itemQty;
+                        let productName = itemSku || 'منتج';
                         let variantName = '';
-                        state.products.forEach(p => {
-                            const v = p.variants.find(vr => vr.sku === oi.variantSku);
-                            if (v) {
-                                retailPrice = v.retailPrice;
-                                maxStock = (v.stock?.['Sulur'] || 0) + oi.quantity; // add existing qty back to editing stock limits
-                                productName = p.name;
-                                variantName = v.name;
+                        
+                        (state.products || []).forEach(p => {
+                            if (p && Array.isArray(p.variants)) {
+                                const v = p.variants.find(vr => vr.sku === itemSku);
+                                if (v) {
+                                    retailPrice = parseFloat(v.retailPrice) || itemPrice;
+                                    maxStock = (v.stock?.['Sulur'] || 0) + itemQty;
+                                    productName = p.name || itemSku;
+                                    variantName = v.name || '';
+                                }
                             }
                         });
                         
                         let itemDiscount = 0;
                         if (retailPrice > 0) {
-                            itemDiscount = Math.round(100 * (1 - oi.price / retailPrice));
+                            itemDiscount = Math.round(100 * (1 - itemPrice / retailPrice));
                             if (itemDiscount < 0 || itemDiscount > 100) itemDiscount = 0;
                         }
                         
                         return {
-                            variantSku: oi.variantSku,
-                            quantity: oi.quantity,
+                            variantSku: itemSku,
+                            quantity: itemQty,
                             price: retailPrice,
                             discountPercent: itemDiscount,
                             discountType: 'Percentage',
                             maxStock: maxStock,
-                            searchVal: formatProductDisplayName(productName, variantName),
+                            searchVal: formatProductDisplayName(productName, variantName) || productName,
                             isOpen: false,
                             productName: productName,
                             variantName: variantName
                         };
                     });
-                    setItems(mappedItems);
+                    setItems(mappedItems.length > 0 ? mappedItems : [
+                        { variantSku: '', quantity: 1, price: 0, discountPercent: 0, discountType: 'Percentage', maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }
+                    ]);
                 }
             } else {
                 resetFormState();
@@ -383,6 +421,10 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         setClient(custObj.name);
         setIsClientDropdownOpen(false);
         setCustomerId(custObj.id || null);
+        
+        if (custObj.customer_type === 'Spam') {
+            showToast("تحذير: هذا العميل مصنف كـ (سبام / محظور) في قاعدة بيانات المتجر!", "warning");
+        }
         
         if (custObj.phone) setPhone(custObj.phone);
         if (custObj.secondPhone) setSecondPhone(custObj.secondPhone);
@@ -457,14 +499,15 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     };
 
     const handleSelectOption = (index, variant) => {
-        if ((variant.stock || 0) <= 0) {
+        const liveStock = getCurrentStock(variant.sku);
+        if (liveStock <= 0) {
             showToast("عفواً هذا المنتج غير متوفر في المخزن حالياً (الاستوك صفر)", "error");
         }
         setItems(prev => prev.map((item, i) => i === index ? {
             ...item,
             variantSku: variant.sku,
             price: variant.retailPrice,
-            maxStock: variant.stock || 0,
+            maxStock: liveStock,
             productName: variant.productName,
             variantName: variant.name,
             searchVal: formatProductDisplayName(variant.productName, variant.name),
@@ -489,9 +532,11 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
     const handleQtyChange = (index, val) => {
         const qty = parseInt(val) || 1;
-        const maxStock = items[index].maxStock || 1;
+        const targetItem = items[index];
+        const liveStock = getCurrentStock(targetItem?.variantSku);
+        const maxStock = isEditMode ? (liveStock + (initialItemQtyMap[targetItem?.variantSku] || 0)) : liveStock;
         
-        if (qty > maxStock) {
+        if (maxStock > 0 && qty > maxStock) {
             showToast(`الكمية المدخلة تتجاوز المخزون المتاح (${maxStock} وحدة)`, "warning");
             setItems(prev => prev.map((item, i) => i === index ? { ...item, quantity: maxStock } : item));
         } else if (qty < 1) {
@@ -544,11 +589,28 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     }
 
     const orderDiscountAmount = couponDisc + globalDisc;
-    const discountedProductsTotal = totalProductsSubtotal - orderDiscountAmount;
+    const discountedProductsTotal = Math.max(0, totalProductsSubtotal - orderDiscountAmount);
     
     const vatAmount = vatEnabled ? Math.round(discountedProductsTotal * 0.14 * 100) / 100 : 0;
     const finalOrderTotal = Math.round((discountedProductsTotal + vatAmount + shippingFeeVal) * 100) / 100;
     const remainingToCollect = Math.round((finalOrderTotal - depositVal) * 100) / 100;
+
+    const getCurrentStock = (sku) => {
+        if (!sku) return 0;
+        for (const p of (state.products || [])) {
+            if (p && Array.isArray(p.variants)) {
+                const v = p.variants.find(vr => vr.sku === sku);
+                if (v) {
+                    if (typeof v.stock === 'number') return v.stock;
+                    if (typeof v.stock === 'object' && v.stock !== null) {
+                        return v.stock.Sulur ?? v.stock.sulur ?? 0;
+                    }
+                    return parseInt(v.stock_sulur) || 0;
+                }
+            }
+        }
+        return 0;
+    };
 
     // Get top 5 selling products based on orders
     const getPopularProducts = () => {
@@ -562,7 +624,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         const allVariants = [];
         (state.products || []).forEach(p => {
             (p.variants || []).forEach(v => {
-                const stock = v.stock?.['Sulur'] || 0;
+                const stock = getCurrentStock(v.sku);
                 allVariants.push({
                     sku: v.sku,
                     name: v.name,
@@ -590,7 +652,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         const allVariants = [];
         (state.products || []).forEach(p => {
             (p.variants || []).forEach(v => {
-                const stock = v.stock?.['Sulur'] || 0;
+                const stock = getCurrentStock(v.sku);
                 allVariants.push({
                     sku: v.sku,
                     name: v.name,
@@ -610,14 +672,25 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
     // Validations
     const isStep1Valid = client.trim() !== '' && phone.trim().length >= 8 && phone.trim().length <= 15 && governorate !== '' && address.trim() !== '';
-    const isStep2Valid = items.length > 0 && items.every(item => item.variantSku !== '' && item.quantity > 0 && (item.maxStock || 0) > 0 && item.quantity <= (item.maxStock || 0));
+    const isStep2Valid = items.length > 0 && items.every(item => {
+        if (!item.variantSku || item.quantity <= 0) return false;
+        const liveStock = getCurrentStock(item.variantSku);
+        const allowedMax = isEditMode ? liveStock + (initialItemQtyMap[item.variantSku] || 0) : liveStock;
+        return allowedMax > 0 && item.quantity <= allowedMax;
+    });
     useEffect(() => {
         if (depositVal > 0 && !depositReceiverId && state.currentUser) {
             setDepositReceiverId(state.currentUser.id);
         }
     }, [deposit, depositReceiverId, state.currentUser]);
 
-    const isStep3Valid = shippingFee !== '' && shippingFee !== null && !isNaN(shippingFee) && parseFloat(shippingFee) > 0 && depositVal >= 0 && (depositVal === 0 || !!depositReceiverId);
+    const hasDiscount = (couponValid && couponDiscountValue > 0) || 
+                        (parseFloat(globalDiscountValue) > 0) || 
+                        items.some(item => parseFloat(item.discountPercent) > 0);
+
+    const isDiscountInfoValid = !hasDiscount || (!!discountReason && !!discountReasonDetails.trim());
+
+    const isStep3Valid = shippingFee !== '' && shippingFee !== null && !isNaN(shippingFee) && parseFloat(shippingFee) > 0 && depositVal >= 0 && (depositVal === 0 || !!depositReceiverId) && isDiscountInfoValid;
     
     const canNavigateToStep = (targetStep) => {
         if (targetStep <= step) return true;
@@ -631,124 +704,141 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
     // Handle Submit
     const handleSaveOrder = async (isDraftSave) => {
-        if (!client.trim()) {
-            showToast("يرجى إدخال اسم العميل", "error");
-            setStep(1);
-            return;
-        }
-        if (!phone.trim() || phone.trim().length < 8 || phone.trim().length > 15) {
-            showToast("يرجى إدخال رقم هاتف عميل صحيح (من 8 إلى 15 رقماً)", "error");
-            setStep(1);
-            return;
-        }
-        if (governorate === '') {
-            showToast("يرجى اختيار المحافظة لشحن الطلب", "error");
-            setStep(1);
-            return;
-        }
-        if (!address.trim()) {
-            showToast("يرجى إدخال العنوان التفصيلي للشحن", "error");
-            setStep(1);
-            return;
-        }
-        if (!isDraftSave && syncWithBosta) {
-            if (!citySelected || !districtSelected) {
-                showToast("يرجى اختيار المحافظة والمنطقة الخاصة ببوسطة من الخطوة الأولى لتفعيل المزامنة التلقائية للشحن.", "error");
+        if (isSubmitting) return;
+        setIsSubmitting(true);
+        try {
+            if (!isDraftSave && couponValid && couponCode) {
+                const checkRes = await checkLiveCouponAvailability(couponCode, totalProductsSubtotal);
+                if (!checkRes.valid) {
+                    showToast(checkRes.error || "عفواً، كود الخصم غير متاح حالياً.", "error");
+                    setStep(3);
+                    setIsSubmitting(false);
+                    return;
+                }
+            }
+
+            if (!client.trim()) {
+                showToast("يرجى إدخال اسم العميل", "error");
                 setStep(1);
                 return;
             }
-        }
-        if (!isStep2Valid) {
-            showToast("يرجى إدخال أصناف وكميات صالحة في سلة المنتجات", "error");
-            setStep(2);
-            return;
-        }
-
-        const orderItems = items.map(item => ({
-            variantSku: item.variantSku,
-            quantity: item.quantity,
-            price: item.discountType === 'Percentage' ? (item.price * (1 - (item.discountPercent || 0) / 100)) : (item.price - (item.discountPercent || 0) / item.quantity)
-        }));
-
-        const finalStatus = isDraftSave ? 'Draft' : 'Pending'; // Draft = مسودة, Pending = قيد التجهيز/الانتظار, Completed = تم التسليم
-
-        
-        // Ensure we have a valid customer_id in DB
-        let finalCustomerId = customerId;
-        if (!finalCustomerId) {
-            finalCustomerId = await getOrCreateCustomer(phone, client, governorate);
-            setCustomerId(finalCustomerId); // update local state as well
-        }
-
-        const newOrderObj = {
-            id: orderId,
-            client: client,
-            date: getLocalDateString(),
-            items: orderItems,
-            totalValue: finalOrderTotal,
-            customer_id: finalCustomerId,
-            discount_type: couponValid ? couponDiscountType : null,
-            discount_value: couponValid ? couponDiscountValue : 0,
-            applied_coupon_code: couponValid ? couponCode : null,
-            warehouse: 'Sulur',
-            status: finalStatus,
-            address: JSON.stringify({
-                ...originalAddressObj,
-                detailAddress: address,
-                phone: phone,
-                secondPhone: secondPhone,
-                vatEnabled: vatEnabled,
-                globalDiscountValue: globalDiscountValue,
-                globalDiscountType: globalDiscountType,
-                customerCode: customerCode,
-                appliedCoupon: couponValid ? couponCode : '',
-                syncWithBosta: syncWithBosta,
-                bostaCityCode: citySelected?.cityCode || null,
-                bostaCityName: citySelected?.cityName || citySelected?.cityOtherName || '',
-                bostaDistrictId: districtSelected?.districtId || null,
-                bostaDistrictName: districtSelected?.districtName || districtSelected?.districtOtherName || '',
-                bostaZoneId: districtSelected?.zoneId || null
-            }),
-            governorate: governorate,
-            deposit: depositVal,
-            depositReceiverId: depositVal > 0 ? (depositReceiverId || state.currentUser?.id || null) : null,
-            depositStatus: depositVal > 0 ? (depositReceiverId === state.currentUser?.id ? 'confirmed' : (depositStatus || 'pending')) : 'confirmed',
-            shipping_fee: shippingFeeVal,
-            createdBy: state.currentUser ? state.currentUser.name : 'sfsf'
-        };
-
-        if (editOrderId) {
-            editOrder(newOrderObj);
-            showToast(isDraftSave ? "تم تعديل الطلب كمسودة بنجاح" : "تم تعديل واعتماد الطلب بنجاح", "success");
-        } else {
-            addOrder(newOrderObj);
-            showToast(isDraftSave ? "تم حفظ الطلب كمسودة بنجاح" : "تم إضافة طلب العميل بنجاح", "success");
-            
-            if (!isDraftSave && syncWithBosta && newOrderObj.status !== 'Draft' && newOrderObj.depositStatus !== 'pending') {
-                const bostaMetadata = {
-                    customerName: client,
-                    customerPhone: phone,
-                    customerSecondPhone: secondPhone,
-                    customerAddress: address,
-                    governorate: governorate,
-                    bostaCityCode: citySelected?.cityCode,
-                    bostaCityName: citySelected?.cityOtherName,
-                    bostaDistrictId: districtSelected?.districtId,
-                    bostaDistrictName: districtSelected?.districtOtherName,
-                    bostaZoneId: districtSelected?.zoneId,
-                    allowToOpenPackage: allowToOpenPackage
-                };
-                // Fire and forget
-                approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit);
+            if (!phone.trim() || phone.trim().length < 8 || phone.trim().length > 15) {
+                showToast("يرجى إدخال رقم هاتف عميل صحيح (من 8 إلى 15 رقماً)", "error");
+                setStep(1);
+                return;
             }
-        }
+            if (governorate === '') {
+                showToast("يرجى اختيار المحافظة لشحن الطلب", "error");
+                setStep(1);
+                return;
+            }
+            if (!address.trim()) {
+                showToast("يرجى إدخال العنوان التفصيلي للشحن", "error");
+                setStep(1);
+                return;
+            }
+            if (!isDraftSave && syncWithBosta) {
+                if (!citySelected || !districtSelected) {
+                    showToast("يرجى اختيار المحافظة والمنطقة الخاصة ببوسطة من الخطوة الأولى لتفعيل المزامنة التلقائية للشحن.", "error");
+                    setStep(1);
+                    return;
+                }
+            }
+            if (!isStep2Valid) {
+                showToast("يرجى إدخال أصناف وكميات صالحة في سلة المنتجات", "error");
+                setStep(2);
+                return;
+            }
 
-        // Apply coupon usage to update its statistics
-        if (couponValid && couponCode) {
-            applyCouponUsage(couponCode, newOrderObj.id);
-        }
+            const orderItems = items.map(item => ({
+                variantSku: item.variantSku,
+                quantity: item.quantity,
+                price: item.discountType === 'Percentage' ? (item.price * (1 - (item.discountPercent || 0) / 100)) : (item.price - (item.discountPercent || 0) / item.quantity)
+            }));
 
-        onClose();
+            const finalStatus = isDraftSave ? 'Draft' : 'Pending';
+
+            // Ensure we have a valid customer_id in DB
+            let finalCustomerId = customerId;
+            if (!finalCustomerId) {
+                finalCustomerId = await getOrCreateCustomer(phone, client, governorate);
+                setCustomerId(finalCustomerId);
+            }
+
+            const newOrderObj = {
+                id: orderId,
+                client: client,
+                date: getLocalDateString(),
+                items: orderItems,
+                totalValue: finalOrderTotal,
+                customer_id: finalCustomerId,
+                discount_type: couponValid ? couponDiscountType : null,
+                discount_value: couponValid ? couponDiscountValue : 0,
+                applied_coupon_code: couponValid ? couponCode : null,
+                warehouse: 'Sulur',
+                status: finalStatus,
+                discount_reason: hasDiscount ? discountReason : null,
+                discount_reason_details: hasDiscount ? discountReasonDetails : null,
+                address: JSON.stringify({
+                    ...originalAddressObj,
+                    detailAddress: address,
+                    phone: phone,
+                    secondPhone: secondPhone,
+                    vatEnabled: vatEnabled,
+                    globalDiscountValue: globalDiscountValue,
+                    globalDiscountType: globalDiscountType,
+                    discountReason: hasDiscount ? discountReason : '',
+                    discountReasonDetails: hasDiscount ? discountReasonDetails : '',
+                    customerCode: customerCode,
+                    appliedCoupon: couponValid ? couponCode : '',
+                    syncWithBosta: syncWithBosta,
+                    bostaCityCode: citySelected?.cityCode || null,
+                    bostaCityName: citySelected?.cityName || citySelected?.cityOtherName || '',
+                    bostaDistrictId: districtSelected?.districtId || null,
+                    bostaDistrictName: districtSelected?.districtName || districtSelected?.districtOtherName || '',
+                    bostaZoneId: districtSelected?.zoneId || null
+                }),
+                governorate: governorate,
+                deposit: depositVal,
+                depositReceiverId: depositVal > 0 ? (depositReceiverId || state.currentUser?.id || null) : null,
+                depositStatus: depositVal > 0 ? (depositReceiverId === state.currentUser?.id ? 'confirmed' : (depositStatus || 'pending')) : 'confirmed',
+                shipping_fee: shippingFeeVal,
+                createdBy: state.currentUser ? state.currentUser.name : 'sfsf'
+            };
+
+            if (editOrderId) {
+                await editOrder(newOrderObj);
+                showToast(isDraftSave ? "تم تعديل الطلب كمسودة بنجاح" : "تم تعديل واعتماد الطلب بنجاح", "success");
+            } else {
+                await addOrder(newOrderObj);
+                showToast(isDraftSave ? "تم حفظ الطلب كمسودة بنجاح" : "تم إضافة طلب العميل بنجاح", "success");
+                
+                if (!isDraftSave && syncWithBosta && newOrderObj.status !== 'Draft' && newOrderObj.depositStatus !== 'pending') {
+                    const bostaMetadata = {
+                        customerName: client,
+                        customerPhone: phone,
+                        customerSecondPhone: secondPhone,
+                        customerAddress: address,
+                        governorate: governorate,
+                        bostaCityCode: citySelected?.cityCode,
+                        bostaCityName: citySelected?.cityOtherName,
+                        bostaDistrictId: districtSelected?.districtId,
+                        bostaDistrictName: districtSelected?.districtOtherName,
+                        bostaZoneId: districtSelected?.zoneId,
+                        allowToOpenPackage: allowToOpenPackage
+                    };
+                    approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit);
+                }
+            }
+
+            if (couponValid && couponCode) {
+                applyCouponUsage(couponCode, 1);
+            }
+
+            onClose();
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const handleRequestClose = () => {
@@ -909,7 +999,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                         color: 'var(--text-primary)', 
                                                         borderRadius: '6px',
                                                         display: 'flex',
-                                                        justify: 'space-between',
+                                                        justifyContent: 'space-between',
                                                         alignItems: 'center'
                                                     }}
                                                     className="autocomplete-option"
@@ -1001,122 +1091,167 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         </div>
                                     )}
                                 </div>
-                                
-<div style={{ display: 'flex', gap: '10px' }}>
-    <div className="form-group" style={{ flex: 1, position: 'relative' }}>
-        <label className="form-label">المحافظة (الشحن) *</label>
-        <div 
-            onClick={() => setActiveCityDropdown(!activeCityDropdown)}
-            style={{ 
-                background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '8px', 
-                padding: '10px 12px', fontSize: '13px', color: citySelected ? '#fff' : '#aaa', cursor: 'pointer',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center'
-            }}
-        >
-            <span>{citySelected ? citySelected.cityOtherName : 'اختر المحافظة...'}</span>
-            <i className="fa-solid fa-chevron-down" style={{ fontSize: '10px' }}></i>
-        </div>
-        
-        {activeCityDropdown && (
-            <div className="glass-card" style={{
-                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, maxHeight: '200px',
-                overflowY: 'auto', background: '#1e1e24', border: '1px solid var(--glass-border)', borderRadius: '8px',
-                marginTop: '4px', padding: '4px'
-            }}>
-                <input 
-                    type="text" 
-                    placeholder="ابحث عن المحافظة..." 
-                    value={citySearch}
-                    onChange={(e) => setCitySearch(e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: '#fff', padding: '6px 10px', fontSize: '12px', borderRadius: '4px', marginBottom: '4px', outline: 'none' }}
-                />
-                {bostaData.data.filter(c => c.cityOtherName.includes(citySearch) || c.cityName.toLowerCase().includes(citySearch.toLowerCase())).map(c => (
-                    <div 
-                        key={c.cityCode}
-                        onClick={() => {
-                            setCitySelected(c);
-                            setGovernorate(c.cityOtherName);
-                            const { district } = resolveBostaCityAndDistrict(c.cityOtherName, c.cityCode, null, null, address);
-                            setDistrictSelected(district || null);
-                            setShippingFee(calculateBostaShippingFee(c.cityOtherName));
-                            setActiveCityDropdown(false);
-                            setCitySearch('');
-                        }}
-                        style={{ padding: '8px', fontSize: '12px', cursor: 'pointer', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-                    >
-                        {c.cityOtherName}
-                    </div>
-                ))}
-            </div>
-        )}
-    </div>
-
-    <div className="form-group" style={{ flex: 1, position: 'relative' }}>
-        <label className="form-label">المنطقة (Bosta) *</label>
-        <div 
-            onClick={() => { if(citySelected) setActiveDistrictDropdown(!activeDistrictDropdown) }}
-            style={{ 
-                background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '8px', 
-                padding: '10px 12px', fontSize: '13px', color: districtSelected ? '#fff' : '#aaa', cursor: citySelected ? 'pointer' : 'not-allowed',
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: citySelected ? 1 : 0.5
-            }}
-        >
-            <span>{districtSelected ? districtSelected.districtOtherName : 'اختر المنطقة...'}</span>
-            <i className="fa-solid fa-chevron-down" style={{ fontSize: '10px' }}></i>
-        </div>
-        
-        {activeDistrictDropdown && citySelected && (
-            <div className="glass-card" style={{
-                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, maxHeight: '200px',
-                overflowY: 'auto', background: '#1e1e24', border: '1px solid var(--glass-border)', borderRadius: '8px',
-                marginTop: '4px', padding: '4px'
-            }}>
-                <input 
-                    type="text" 
-                    placeholder="ابحث عن المنطقة..." 
-                    value={districtSearch}
-                    onChange={(e) => setDistrictSearch(e.target.value)}
-                    onClick={(e) => e.stopPropagation()}
-                    style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: '#fff', padding: '6px 10px', fontSize: '12px', borderRadius: '4px', marginBottom: '4px', outline: 'none' }}
-                />
-                {citySelected.districts.filter(d => d.dropOffAvailability && (d.districtOtherName.includes(districtSearch) || d.districtName.toLowerCase().includes(districtSearch.toLowerCase()))).map(d => (
-                    <div 
-                        key={d.districtId}
-                        onClick={() => {
-                            setDistrictSelected(d);
-                            setActiveDistrictDropdown(false);
-                            setDistrictSearch('');
-                        }}
-                        style={{ padding: '8px', fontSize: '12px', cursor: 'pointer', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
-                    >
-                        {d.districtOtherName}
-                    </div>
-                ))}
-            </div>
-        )}
-    </div>
-</div>
-
                             </div>
 
-                            <div className="form-group">
+                            {/* Detail Address FIRST */}
+                            <div className="form-group" style={{ marginBottom: '14px' }}>
                                 <label className="form-label">العنوان التفصيلي *</label>
                                 <input 
                                     type="text" 
                                     className="form-input" 
                                     value={address}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        setAddress(val);
-                                        if (citySelected && !districtSelected && val.trim().length > 2) {
-                                            const { district } = resolveBostaCityAndDistrict(citySelected.cityOtherName, citySelected.cityCode, null, null, val);
-                                            if (district) setDistrictSelected(district);
-                                        }
-                                    }}
-                                    placeholder="اسم الشارع / رقم العقار / علامة مميزة"
+                                    onChange={(e) => setAddress(e.target.value)}
+                                    placeholder="اسم الشارع / رقم العقار / علامة مميزة (مثال: الاسكندرية محمد نجيب)"
                                     required 
                                 />
+
+                                {/* Smart Suggestion Chips (Bosta Location Suggestions) */}
+                                {(() => {
+                                    const suggestions = getBostaAddressSuggestions(address, bostaData.data);
+                                    if (suggestions.length === 0) return null;
+
+                                    return (
+                                        <div style={{ marginTop: '8px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px' }}>
+                                                <span style={{ fontSize: '0.75rem', color: '#38bdf8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <i className="fa-solid fa-wand-magic-sparkles"></i> اقتراحات البناء:
+                                                </span>
+                                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>اضغط لاختيار المحافظة والمنطقة</span>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }}>
+                                                {suggestions.map((item, idx) => {
+                                                    const isSelected = districtSelected?.districtId === item.district.districtId;
+                                                    return (
+                                                        <button
+                                                            key={`sugg-${idx}`}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setCitySelected(item.city);
+                                                                setGovernorate(item.city.cityOtherName);
+                                                                setDistrictSelected(item.district);
+                                                                setShippingFee(calculateBostaShippingFee(item.city.cityOtherName));
+                                                            }}
+                                                            style={{
+                                                                background: isSelected ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                                                                border: isSelected ? '1px solid #38bdf8' : '1px dashed var(--glass-border)',
+                                                                borderRadius: '20px',
+                                                                padding: '5px 12px',
+                                                                fontSize: '0.75rem',
+                                                                color: isSelected ? '#38bdf8' : 'var(--text-primary)',
+                                                                cursor: 'pointer',
+                                                                whiteSpace: 'nowrap',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '6px',
+                                                                transition: 'all 0.2s ease'
+                                                            }}
+                                                        >
+                                                            <i className={`fa-solid ${isSelected ? 'fa-check' : 'fa-plus'}`} style={{ fontSize: '0.65rem' }}></i>
+                                                            {item.label}
+                                                        </button>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+
+                            {/* Governorate & District SECOND */}
+                            <div style={{ display: 'flex', gap: '10px' }}>
+                                <div className="form-group" style={{ flex: 1, position: 'relative' }}>
+                                    <label className="form-label">المحافظة (الشحن) *</label>
+                                    <div 
+                                        onClick={() => setActiveCityDropdown(!activeCityDropdown)}
+                                        style={{ 
+                                            background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '8px', 
+                                            padding: '10px 12px', fontSize: '13px', color: citySelected ? '#fff' : '#aaa', cursor: 'pointer',
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                        }}
+                                    >
+                                        <span>{citySelected ? citySelected.cityOtherName : 'اختر المحافظة...'}</span>
+                                        <i className="fa-solid fa-chevron-down" style={{ fontSize: '10px' }}></i>
+                                    </div>
+                                    
+                                    {activeCityDropdown && (
+                                        <div className="glass-card" style={{
+                                            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, maxHeight: '200px',
+                                            overflowY: 'auto', background: '#1e1e24', border: '1px solid var(--glass-border)', borderRadius: '8px',
+                                            marginTop: '4px', padding: '4px'
+                                        }}>
+                                            <input 
+                                                type="text" 
+                                                placeholder="ابحث عن المحافظة..." 
+                                                value={citySearch}
+                                                onChange={(e) => setCitySearch(e.target.value)}
+                                                onClick={(e) => e.stopPropagation()}
+                                                style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: '#fff', padding: '6px 10px', fontSize: '12px', borderRadius: '4px', marginBottom: '4px', outline: 'none' }}
+                                            />
+                                            {bostaData.data.filter(c => c.cityOtherName.includes(citySearch) || c.cityName.toLowerCase().includes(citySearch.toLowerCase())).map(c => (
+                                                <div 
+                                                    key={c.cityCode}
+                                                    onClick={() => {
+                                                        setCitySelected(c);
+                                                        setGovernorate(c.cityOtherName);
+                                                        const { district } = resolveBostaCityAndDistrict(c.cityOtherName, c.cityCode, null, null, address);
+                                                        setDistrictSelected(district || null);
+                                                        setShippingFee(calculateBostaShippingFee(c.cityOtherName));
+                                                        setActiveCityDropdown(false);
+                                                        setCitySearch('');
+                                                    }}
+                                                    style={{ padding: '8px', fontSize: '12px', cursor: 'pointer', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                                                >
+                                                    {c.cityOtherName}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="form-group" style={{ flex: 1, position: 'relative' }}>
+                                    <label className="form-label">المنطقة (Bosta) *</label>
+                                    <div 
+                                        onClick={() => { if(citySelected) setActiveDistrictDropdown(!activeDistrictDropdown) }}
+                                        style={{ 
+                                            background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '8px', 
+                                            padding: '10px 12px', fontSize: '13px', color: districtSelected ? '#fff' : '#aaa', cursor: citySelected ? 'pointer' : 'not-allowed',
+                                            display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: citySelected ? 1 : 0.5
+                                        }}
+                                    >
+                                        <span>{districtSelected ? getBostaDistrictDisplayName(districtSelected) : 'اختر المنطقة...'}</span>
+                                        <i className="fa-solid fa-chevron-down" style={{ fontSize: '10px' }}></i>
+                                    </div>
+                                    
+                                    {activeDistrictDropdown && citySelected && (
+                                        <div className="glass-card" style={{
+                                            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, maxHeight: '200px',
+                                            overflowY: 'auto', background: '#1e1e24', border: '1px solid var(--glass-border)', borderRadius: '8px',
+                                            marginTop: '4px', padding: '4px'
+                                        }}>
+                                            <input 
+                                                type="text" 
+                                                placeholder="ابحث عن المنطقة..." 
+                                                value={districtSearch}
+                                                onChange={(e) => setDistrictSearch(e.target.value)}
+                                                onClick={(e) => e.stopPropagation()}
+                                                style={{ width: '100%', background: 'rgba(0,0,0,0.2)', border: '1px solid var(--glass-border)', color: '#fff', padding: '6px 10px', fontSize: '12px', borderRadius: '4px', marginBottom: '4px', outline: 'none' }}
+                                            />
+                                            {filterAndSortBostaDistricts(citySelected.districts, districtSearch).map(d => (
+                                                <div 
+                                                    key={d.districtId}
+                                                    onClick={() => {
+                                                        setDistrictSelected(d);
+                                                        setActiveDistrictDropdown(false);
+                                                        setDistrictSearch('');
+                                                    }}
+                                                    style={{ padding: '8px', fontSize: '12px', cursor: 'pointer', color: '#fff', borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+                                                >
+                                                    {getBostaDistrictDisplayName(d)}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -1198,14 +1333,14 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                                 </button>
                                                             )}
                                                         </div>
-                                                        {item.variantSku && (item.maxStock || 0) <= 0 ? (
+                                                        {item.variantSku && getCurrentStock(item.variantSku) <= 0 ? (
                                                             <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
                                                                 <i className="fa-solid fa-triangle-exclamation"></i>
                                                                 عفواً غير متوفر في المخزن حالياً (الاستوك 0)!
                                                             </div>
-                                                        ) : item.maxStock > 0 ? (
+                                                        ) : item.variantSku && getCurrentStock(item.variantSku) > 0 ? (
                                                             <div style={{ fontSize: '10px', color: 'var(--gold-primary)', marginTop: '4px' }}>
-                                                                المتاح في المخزن: {item.maxStock} وحدات
+                                                                المتاح في المخزن: {getCurrentStock(item.variantSku)} وحدات
                                                             </div>
                                                         ) : null}
                                                         
@@ -1290,7 +1425,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                             <input 
                                                                 type="number"
                                                                 min="1"
-                                                                max={item.maxStock || 1}
+                                                                max={isEditMode ? (getCurrentStock(item.variantSku) + (initialItemQtyMap[item.variantSku] || 0)) : (getCurrentStock(item.variantSku) || 1)}
                                                                 value={item.quantity}
                                                                 onChange={(e) => handleQtyChange(idx, e.target.value)}
                                                                 disabled={!item.variantSku}
@@ -1310,15 +1445,15 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                             <button 
                                                                 type="button" 
                                                                 onClick={() => handleQtyChange(idx, item.quantity + 1)}
-                                                                disabled={!item.variantSku || item.quantity >= item.maxStock}
+                                                                disabled={!item.variantSku || item.quantity >= (isEditMode ? getCurrentStock(item.variantSku) + (initialItemQtyMap[item.variantSku] || 0) : getCurrentStock(item.variantSku))}
                                                                 style={{
                                                                     width: '28px',
                                                                     height: '100%',
                                                                     border: 'none',
                                                                     background: 'none',
                                                                     color: 'var(--text-primary)',
-                                                                    cursor: (!item.variantSku || item.quantity >= item.maxStock) ? 'not-allowed' : 'pointer',
-                                                                    opacity: (!item.variantSku || item.quantity >= item.maxStock) ? 0.3 : 0.8,
+                                                                    cursor: (!item.variantSku || item.quantity >= (isEditMode ? getCurrentStock(item.variantSku) + (initialItemQtyMap[item.variantSku] || 0) : getCurrentStock(item.variantSku))) ? 'not-allowed' : 'pointer',
+                                                                    opacity: (!item.variantSku || item.quantity >= (isEditMode ? getCurrentStock(item.variantSku) + (initialItemQtyMap[item.variantSku] || 0) : getCurrentStock(item.variantSku))) ? 0.3 : 0.8,
                                                                     fontSize: '10px'
                                                                 }}
                                                             >
@@ -1493,6 +1628,45 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     )}
                                 </div>
                             </div>
+
+                            {hasDiscount && (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: '16px', border: '1px solid rgba(255, 71, 87, 0.15)', padding: '14px', borderRadius: '8px', background: 'rgba(255, 71, 87, 0.02)' }}>
+                                    <div className="form-group">
+                                        <label className="form-label" style={{ color: '#e27474' }}>سبب الخصم *</label>
+                                        <select 
+                                            className="form-select" 
+                                            value={discountReason}
+                                            onChange={(e) => setDiscountReason(e.target.value)}
+                                            required
+                                            style={{ borderColor: !discountReason ? '#e27474' : 'var(--glass-border)' }}
+                                        >
+                                            <option value="">اختر السبب...</option>
+                                            <option value="استريمر">استريمر (Streamer)</option>
+                                            <option value="تعويض">تعويض (Compensation)</option>
+                                            <option value="زبون قديم">زبون قديم (Old Customer)</option>
+                                            <option value="اوردر كبير">اوردر كبير (Large Order)</option>
+                                            <option value="اخرى">اخرى (Other)</option>
+                                        </select>
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label" style={{ color: '#e27474' }}>تفاصيل سبب الخصم *</label>
+                                        <input 
+                                            type="text" 
+                                            className="form-input" 
+                                            value={discountReasonDetails}
+                                            onChange={(e) => setDiscountReasonDetails(e.target.value)}
+                                            placeholder="مثلاً: اسم الستريمر، أو اسم المنتج الذي سبب التعويض..."
+                                            required
+                                            style={{ borderColor: !discountReasonDetails.trim() ? '#e27474' : 'var(--glass-border)' }}
+                                        />
+                                    </div>
+                                    {(!discountReason || !discountReasonDetails.trim()) && (
+                                        <div style={{ gridColumn: 'span 2', fontSize: '11px', color: '#e27474', fontWeight: 'bold' }}>
+                                            * يرجى اختيار سبب الخصم وإدخال التفاصيل الإلزامية للمتابعة وتأكيد الأوردر.
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'center' }}>
                                 <div className="form-group">
