@@ -101,7 +101,8 @@ export const AppProvider = ({ children }) => {
                 ]);
 
                 if (pErr || vErr || sErr || oErr || oiErr || poErr || poiErr || lErr || wErr || cErr || couErr || uErr || colErr) {
-                    console.warn("Could not retrieve all Supabase tables, using local state instead.");
+                    console.error("Supabase load error detail:", { pErr, vErr, sErr, oErr, oiErr, poErr, poiErr, lErr, wErr, cErr, couErr, uErr, colErr });
+                    showToast("فشل تحميل البيانات من السيرفر. يرجى تحديث الصفحة أو التحقق من الاتصال بالإنترنت.", "error");
                     return;
                 }
 
@@ -340,7 +341,7 @@ export const AppProvider = ({ children }) => {
         totalValue: 0,
         itemCount: 0
     });
-    const [language, setLanguage] = useState(() => localStorage.getItem("octabot_lang") || "en");
+    const [language, setLanguage] = useState(() => localStorage.getItem("octabot_lang") || "ar");
     const [theme, setTheme] = useState(() => localStorage.getItem("octabot_theme") || "dark");
 
     const [confirmSpamToggle, setConfirmSpamToggle] = useState(false);
