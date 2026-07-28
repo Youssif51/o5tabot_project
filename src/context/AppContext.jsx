@@ -774,6 +774,35 @@ export const AppProvider = ({ children }) => {
         return true;
     };
 
+    const sendAdminNotification = async (action, recipientEmail, data) => {
+        try {
+            const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+            const anonKey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env.VITE_SUPABASE_ANON_KEY;
+            
+            const response = await fetch(`${supabaseUrl}/functions/v1/send-admin-notification`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${anonKey}`
+                },
+                body: JSON.stringify({
+                    action,
+                    recipientEmail,
+                    data
+                })
+            });
+            
+            const resData = await response.json();
+            if (!response.ok) {
+                console.error("sendAdminNotification Error:", resData);
+            } else {
+                console.log("sendAdminNotification Success:", resData);
+            }
+        } catch (err) {
+            console.error("Failed to send admin notification:", err);
+        }
+    };
+
     const authSignup = async (name, email, password, role, permissions = []) => {
         if (!supabase) return false;
         const { data, error } = await supabase.rpc('create_user_account', {
@@ -789,6 +818,9 @@ export const AppProvider = ({ children }) => {
         }
         logActivity("auth", `New ${role} account created for ${name}.`);
         showToast(`Account created successfully!`);
+        
+        // Trigger welcome email notification
+        sendAdminNotification("welcome_admin", email, { name, role });
         
         // Refresh users list
         const { data: users } = await supabase.from('user_profiles').select('*');
@@ -1781,6 +1813,19 @@ export const AppProvider = ({ children }) => {
                         await supabase.from('order_items').insert(items);
                     }
 
+                    // Trigger deposit assignment email if deposit is pending and receiver is another admin
+                    if (enrichedOrder.deposit > 0 && enrichedOrder.depositReceiverId && enrichedOrder.depositReceiverId !== state.currentUser?.id) {
+                        const targetAdmin = (state.users || []).find(u => u.id === enrichedOrder.depositReceiverId);
+                        if (targetAdmin && targetAdmin.email) {
+                            sendAdminNotification("deposit_assignment", targetAdmin.email, {
+                                amount: enrichedOrder.deposit,
+                                clientName: enrichedOrder.client,
+                                orderId: enrichedOrder.id,
+                                creatorName: state.currentUser?.name || enrichedOrder.createdBy || "أدمن"
+                            });
+                        }
+                    }
+
                     if (isDeductedStatus(enrichedOrder.status, enrichedOrder)) {
                         for (const item of enrichedOrder.items) {
                             const itemSku = item.variant_sku || item.variantSku || item.sku;
@@ -2559,6 +2604,20 @@ export const AppProvider = ({ children }) => {
                             };
                         });
                         await supabase.from('order_items').insert(items);
+                    }
+
+                    // Trigger deposit assignment email if deposit is pending, receiver is another admin, and it's a new assignment
+                    const isNewAssignment = enrichedOrder.depositReceiverId && (!oldOrder || oldOrder.depositReceiverId !== enrichedOrder.depositReceiverId || oldOrder.deposit !== enrichedOrder.deposit);
+                    if (enrichedOrder.deposit > 0 && isNewAssignment && enrichedOrder.depositReceiverId !== state.currentUser?.id) {
+                        const targetAdmin = (state.users || []).find(u => u.id === enrichedOrder.depositReceiverId);
+                        if (targetAdmin && targetAdmin.email) {
+                            sendAdminNotification("deposit_assignment", targetAdmin.email, {
+                                amount: enrichedOrder.deposit,
+                                clientName: enrichedOrder.client,
+                                orderId: enrichedOrder.id,
+                                creatorName: state.currentUser?.name || enrichedOrder.createdBy || "أدمن"
+                            });
+                        }
                     }
 
                     // Sync databases stock variants
