@@ -966,7 +966,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     {/* STEP 1: CUSTOMER SECTION */}
                     {step === 1 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                            <div className="grid-responsive-2col">
                                 <div className="form-group" style={{ position: 'relative' }}>
                                     <label className="form-label">اسم العميل *</label>
                                     <input 
@@ -1037,7 +1037,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                 </div>
                             </div>
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                            <div className="grid-responsive-2col">
                                 <div className="form-group">
                                     <label className="form-label">رقم الهاتف * (11 رقم)</label>
                                     <input 
@@ -1544,7 +1544,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     {/* STEP 3: FINANCIAL DETAILS */}
                     {step === 3 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                            <div className="grid-responsive-2col">
 
                                 <div className="form-group">
                                     <label className="form-label">كود الخصم (كوبون)</label>
@@ -1654,7 +1654,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             </div>
 
                             {hasDiscount && (
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: '16px', border: '1px solid rgba(255, 71, 87, 0.15)', padding: '14px', borderRadius: '8px', background: 'rgba(255, 71, 87, 0.02)' }}>
+                                <div className="grid-responsive-1-1_3" style={{ border: '1px solid rgba(255, 71, 87, 0.15)', padding: '14px', borderRadius: '8px', background: 'rgba(255, 71, 87, 0.02)' }}>
                                     <div className="form-group">
                                         <label className="form-label" style={{ color: '#e27474' }}>سبب الخصم *</label>
                                         <select 
@@ -1692,7 +1692,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                 </div>
                             )}
 
-                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', alignItems: 'center' }}>
+                            <div className="grid-responsive-2col" style={{ alignItems: 'center' }}>
                                 <div className="form-group">
                                     <label className="form-label">العربون المستلم (Deposit) ({currency})</label>
                                     <input 
@@ -1791,7 +1791,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             {/* 4. FINANCIAL SUMMARY (Auto-calculated) */}
                             <div className="glass-card" style={{ padding: '16px', marginTop: '16px', border: '1px solid rgba(212, 175, 55, 0.15)', background: 'rgba(0,0,0,0.15)' }}>
                                 <h4 style={{ fontSize: '14px', color: 'var(--gold-primary)', marginBottom: '12px', fontWeight: 600 }}>الخلاصة المالية المؤقتة</h4>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '12px 24px', fontSize: '13px' }}>
+                                <div className="grid-responsive-3col" style={{ gap: '12px 24px', fontSize: '13px' }}>
                                     <div>
                                         <span style={{ color: 'var(--text-secondary)' }}>مجموع المنتجات:</span>
                                         <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px' }}>{currency} {totalProductsSubtotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
@@ -1830,7 +1830,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     {/* STEP 4: REVIEW & CONFIRM */}
                     {step === 4 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '16px' }}>
+                            <div className="grid-responsive-1_2-1" style={{ gap: '16px' }}>
                                 
                                 {/* Customer Review */}
                                 <div className="glass-card" style={{ padding: '16px', background: 'rgba(0,0,0,0.1)' }}>

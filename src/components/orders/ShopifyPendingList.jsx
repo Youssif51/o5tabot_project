@@ -680,7 +680,7 @@ export default function ShopifyPendingList() {
                                                     <td colSpan="8" style={{ padding: '20px', borderBottom: '1px solid var(--glass-border)' }}>
                                                         
                                                         {/* Step 1 & 2 layout: Address mapping & Details cards */}
-                                                        <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                                                        <div className="grid-responsive-1_2-1-1" style={{ gap: '20px', marginBottom: '20px' }}>
                                                             
                                                             {/* Bosta Address Matching Card */}
                                                             <div className="glass-card" style={{ minWidth: 0, padding: '16px', background: 'var(--glass-bg)', border: isBostaEnabled ? '2px solid rgba(150,191,72,0.15)' : '2px solid rgba(255,255,255,0.08)', borderRadius: '8px', opacity: isBostaEnabled ? 1 : 0.85 }}>

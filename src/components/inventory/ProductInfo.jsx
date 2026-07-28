@@ -150,7 +150,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
 
             {/* Tab contents */}
             {activeTab === 'Overview' ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 1fr', gap: '24px', alignItems: 'start' }}>
+                <div className="grid-responsive-2-2-1" style={{ gap: '24px', alignItems: 'start' }}>
                     
                     {/* Left Panel */}
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -512,7 +512,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                     </div>
                 </div>
             ) : activeTab === 'Adjustments' ? (
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '24px' }}>
+                <div className="grid-responsive-1-1_5" style={{ gap: '24px' }}>
                     {/* Record Stock Adjustment form */}
                     <div className="glass-card" style={{ padding: '24px' }}>
                         <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '18px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>

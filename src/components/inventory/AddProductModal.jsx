@@ -441,7 +441,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 </div>
 
                 {/* Primary details grid */}
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                <div className="grid-responsive-3col" style={{ marginBottom: '20px' }}>
                     <div className="form-group">
                         <label className="form-label">{t('productName')}</label>
                         <input 
@@ -505,7 +505,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                     </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px', marginBottom: '20px' }}>
+                <div className="grid-responsive-3col" style={{ marginBottom: '20px' }}>
                     <div className="form-group">
                         <label className="form-label">{t('unit')}</label>
                         <input 

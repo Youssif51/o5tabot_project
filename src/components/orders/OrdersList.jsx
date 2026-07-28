@@ -1050,7 +1050,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                             {isExpanded && (
                                                 <tr style={{ background: 'var(--glass-bg)' }}>
                                                     <td colSpan="10" style={{ padding: '20px', borderBottom: '1px solid var(--glass-border)' }}>
-                                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr 1fr', gap: '24px' }}>
+                                                        <div className="grid-responsive-1-1_3-1" style={{ gap: '24px' }}>
                                                             
                                                             {/* Customer details */}
                                                             <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>

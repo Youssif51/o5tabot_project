@@ -367,7 +367,7 @@ export default function DepositConfirmList() {
                         </div>
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
+                            <div className="grid-responsive-fit-320">
                                 {adminCustodies.map(cust => (
                                     <div key={cust.id} style={{ background: 'rgba(0,0,0,0.2)', padding: '18px', borderRadius: '8px', border: '1px solid var(--glass-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -594,7 +594,7 @@ export default function DepositConfirmList() {
                                                         {isExpanded && (
                                                             <tr style={{ background: 'var(--glass-bg)' }}>
                                                                 <td colSpan="7" style={{ padding: '20px', borderBottom: '1px solid var(--glass-border)', textAlign: 'right' }}>
-                                                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr 1fr', gap: '24px', direction: 'rtl' }}>
+                                                                    <div className="grid-responsive-1-1_3-1" style={{ gap: '24px', direction: 'rtl' }}>
                                                                         
                                                                         {/* Customer details */}
                                                                         <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>

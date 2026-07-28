@@ -2565,3 +2565,79 @@ input[type=number] {
   to { transform: scale(1); opacity: 1; }
 }
 
+
+/* --- Antigravity Responsive Grid Utilities --- */
+.grid-responsive-2col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+.grid-responsive-3col {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+}
+.grid-responsive-2-2-1 {
+    display: grid;
+    grid-template-columns: 2.2fr 1fr;
+    gap: 16px;
+}
+.grid-responsive-1_2-1 {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 16px;
+}
+.grid-responsive-1-1_3 {
+    display: grid;
+    grid-template-columns: 1fr 1.3fr;
+    gap: 16px;
+}
+.grid-responsive-1-1_3-1 {
+    display: grid;
+    grid-template-columns: 1fr 1.3fr 1fr;
+    gap: 16px;
+}
+.grid-responsive-1_2-1-1 {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr 1fr;
+    gap: 16px;
+}
+.grid-responsive-1-1_5 {
+    display: grid;
+    grid-template-columns: 1fr 1.5fr;
+    gap: 24px;
+}
+.grid-responsive-fit-400 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+    gap: 24px;
+}
+.grid-responsive-fit-320 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 16px;
+}
+
+@media (max-width: 768px) {
+    .grid-responsive-2col,
+    .grid-responsive-3col,
+    .grid-responsive-2-2-1,
+    .grid-responsive-1_2-1,
+    .grid-responsive-1-1_3,
+    .grid-responsive-1-1_3-1,
+    .grid-responsive-1_2-1-1,
+    .grid-responsive-1-1_5,
+    .grid-responsive-fit-400,
+    .grid-responsive-fit-320 {
+        grid-template-columns: 1fr !important;
+        gap: 12px !important;
+    }
+}
+
+@media (max-width: 600px) {
+    .metrics-grid {
+        grid-template-columns: 1fr !important;
+    }
+}
+
+

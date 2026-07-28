@@ -228,7 +228,7 @@ export default function MarketingView() {
                 </div>
             </div>
 
-            <div className="dashboard-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(400px, 1fr))', marginBottom: '24px', gap: '24px' }}>
+            <div className="grid-responsive-fit-400" style={{ marginBottom: '24px' }}>
                 {/* Form Card */}
                 <div className="glass-card" style={{ padding: '24px', borderRadius: '16px' }}>
                     <h3 style={{ fontSize: '18px', margin: '0 0 24px 0', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -262,7 +262,7 @@ export default function MarketingView() {
                             />
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                        <div className="grid-responsive-2col">
                             <div className="form-group" style={{ margin: 0 }}>
                                 <label className="form-label" style={{ fontWeight: '600', color: 'var(--text-secondary)' }}>نوع الخصم</label>
                                 <select 
@@ -324,7 +324,7 @@ export default function MarketingView() {
                                             style={{ colorScheme: 'dark', cursor: 'pointer', borderRadius: '8px' }}
                                         />
                                     </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+                                    <div className="grid-responsive-2col">
                                         <div className="form-group" style={{ margin: 0 }}>
                                             <label className="form-label">حد الاستخدام</label>
                                             <input 
@@ -396,7 +396,7 @@ export default function MarketingView() {
                             <i className="fa-solid fa-chart-pie" style={{ color: 'var(--gold-primary)' }}></i> ملخص الأداء
                         </h3>
                         
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px', marginBottom: '16px' }}>
+                        <div className="grid-responsive-2col" style={{ marginBottom: '16px' }}>
                             <div className="glass-card" style={{ 
                                 padding: '20px', 
                                 borderRadius: '16px',
@@ -646,7 +646,7 @@ export default function MarketingView() {
                                             </span>
                                         </div>
 
-                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', borderTop: '1px solid var(--glass-border)', paddingTop: '12px', marginBottom: '12px' }}>
+                                        <div className="grid-responsive-2col" style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '12px', marginBottom: '12px', gap: '12px' }}>
                                             <div>
                                                 <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>عدد الطلبات</div>
                                                 <div style={{ fontSize: '14px', fontWeight: 'bold', color: 'var(--text-primary)' }}>{inf.usageCount} أوردر</div>

@@ -409,7 +409,7 @@ export default function ReportsView() {
             </div>
 
             {/* Middle Section: Chart & Categories */}
-            <div style={{ display: 'grid', gridTemplateColumns: '2.2fr 1fr', gap: '20px', marginBottom: '24px' }}>
+            <div className="grid-responsive-2-2-1" style={{ gap: '20px', marginBottom: '24px' }}>
                 
                 {/* Interactive Dual-Curve SVG Chart */}
                 <div className="glass-card" style={{ padding: '24px', position: 'relative' }}>
