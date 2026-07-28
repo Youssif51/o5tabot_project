@@ -309,18 +309,29 @@ export default function App() {
                 <Routes>
                     <Route path="/dashboard" element={
                         <div id="dashboard-view" className="view-pane active" dir="rtl">
-                            {/* Dashboard Time Filter Header */}
-                            <div className="page-header" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                            {/* Premium Welcome & Time Filter Header */}
+                            <div className="page-header" style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '18px' }}>
                                 <div className="page-title-group">
-                                    <h2 style={{ fontSize: '22px', fontWeight: 'bold' }}>لوحة التحكم والتحليلات</h2>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                        <h2 style={{ fontSize: '24px', fontWeight: '800', background: 'linear-gradient(135deg, #fff 30%, var(--gold-primary) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', margin: 0 }}>
+                                            لوحة التحكم والتحليلات الإستراتيجية
+                                        </h2>
+                                        <div className="live-indicator" title="اتصال مباشر بسيرفرات وقاعدة بيانات Supabase">
+                                            <span className="live-indicator-dot"></span>
+                                            <span>نظام Supabase متصل ونشط</span>
+                                        </div>
+                                    </div>
+                                    <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '6px', lineHeight: 1.5 }}>
+                                        مرحباً بك مجدداً يا رئيس! إليك نظرة شاملة على مؤشرات الأداء ومستوى المخزون لمتجرك <strong style={{ color: 'var(--gold-primary)' }}>{state.storeSettings?.storeName || 'o5taboad'}</strong>.
+                                    </p>
                                 </div>
                                 <div className="page-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.6)' }}>تصفية الفترة الزمنية:</span>
+                                    <span style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.6)', fontWeight: '500' }}>تصفية الفترة الزمنية:</span>
                                     <select 
                                         className="form-select" 
                                         value={dashTimeFilter} 
                                         onChange={(e) => setDashTimeFilter(e.target.value)}
-                                        style={{ width: '180px', backgroundColor: 'rgba(255,255,255,0.02)', color: '#fff', border: '1px solid var(--glass-border)', borderRadius: '6px', padding: '8px' }}
+                                        style={{ width: '180px', backgroundColor: 'rgba(30,30,40,0.6)', color: '#fff', border: '1px solid rgba(212,175,55,0.2)', borderRadius: '8px', padding: '8px 12px', outline: 'none', transition: 'border-color 0.2s', cursor: 'pointer', fontWeight: '600' }}
                                     >
                                         <option value="all" style={{ background: '#1a1a1a' }}>كل الأوقات</option>
                                         <option value="today" style={{ background: '#1a1a1a' }}>اليوم</option>

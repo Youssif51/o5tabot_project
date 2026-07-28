@@ -146,6 +146,14 @@ export default function ChartsSection({ timeFilter = 'all' }) {
         y: paddingY + graphHeight - (deliveredData[idx] / maxValLine) * graphHeight
     }));
 
+    const getAreaPath = (coords) => {
+        if (!coords || coords.length === 0) return '';
+        const first = coords[0];
+        const last = coords[coords.length - 1];
+        const linePath = coords.map((c, i) => `${i === 0 ? 'M' : 'L'} ${c.x} ${c.y}`).join(' ');
+        return `${linePath} L ${last.x} ${paddingY + graphHeight} L ${first.x} ${paddingY + graphHeight} Z`;
+    };
+
     const [hoveredLineIdx, setHoveredLineIdx] = useState(null);
 
     return (
@@ -298,6 +306,20 @@ export default function ChartsSection({ timeFilter = 'all' }) {
                 </div>
                 <div className="chart-container" style={{ minHeight: '240px', marginTop: '16px' }}>
                     <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} width="100%" height="100%" style={{ direction: 'ltr' }}>
+                        <defs>
+                            <linearGradient id="ordered-area-gradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#D48C46" stopOpacity="0.18" />
+                                <stop offset="100%" stopColor="#D48C46" stopOpacity="0.00" />
+                            </linearGradient>
+                            <linearGradient id="delivered-area-gradient" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#2F80ED" stopOpacity="0.18" />
+                                <stop offset="100%" stopColor="#2F80ED" stopOpacity="0.00" />
+                            </linearGradient>
+                            <filter id="shadow-glow" x="-20%" y="-20%" width="140%" height="140%">
+                                <feDropShadow dx="0" dy="4" stdDeviation="4" floodColor="#000" floodOpacity="0.25" />
+                            </filter>
+                        </defs>
+
                         {/* Grid lines */}
                         {[0, 1, 2, 3].map((i) => {
                             const y = paddingY + (graphHeight / 3) * i;
@@ -317,9 +339,23 @@ export default function ChartsSection({ timeFilter = 'all' }) {
                                 y1={paddingY} 
                                 x2={orderedCoords[hoveredLineIdx].x} 
                                 y2={paddingY + graphHeight} 
-                                stroke="rgba(46, 122, 243, 0.4)" 
+                                stroke="rgba(212, 175, 55, 0.25)" 
                                 strokeWidth="1.5" 
                                 strokeDasharray="4 4"
+                            />
+                        )}
+
+                        {/* Gradient Area Fills */}
+                        {orderedCoords.length > 0 && (
+                            <path 
+                                d={getAreaPath(orderedCoords)}
+                                fill="url(#ordered-area-gradient)"
+                            />
+                        )}
+                        {deliveredCoords.length > 0 && (
+                            <path 
+                                d={getAreaPath(deliveredCoords)}
+                                fill="url(#delivered-area-gradient)"
                             />
                         )}
 
@@ -329,6 +365,7 @@ export default function ChartsSection({ timeFilter = 'all' }) {
                             fill="none"
                             stroke="#D48C46"
                             strokeWidth="3"
+                            filter="url(#shadow-glow)"
                         />
 
                         {/* Line 2: Delivered (Blue) */}
@@ -337,6 +374,7 @@ export default function ChartsSection({ timeFilter = 'all' }) {
                             fill="none"
                             stroke="#2F80ED"
                             strokeWidth="3"
+                            filter="url(#shadow-glow)"
                         />
 
                         {/* Interactive nodes */}
