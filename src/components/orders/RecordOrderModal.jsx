@@ -1272,7 +1272,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     <i className="fa-solid fa-plus"></i> إضافة منتج
                                 </button>
                             </div>
-                            <div style={{ overflow: 'visible' }}>
+                            <div className="orders-desktop-only" style={{ overflow: 'visible' }}>
                                 <table className="summary-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                                     <thead>
                                         <tr style={{ borderBottom: '1px solid var(--glass-border-hover)' }}>
@@ -1538,6 +1538,243 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     </tbody>
                                 </table>
                             </div>
+
+                            <div className="orders-mobile-cards" style={{ display: 'none', flexDirection: 'column', gap: '16px', marginTop: '12px' }}>
+                                {items.map((item, idx) => {
+                                    const subtotal = item.discountType === 'Percentage' ? (item.quantity * item.price * (1 - (item.discountPercent || 0) / 100)) : Math.max(0, (item.quantity * item.price) - (item.discountPercent || 0));
+                                    const rowOptions = getRowOptions(item);
+                                    return (
+                                        <div 
+                                            key={`order-item-mobile-${idx}`} 
+                                            style={{ 
+                                                border: '1px solid var(--glass-border)', 
+                                                padding: '16px', 
+                                                borderRadius: '12px', 
+                                                background: 'rgba(255,255,255,0.015)', 
+                                                display: 'flex', 
+                                                flexDirection: 'column', 
+                                                gap: '12px', 
+                                                position: 'relative' 
+                                            }}
+                                        >
+                                            {/* Item Header (Index and Remove) */}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}>
+                                                <strong style={{ color: 'var(--gold-primary)', fontSize: '14px' }}>المنتج #${idx + 1}</strong>
+                                                <button 
+                                                    type="button"
+                                                    className="action-btn-circle"
+                                                    style={{ color: 'var(--color-danger)', borderColor: 'rgba(255,71,87,0.15)', width: '30px', height: '30px' }}
+                                                    onClick={() => handleRemoveItem(idx)}
+                                                >
+                                                    <i className="fa-solid fa-trash"></i>
+                                                </button>
+                                            </div>
+
+                                            {/* Product Search Selection */}
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', position: 'relative' }}>
+                                                <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>المنتج / SKU</label>
+                                                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                                                    <input 
+                                                        type="text"
+                                                        className="form-input"
+                                                        placeholder="ابحث عن منتج..."
+                                                        value={item.searchVal || ''}
+                                                        onChange={(e) => handleItemSearchChange(idx, e.target.value)}
+                                                        onFocus={() => setItemOpen(idx, true)}
+                                                        onBlur={() => setTimeout(() => setItemOpen(idx, false), 250)}
+                                                        required
+                                                        style={{ 
+                                                            width: '100%',
+                                                            background: 'var(--glass-bg)', 
+                                                            borderColor: item.variantSku ? 'var(--color-success)' : 'var(--glass-border)',
+                                                            paddingLeft: (item.searchVal || item.variantSku) ? '32px' : '12px'
+                                                        }}
+                                                    />
+                                                    {(item.searchVal || item.variantSku) && (
+                                                        <button
+                                                            type="button"
+                                                            onMouseDown={(e) => {
+                                                                e.preventDefault();
+                                                                handleClearItem(idx);
+                                                            }}
+                                                            style={{
+                                                                position: 'absolute',
+                                                                left: '10px',
+                                                                top: '50%',
+                                                                transform: 'translateY(-50%)',
+                                                                background: 'transparent',
+                                                                border: 'none',
+                                                                color: 'var(--text-secondary)',
+                                                                cursor: 'pointer',
+                                                                fontSize: '11px',
+                                                                padding: '4px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                zIndex: 5
+                                                            }}
+                                                            title="تفريغ المنتج المختار"
+                                                        >
+                                                            <i className="fa-solid fa-xmark"></i>
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                {item.variantSku && getCurrentStock(item.variantSku) <= 0 ? (
+                                                    <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                        <i className="fa-solid fa-triangle-exclamation"></i>
+                                                        عفواً غير متوفر في المخزن (الاستوك 0)!
+                                                    </div>
+                                                ) : item.variantSku && getCurrentStock(item.variantSku) > 0 ? (
+                                                    <div style={{ fontSize: '10px', color: 'var(--gold-primary)', marginTop: '4px' }}>
+                                                        المتاح في المخزن: {getCurrentStock(item.variantSku)} وحدات
+                                                    </div>
+                                                ) : null}
+
+                                                {item.isOpen && (
+                                                    <div className="glass-card" style={{
+                                                        position: 'absolute',
+                                                        top: '100%',
+                                                        right: 0,
+                                                        left: 0,
+                                                        maxHeight: '260px',
+                                                        overflowY: 'auto',
+                                                        zIndex: 2000,
+                                                        background: 'var(--bg-secondary)',
+                                                        border: '1px solid var(--glass-border)',
+                                                        borderRadius: '10px',
+                                                        boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+                                                        padding: '6px'
+                                                    }}>
+                                                        {!(item.searchVal || '').trim() && rowOptions.length > 0 && (
+                                                            <div style={{ padding: '6px 12px', fontSize: '10px', color: 'var(--gold-primary)', fontWeight: 'bold', borderBottom: '1px solid var(--glass-border)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <i className="fa-solid fa-fire" style={{ color: '#E74C3C' }}></i> الأكثر طلباً وشيوعاً
+                                                            </div>
+                                                        )}
+                                                        {rowOptions.length === 0 ? (
+                                                            <div style={{ padding: '8px 12px', fontSize: '11px', color: 'var(--text-muted)' }}>لا توجد خيارات مطابقة</div>
+                                                        ) : (
+                                                            rowOptions.map(opt => (
+                                                                <div 
+                                                                    key={opt.sku}
+                                                                    onMouseDown={() => handleSelectOption(idx, opt)}
+                                                                    style={{
+                                                                        padding: '8px 12px',
+                                                                        fontSize: '11px',
+                                                                        cursor: 'pointer',
+                                                                        borderBottom: '1px solid var(--glass-bg-hover)',
+                                                                        display: 'flex',
+                                                                        justifyContent: 'space-between',
+                                                                        alignItems: 'center',
+                                                                        color: 'var(--text-primary)',
+                                                                        borderRadius: '4px'
+                                                                    }}
+                                                                    className="autocomplete-option"
+                                                                >
+                                                                    <span>{formatProductDisplayName(opt.productName, opt.name)}</span>
+                                                                    <span style={{ color: 'var(--gold-primary)', fontSize: '10px', fontWeight: 600 }}>الرصيد: {opt.stock}</span>
+                                                                </div>
+                                                            ))
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Quantity and Price */}
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>الكمية</label>
+                                                    <div style={{ 
+                                                        display: 'inline-flex', 
+                                                        alignItems: 'center', 
+                                                        background: 'var(--glass-bg)', 
+                                                        border: '1px solid var(--glass-border)', 
+                                                        borderRadius: '6px', 
+                                                        overflow: 'hidden',
+                                                        height: '36px',
+                                                        justifyContent: 'space-between',
+                                                        width: '100%'
+                                                    }}>
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => handleQtyChange(idx, item.quantity - 1)}
+                                                            disabled={!item.variantSku || item.quantity <= 1}
+                                                            style={{ width: '32px', height: '100%', border: 'none', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}
+                                                        >
+                                                            <i className="fa-solid fa-minus"></i>
+                                                        </button>
+                                                        <input 
+                                                            type="number"
+                                                            min="1"
+                                                            value={item.quantity}
+                                                            onChange={(e) => handleQtyChange(idx, e.target.value)}
+                                                            disabled={!item.variantSku}
+                                                            style={{ width: '40px', border: 'none', background: 'none', color: 'var(--text-primary)', textAlign: 'center', fontWeight: 'bold' }}
+                                                            className="no-spinners"
+                                                        />
+                                                        <button 
+                                                            type="button" 
+                                                            onClick={() => handleQtyChange(idx, item.quantity + 1)}
+                                                            disabled={!item.variantSku || item.quantity >= (isEditMode ? getCurrentStock(item.variantSku) + (initialItemQtyMap[item.variantSku] || 0) : getCurrentStock(item.variantSku))}
+                                                            style={{ width: '32px', height: '100%', border: 'none', background: 'none', color: 'var(--text-primary)', cursor: 'pointer' }}
+                                                        >
+                                                            <i className="fa-solid fa-plus"></i>
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>سعر الوحدة</label>
+                                                    <input 
+                                                        type="text"
+                                                        className="form-input"
+                                                        value={item.variantSku ? `${currency} ${item.price.toLocaleString('en-US', {maximumFractionDigits: 2})}` : ''}
+                                                        placeholder={`${currency}0.00`}
+                                                        readOnly
+                                                        style={{ textAlign: 'center', background: 'var(--glass-bg)', color: 'rgba(255,255,255,0.8)', height: '36px' }}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Discount and Subtotal */}
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', alignItems: 'center' }}>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>الخصم</label>
+                                                    <div style={{ display: 'flex', gap: '4px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '6px', overflow: 'hidden', height: '36px' }}>
+                                                        <input 
+                                                            type="number"
+                                                            min="0"
+                                                            value={item.discountPercent || ''}
+                                                            onChange={(e) => handleDiscountChange(idx, e.target.value, item.discountType || 'Percentage')}
+                                                            disabled={!item.variantSku}
+                                                            placeholder="0"
+                                                            style={{ width: '100%', background: 'transparent', border: 'none', color: 'var(--text-primary)', textAlign: 'center', outline: 'none' }}
+                                                        />
+                                                        <select 
+                                                            value={item.discountType || 'Percentage'}
+                                                            onChange={(e) => handleDiscountChange(idx, item.discountPercent, e.target.value)}
+                                                            disabled={!item.variantSku}
+                                                            style={{ background: 'var(--glass-bg-hover)', border: 'none', borderLeft: '1px solid var(--glass-border)', color: 'var(--gold-primary)', cursor: 'pointer', padding: '0 8px', outline: 'none' }}
+                                                        >
+                                                            <option value="Percentage">%</option>
+                                                            <option value="Fixed">ج</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', textAlign: 'center' }}>
+                                                    <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>الإجمالي</label>
+                                                    <span style={{ fontWeight: 'bold', color: 'var(--gold-primary)', fontSize: '14px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                        ${item.variantSku ? `${currency} ${subtotal.toLocaleString('en-US', {maximumFractionDigits: 2})}` : `${currency}0.00`}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
                         </div>
                     )}
 
@@ -2020,7 +2257,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 </div>
 
                 {/* NAVIGATION FOOTER */}
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '24px', paddingTop: '16px', borderTop: '1px solid var(--glass-border)' }}>
+                <div className="record-order-footer">
                     <div>
                         {step > 1 ? (
                             <button type="button" className="btn btn-secondary" onClick={() => setStep(prev => prev - 1)}>

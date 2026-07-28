@@ -45,639 +45,33 @@ export default function ShopifyPendingList() {
             `;
             document.head.appendChild(style);
         }
-        return () => {
-            const existing = document.getElementById(styleId);
-            if (existing) existing.remove();
-        };
-    }, []);
-
-    const [selectedCities, setSelectedCities] = useState({}); // { [orderId]: CityObject }
-    const [selectedDistricts, setSelectedDistricts] = useState({}); // { [orderId]: DistrictObject }
-    const [customDeposits, setCustomDeposits] = useState({}); // { [orderId]: string/number }
-    const [allowToOpenMap, setAllowToOpenMap] = useState({}); // { [orderId]: boolean }
-    const [depositReceivers, setDepositReceivers] = useState({}); // { [orderId]: string }
-    const [bostaSyncMap, setBostaSyncMap] = useState({}); // { [orderId]: boolean } (default true)
-    
-    // Dropdowns UI search states
-    const [citySearch, setCitySearch] = useState({}); // { [orderId]: string }
-    const [districtSearch, setDistrictSearch] = useState({}); // { [orderId]: string }
-    const [activeCityDropdown, setActiveCityDropdown] = useState(null); // orderId
-    const [activeDistrictDropdown, setActiveDistrictDropdown] = useState(null); // orderId
-
-    // Pagination
-    const [currentPage, setCurrentPage] = useState(1);
-    const pageSize = 10;
-    
-    const currency = state.storeSettings.currency || 'EGP';
-
-    const formatOrderTime = (createdAt) => {
-        if (!createdAt) return '';
-        try {
-            const dateObj = new Date(createdAt);
-            if (isNaN(dateObj.getTime())) return '';
-            let hours = dateObj.getHours();
-            const minutes = dateObj.getMinutes().toString().padStart(2, '0');
-            const ampm = hours >= 12 ? 'PM' : 'AM';
-            hours = hours % 12;
-            hours = hours ? hours : 12;
-            return `${hours}:${minutes} ${ampm}`;
-        } catch (e) {
-            return '';
-        }
-    };
-
-    // Parse address JSON structure safely
-    const parseAddressData = (addressStr) => {
-        let detailAddress = addressStr || '';
-        let phone = '';
-        let vatEnabled = false;
-        let orderDiscountPercent = 0;
-        let customerCode = 'CUS-0000';
         
-        if (addressStr && addressStr.startsWith('{')) {
-            try {
-                const parsed = JSON.parse(addressStr);
-                detailAddress = parsed.detailAddress || '';
-                phone = parsed.phone || '';
-                vatEnabled = parsed.vatEnabled || false;
-                orderDiscountPercent = parseFloat(parsed.orderDiscountPercent) || 0;
-                customerCode = parsed.customerCode || 'CUS-0000';
-            } catch(e) {}
-        }
-        return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode };
-    };
+    const renderOrderDetailDrawer = (ord) => {
+        const isBostaEnabled = bostaSyncMap[ord.id] !== false;
+        const { phone, detailAddress } = parseAddressData(ord.address);
+        const totalQty = (ord.items || []).reduce((acc, curr) => acc + curr.quantity, 0);
+        const matchedCust = (state.customers || []).find(c => c.id === ord.customer_id) || {};
+        const customerEmail = matchedCust.email || '';
 
-    const normalizePhoneNumber = (phoneStr) => {
-        if (!phoneStr) return '';
-        let clean = phoneStr.replace(/\D/g, '');
-        if (clean.startsWith('20') && clean.length > 10) {
-            clean = clean.substring(2);
-        } else if (clean.startsWith('2') && clean.length > 10) {
-            clean = clean.substring(1);
-        }
-        if (clean.length === 10 && (clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15'))) {
-            clean = '0' + clean;
-        }
-        if (!clean.startsWith('0') && clean.length === 10) {
-            clean = '0' + clean;
-        }
-        return clean;
-    };
+        // Bosta mapping status
+        const citySelected = selectedCities[ord.id];
+        const districtSelected = selectedDistricts[ord.id];
 
-    // Filter Logic: only pending Shopify orders
-    const pendingOrders = (state.orders || []).filter(ord => {
-        let isReviewed = ord.is_reviewed || ord.isReviewed;
-        if (!isReviewed && ord.address) {
-            if (typeof ord.address === 'object') {
-                isReviewed = ord.address.isReviewed || ord.address.is_reviewed || ord.address.bostaDeliveryId || ord.address.trackingNumber || ord.address.bostaTrackingNumber;
-            } else if (typeof ord.address === 'string') {
-                try {
-                    const parsed = JSON.parse(ord.address);
-                    isReviewed = parsed?.isReviewed || parsed?.is_reviewed || parsed?.bostaDeliveryId || parsed?.trackingNumber || parsed?.bostaTrackingNumber;
-                } catch(e) {}
-            }
-        }
-        if (ord.status !== 'Pending' || ord.source !== 'shopify' || isReviewed) return false;
-        
-        // Search filter
-        if (globalSearch.trim() !== '') {
-            const query = globalSearch.toLowerCase();
-            const clientMatches = (ord.client || '').toLowerCase().includes(query);
-            const idMatches = (ord.id || '').toLowerCase().includes(query);
-            const phoneMatches = parseAddressData(ord.address).phone.includes(query);
-            if (!clientMatches && !idMatches && !phoneMatches) return false;
-        }
-        return true;
-    });
-
-    // Fuzzy matching Shopify governorate to Bosta cities
-    const getAutoMatchedCity = (govName) => {
-        if (!govName) return null;
-        const cleanGov = govName.toLowerCase().trim().replace(" governorate", "").replace("ال", "");
-        return bostaData.data.find(c => {
-            const cleanCityName = c.cityName.toLowerCase().replace(" governorate", "");
-            const cleanCityOther = c.cityOtherName.replace("ال", "");
-            return cleanCityName.includes(cleanGov) || cleanGov.includes(cleanCityName) ||
-                   cleanCityOther.includes(cleanGov) || cleanGov.includes(cleanCityOther);
-        });
-    };
-
-    // Auto-match on mount or when orders list updates
-    useEffect(() => {
-        const initialCities = {};
-        const initialDistricts = {};
-        
-        pendingOrders.forEach(ord => {
-            const { address } = ord;
-            let parsed = {};
-            if (address && address.startsWith('{')) {
-                try { parsed = JSON.parse(address); } catch(e) {}
-            }
-            
-            if (parsed.bostaCityCode) {
-                const matchedCity = bostaData.data.find(c => c.cityCode === parsed.bostaCityCode);
-                if (matchedCity) {
-                    initialCities[ord.id] = matchedCity;
-                    if (parsed.bostaDistrictId) {
-                        const matchedDist = matchedCity.districts.find(d => d.districtId === parsed.bostaDistrictId);
-                        if (matchedDist) {
-                            initialDistricts[ord.id] = matchedDist;
-                        }
-                    }
-                }
-            } else {
-                const matchedCity = getAutoMatchedCity(ord.governorate);
-                if (matchedCity) {
-                    initialCities[ord.id] = matchedCity;
-                }
-            }
-        });
-        
-        setSelectedCities(prev => ({ ...initialCities, ...prev }));
-        setSelectedDistricts(prev => ({ ...initialDistricts, ...prev }));
-    }, [state.orders]);
-
-    // Pagination calculations
-    const totalEntries = pendingOrders.length;
-    const totalPages = Math.ceil(totalEntries / pageSize) || 1;
-    const activePage = currentPage > totalPages ? totalPages : currentPage;
-    const startIdx = (activePage - 1) * pageSize;
-    const endIdx = Math.min(startIdx + pageSize, totalEntries);
-    const paginatedOrders = pendingOrders.slice(startIdx, endIdx);
-
-    // Summary Metric calculations
-    const pendingCount = pendingOrders.length;
-    const pendingValue = pendingOrders.reduce((sum, o) => sum + (parseFloat(o.totalValue) || 0), 0);
-    const avgPendingValue = pendingCount > 0 ? pendingValue / pendingCount : 0;
-
-    // Toggle Row Expansion
-    const toggleRow = (orderId) => {
-        const isWillExpand = !expandedOrderIds[orderId];
-        setExpandedOrderIds(prev => ({
-            ...prev,
-            [orderId]: isWillExpand
-        }));
-        if (isWillExpand) {
-            const target = (state.orders || []).find(o => o.id === orderId);
-            if (!target || !target.items || target.items.length === 0) {
-                fetchMissingOrderItems(orderId);
-            }
-        }
-    };
-
-    const getProductNameBySku = (sku) => {
-        let name = sku;
-        state.products.forEach(p => {
-            const v = p.variants.find(vr => vr.sku === sku);
-            if (v) name = formatProductDisplayName(p.name, v.name);
-        });
-        return name;
-    };
-
-    // Approve Action
-    const handleApprove = (e, ordId) => {
-        e.stopPropagation();
-        
-        const isBostaEnabled = bostaSyncMap[ordId] !== false; // default true
-        const city = selectedCities[ordId];
-        const district = selectedDistricts[ordId];
-        
-        if (isBostaEnabled && (!city || !district)) {
-            showToast('يرجى تحديد المحافظة والمنطقة لشركة بوسطة قبل الموافقة على الطلب', 'warning');
-            return;
-        }
-
-        const depositAmount = customDeposits[ordId] !== undefined ? (parseFloat(customDeposits[ordId]) || 0) : (pendingOrders.find(o => o.id === ordId)?.deposit || 0);
-        const allowToOpen = allowToOpenMap[ordId] !== undefined ? allowToOpenMap[ordId] : false;
-        const receiverId = depositReceivers[ordId] || state.currentUser?.id || null;
-
-        if (depositAmount > 0 && !receiverId) {
-            showToast('يرجى تحديد الأدمن المستلم للعربون للمتابعة', 'warning');
-            return;
-        }
-
-        let depositStatus = 'confirmed';
-        if (depositAmount > 0 && receiverId !== state.currentUser?.id) {
-            depositStatus = 'pending';
-        }
-
-        const confirmMsg = !isBostaEnabled 
-            ? (depositStatus === 'pending' 
-                ? 'الشحن عبر بوسطة غير مفعّل. سيتم تسجيل الطلب معلقاً محلياً بانتظار تأكيد الأدمن لاستلام العربون، هل أنت متأكد؟'
-                : 'الشحن عبر بوسطة غير مفعّل. سيتم اعتماد الطلب وتسجيله على السيستم كـ Completed مباشرة دون إرساله لبوسطة، هل أنت متأكد؟')
-            : (depositStatus === 'pending'
-                ? 'العربون المستلم موجه لأدمن آخر. سيتم حفظ الطلب معلقاً محلياً بانتظار تأكيد الأدمن، هل أنت متأكد؟'
-                : 'هل أنت متأكد من الموافقة على هذا الطلب وتأكيده للخصم من المخزون وإرساله لبوسطة؟');
-
-        showConfirm(
-            confirmMsg,
-            async () => {
-                let originalOrd = pendingOrders.find(o => o.id === ordId);
-                // Guard 1: Race condition check for items during webhook sync
-                if (!originalOrd?.items || originalOrd.items.length === 0) {
-                    if (fetchMissingOrderItems) {
-                        showToast('جاري جلب أصناف الطلب من شوبيفاي...', 'info');
-                        await fetchMissingOrderItems(ordId);
-                    }
-                    if (supabase) {
-                        const { data: dbItems } = await supabase.from('order_items').select('*').eq('order_id', ordId);
-                        if (!dbItems || dbItems.length === 0) {
-                            showToast('لم تكتمل مزامنة أصناف هذا الطلب من شوبيفاي بعد، يرجى الانتظار بضع ثوانٍ والإعادة.', 'warning');
-                            return;
-                        }
-                    }
-                }
-                let existingAddrObj = {};
-                if (originalOrd?.address) {
-                    if (typeof originalOrd.address === 'object') {
-                        existingAddrObj = originalOrd.address;
-                    } else if (typeof originalOrd.address === 'string') {
-                        try {
-                            existingAddrObj = JSON.parse(originalOrd.address);
-                        } catch(e) {
-                            existingAddrObj = { detailAddress: originalOrd.address };
-                        }
-                    }
-                }
-
-                const updatedAddrObj = {
-                    ...existingAddrObj,
-                    isReviewed: true,
-                    is_reviewed: true,
-                    syncWithBosta: isBostaEnabled,
-                    bostaCityCode: city?.cityCode || null,
-                    bostaCityName: city?.cityOtherName || '',
-                    bostaDistrictId: district?.districtId || null,
-                    bostaDistrictName: district?.districtOtherName || '',
-                    bostaZoneId: district?.zoneId || null
-                };
-                const addressStr = JSON.stringify(updatedAddrObj);
-
-                if (!isBostaEnabled) {
-                    // Deduct stock for local approval
-                    if (originalOrd) {
-                        await deductOrderStock(originalOrd);
-                    }
-
-                    if (supabase) {
-                        try {
-                            await supabase.from('orders').update({
-                                deposit: depositAmount,
-                                deposit_receiver_id: receiverId,
-                                deposit_status: depositStatus,
-                                status: 'Pending',
-                                address: addressStr
-                            }).eq('id', ordId);
-                        } catch (err) {
-                            console.error('Error saving shopify order without Bosta:', err);
-                        }
-                    }
-
-                    updateOrderProperties(ordId, {
-                        deposit: depositAmount,
-                        depositReceiverId: receiverId,
-                        depositStatus: depositStatus,
-                        status: 'Pending',
-                        is_reviewed: true,
-                        isReviewed: true,
-                        address: addressStr
-                    });
-
-                    showToast(depositStatus === 'pending' 
-                        ? 'تم حفظ الطلب محلياً وخصم الكميات بانتظار تأكيد العربون (بدون إرسال لبوسطة).' 
-                        : 'تم اعتماد وتأكيد بيانات الطلب محلياً وخصم الكميات من المخزون ونقله إلى المبيعات بقائه (قيد الانتظار).', 'success');
-                } else {
-                    // Bosta Sync is ENABLED
-                    if (depositStatus === 'pending') {
-                        if (originalOrd) {
-                            await deductOrderStock(originalOrd);
-                        }
-
-                        if (supabase) {
-                            try {
-                                await supabase.from('orders').update({
-                                    deposit: depositAmount,
-                                    deposit_receiver_id: receiverId,
-                                    deposit_status: 'pending',
-                                    status: 'Pending',
-                                    address: addressStr
-                                }).eq('id', ordId);
-
-                                updateOrderProperties(ordId, {
-                                    deposit: depositAmount,
-                                    depositReceiverId: receiverId,
-                                    depositStatus: 'pending',
-                                    status: 'Pending',
-                                    is_reviewed: true,
-                                    isReviewed: true,
-                                    address: addressStr
-                                });
-
-                                showToast('تم حفظ الطلب وخصم الكميات بنجاح وهو بانتظار تأكيد استلام العربون من الأدمن المختار قبل الشحن.', 'success');
-                            } catch (err) {
-                                console.error('Error saving pending shopify order:', err);
-                                showToast('حدث خطأ أثناء حفظ الطلب', 'error');
-                            }
-                        }
-                    } else {
-                        approveOrderWithBosta(ordId, {
-                            bostaCityCode: city.cityCode,
-                            bostaCityName: city.cityOtherName,
-                            bostaDistrictId: district.districtId,
-                            bostaDistrictName: district.districtOtherName,
-                            bostaZoneId: district.zoneId,
-                            allowToOpenPackage: allowToOpen
-                        }, depositAmount, receiverId, depositStatus);
-                    }
-                }
-                
-                // Collapse expanded drawer cleanly
-                setExpandedOrderIds(prev => ({ ...prev, [ordId]: false }));
-            }
+        // Filter city list based on search
+        const cleanCityQuery = (citySearch[ord.id] || '').trim().toLowerCase();
+        const filteredCities = bostaData.data.filter(c => 
+            c.cityName.toLowerCase().includes(cleanCityQuery) ||
+            c.cityOtherName.includes(cleanCityQuery)
         );
-    };
 
-    // Cancel Action
-    const handleCancel = (e, ordId) => {
-        e.stopPropagation();
-        showConfirm('هل أنت متأكد من رفض وإلغاء هذا الطلب؟', (flagAsSpam) => {
-            updateOrderStatus(ordId, 'Cancelled');
-            setExpandedOrderIds(prev => ({ ...prev, [ordId]: false }));
-            showToast('تم إلغاء الطلب بنجاح', 'warning');
-            if (flagAsSpam) {
-                console.log('🚨 Spam flag enabled for Shopify order', ordId);
-                const ord = state.orders.find(o => o.id === ordId);
-                if (ord) {
-                    const { phone } = parseAddressData(ord.address);
-                    const normPhone = normalizePhoneNumber(phone);
-                    const cust = (state.customers || []).find(c => c.id === ord.customer_id || (normPhone && normalizePhoneNumber(c.phone) === normPhone));
-                    if (cust) {
-                        console.log('🔍 Found existing customer:', cust.id, cust.name);
-                        setCustomerSpam(cust.id, true);
-                        logActivity("customer", `Flagged customer ${cust.name} as spam upon order rejection.`);
-                    } else {
-                        console.log('➕ Creating new spam customer for:', ord.client, normPhone);
-                        const newCust = {
-                            id: crypto.randomUUID(),
-                            name: ord.client || "عميل شوبيفاي جديد",
-                            phone: normPhone || "00000000000",
-                            governorate: ord.governorate || "",
-                            customer_type: 'Regular',
-                            total_purchases: 0,
-                            orders_count: 0,
-                            is_spam: true
-                        };
-                        addCustomer(newCust);
-                        logActivity("customer", `Created spam customer profile for ${newCust.name} (${newCust.phone}) upon order rejection.`);
-                    }
-                }
-            }
-        }, null, { showSpamToggle: true });
-    };
+        // Filter district list based on search
+        const cleanDistrictQuery = (districtSearch[ord.id] || '');
+        const rawDistricts = citySelected ? citySelected.districts || [] : [];
+        const filteredDistricts = filterAndSortBostaDistricts(rawDistricts, cleanDistrictQuery);
 
-    return (
-        <div id="shopify-pending-view" className="view-pane active" dir="rtl" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
-            
-            {/* Header */}
-            <div className="page-header" style={{ marginBottom: '24px' }}>
-                <div className="page-title-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                    <div style={{
-                        width: '38px',
-                        height: '38px',
-                        borderRadius: '8px',
-                        background: 'linear-gradient(135deg, #96bf48, #5a8a1e)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'white',
-                        fontSize: '18px',
-                        boxShadow: '0 4px 15px rgba(150,191,72,0.3)'
-                    }}>
-                        <i className="fa-brands fa-shopify"></i>
-                    </div>
-                    <div>
-                        <h2 style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>طلبات شوبيفاي المعلقة للمراجعة</h2>
-                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>مراجعة وتأكيد الطلبات القادمة من المتجر الإلكتروني وتنسيقها مع أكواد بوسطة</span>
-                    </div>
-                </div>
-            </div>
+        return (
+            <>
 
-            {/* 3. METRICS ROW */}
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-                <div className="glass-card" style={{ 
-                    padding: '18px 20px', 
-                    borderRadius: '16px',
-                    border: '1px solid rgba(46, 213, 115, 0.25)', 
-                    background: 'radial-gradient(circle at top right, rgba(46, 213, 115, 0.12) 0%, var(--glass-bg) 80%)',
-                    boxShadow: '0 8px 24px rgba(46, 213, 115, 0.05)'
-                }}>
-                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '6px' }}>عدد الطلبات في الانتظار</span>
-                    <strong style={{ fontSize: '1.45rem', color: 'var(--color-success)', fontWeight: '800' }}>{pendingCount} طلبات</strong>
-                </div>
-                <div className="glass-card" style={{ 
-                    padding: '18px 20px', 
-                    borderRadius: '16px',
-                    border: '1px solid rgba(212, 175, 55, 0.25)', 
-                    background: 'radial-gradient(circle at top right, rgba(212, 175, 55, 0.12) 0%, var(--glass-bg) 80%)',
-                    boxShadow: '0 8px 24px rgba(212, 175, 55, 0.05)'
-                }}>
-                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '6px' }}>إجمالي القيمة المعلقة</span>
-                    <strong style={{ fontSize: '1.45rem', color: 'var(--gold-primary)', fontWeight: '800' }}>{currency} {pendingValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
-                </div>
-                <div className="glass-card" style={{ 
-                    padding: '18px 20px', 
-                    borderRadius: '16px',
-                    border: '1px solid rgba(30, 144, 255, 0.25)', 
-                    background: 'radial-gradient(circle at top right, rgba(30, 144, 255, 0.12) 0%, var(--glass-bg) 80%)',
-                    boxShadow: '0 8px 24px rgba(30, 144, 255, 0.05)'
-                }}>
-                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '6px' }}>متوسط قيمة الطلب المعلق</span>
-                    <strong style={{ fontSize: '1.45rem', color: 'var(--color-info)', fontWeight: '800' }}>{currency} {avgPendingValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
-                </div>
-            </div>
-
-            {/* 4. FILTER BAR */}
-            <div className="glass-card filter-bar" style={{ padding: '16px', marginBottom: '24px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div className="search-input-wrapper" style={{ minWidth: '300px', flex: 1 }}>
-                        <i className="fa-solid fa-magnifying-glass search-icon"></i>
-                        <input 
-                            type="text" 
-                            placeholder="ابحث برقم الأوردر، العميل، التليفون..."
-                            value={globalSearch}
-                            onChange={(e) => { setGlobalSearch(e.target.value); setCurrentPage(1); }}
-                            style={{ width: '100%', background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', padding: '8px 12px 8px 36px', borderRadius: '6px' }}
-                        />
-                    </div>
-                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
-                        حدد المحافظة والمنطقة المتوافقة مع بوسطة لكل أوردر قبل اعتماده.
-                    </div>
-                </div>
-            </div>
-
-            {/* 5. TABLE / CARDS GRID */}
-            <div className="glass-card" style={{ overflow: 'visible', border: '1px solid var(--glass-border)' }}>
-                <div className="table-wrapper" style={{ overflowX: 'auto', overflowY: 'visible' }}>
-                    <table className="custom-table" style={{ width: '100%', borderCollapse: 'collapse', overflow: 'visible' }}>
-                        <thead>
-                            <tr style={{ borderBottom: '1px solid var(--glass-border-hover)' }}>
-                                <th style={{ textAlign: 'right', padding: '12px 16px' }}>رقم الطلب ERP</th>
-                                <th style={{ textAlign: 'right', padding: '12px 16px' }}>العميل + الهاتف</th>
-                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>تاريخ الطلب</th>
-                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>عدد القطع</th>
-                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>إجمالي الفاتورة</th>
-                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>طريقة الدفع</th>
-                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>أكواد بوسطة</th>
-                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>مراجعة وإجراءات</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {paginatedOrders.length === 0 ? (
-                                <tr>
-                                    <td colSpan="8" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
-                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-                                            <i className="fa-brands fa-shopify" style={{ fontSize: '40px', color: 'rgba(150,191,72,0.2)' }}></i>
-                                            <span>لا توجد طلبات معلقة من متجر شوبيفاي حالياً.</span>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ) : (
-                                paginatedOrders.map(ord => {
-                                    const isExpanded = expandedOrderIds[ord.id];
-                                    const isBostaEnabled = bostaSyncMap[ord.id] !== false;
-                                    const { phone, detailAddress } = parseAddressData(ord.address);
-                                    const totalQty = (ord.items || []).reduce((acc, curr) => acc + curr.quantity, 0);
-                                    const matchedCust = (state.customers || []).find(c => c.id === ord.customer_id) || {};
-                                    const customerEmail = matchedCust.email || '';
-
-                                    // Bosta mapping status
-                                    const citySelected = selectedCities[ord.id];
-                                    const districtSelected = selectedDistricts[ord.id];
-
-                                    // Filter city list based on search
-                                    const cleanCityQuery = (citySearch[ord.id] || '').trim().toLowerCase();
-                                    const filteredCities = bostaData.data.filter(c => 
-                                        c.cityName.toLowerCase().includes(cleanCityQuery) ||
-                                        c.cityOtherName.includes(cleanCityQuery)
-                                    );
-
-                                    // Filter district list based on search
-                                    const cleanDistrictQuery = (districtSearch[ord.id] || '');
-                                    const rawDistricts = citySelected ? citySelected.districts || [] : [];
-                                    const filteredDistricts = filterAndSortBostaDistricts(rawDistricts, cleanDistrictQuery);
-
-                                    return (
-                                        <React.Fragment key={ord.id}>
-                                            <tr 
-                                                onClick={() => toggleRow(ord.id)}
-                                                style={{ 
-                                                    borderBottom: '1px solid var(--glass-border)', 
-                                                    cursor: 'pointer',
-                                                    background: isExpanded ? 'rgba(150,191,72,0.03)' : 'transparent',
-                                                    transition: 'background 0.2s ease'
-                                                }}
-                                                className="table-row-hover"
-                                            >
-                                                <td style={{ fontFamily: 'monospace', fontWeight: 600, padding: '14px 16px', color: 'var(--gold-primary)' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        {ord.id}
-                                                        <span style={{
-                                                            background: 'rgba(150,191,72,0.15)',
-                                                            color: '#96bf48',
-                                                            padding: '2px 6px',
-                                                            borderRadius: '4px',
-                                                            fontSize: '0.65rem',
-                                                            fontWeight: 'bold'
-                                                        }}>
-                                                            #{ord.shopifyOrderId || 'Shopify'}
-                                                        </span>
-                                                    </div>
-                                                </td>
-                                                <td style={{ padding: '14px 16px' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                                        <div style={{ fontWeight: 500 }}>{ord.client}</div>
-                                                        {(() => {
-                                                            const cust = (state.customers || []).find(c => c.id === ord.customer_id || (phone && normalizePhoneNumber(c.phone) === normalizePhoneNumber(phone)));
-                                                            if (cust && cust.is_spam) {
-                                                                return (
-                                                                    <span className="badge badge-danger animate-pulse" style={{ fontSize: '10px', padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: '4px', boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)' }} title="عميل مزعج">
-                                                                        <i className="fa-solid fa-triangle-exclamation"></i>
-                                                                    </span>
-                                                                );
-                                                            }
-                                                            return null;
-                                                        })()}
-                                                    </div>
-                                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{phone || 'بدون هاتف'}</div>
-                                                </td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px' }}>
-                                                    <div>{ord.date}</div>
-                                                    {ord.createdAt && (
-                                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                                            <i className="fa-regular fa-clock" style={{ marginLeft: '4px', fontSize: '10px' }}></i>
-                                                            {formatOrderTime(ord.createdAt)}
-                                                        </div>
-                                                    )}
-                                                </td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px' }}>{totalQty} قطع</td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, color: 'var(--gold-primary)' }}>{currency} {(parseFloat(ord.totalValue || ord.total_value) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '12px' }}>
-                                                    <span style={{ background: 'rgba(255,255,255,0.04)', padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--glass-border)' }}>
-                                                        {ord.paymentMethod || 'COD'}
-                                                    </span>
-                                                </td>
-                                                
-                                                {/* Bosta status indicator */}
-                                                <td style={{ textAlign: 'center', padding: '14px 16px' }}>
-                                                    {citySelected && districtSelected ? (
-                                                        <span className="badge" style={{ background: 'rgba(46,204,113,0.1)', color: '#2ecc71', border: '1px solid rgba(46,204,113,0.2)', fontSize: '11px', padding: '4px 8px', borderRadius: '4px' }}>
-                                                            <i className="fa-solid fa-map-location-dot" style={{ marginLeft: '4px' }}></i>
-                                                            {citySelected.cityOtherName} - {districtSelected.districtOtherName}
-                                                        </span>
-                                                    ) : (
-                                                        <span className="badge" style={{ background: 'rgba(231,76,60,0.1)', color: '#e74c3c', border: '1px solid rgba(231,76,60,0.2)', fontSize: '11px', padding: '4px 8px', borderRadius: '4px' }}>
-                                                            <i className="fa-solid fa-circle-exclamation" style={{ marginLeft: '4px' }}></i>
-                                                            بحاجة لربط المنطقة
-                                                        </span>
-                                                    )}
-                                                </td>
-                                                
-                                                <td style={{ padding: '14px 16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
-                                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                                                        <button 
-                                                            className="btn"
-                                                            disabled={!citySelected || !districtSelected}
-                                                            style={{ 
-                                                                padding: '4px 12px', 
-                                                                fontSize: '11px', 
-                                                                background: (!citySelected || !districtSelected) ? '#3e4e45' : '#2ecc71', 
-                                                                color: (!citySelected || !districtSelected) ? '#a0a0a0' : 'white', 
-                                                                border: 'none', 
-                                                                borderRadius: '4px', 
-                                                                fontWeight: 'bold', 
-                                                                cursor: (!citySelected || !districtSelected) ? 'not-allowed' : 'pointer' 
-                                                            }}
-                                                            onClick={(e) => handleApprove(e, ord.id)}
-                                                        >
-                                                            <i className="fa-solid fa-circle-check" style={{ marginLeft: '4px' }}></i>
-                                                            موافقة
-                                                        </button>
-                                                        <button 
-                                                            className="btn"
-                                                            style={{ padding: '4px 12px', fontSize: '11px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
-                                                            onClick={(e) => handleCancel(e, ord.id)}
-                                                        >
-                                                            <i className="fa-solid fa-circle-xmark" style={{ marginLeft: '4px' }}></i>
-                                                            رفض
-                                                        </button>
-                                                    </div>
-                                                </td>
-                                            </tr>
-
-                                            {/* Expandable detailed drawer */}
-                                            {isExpanded && (
-                                                <tr style={{ background: 'var(--glass-bg)' }}>
-                                                    <td colSpan="8" style={{ padding: '20px', borderBottom: '1px solid var(--glass-border)' }}>
                                                         
                                                         {/* Step 1 & 2 layout: Address mapping & Details cards */}
                                                         <div className="grid-responsive-1_2-1-1" style={{ gap: '20px', marginBottom: '20px' }}>
@@ -1166,6 +560,645 @@ export default function ShopifyPendingList() {
                                                                 );
                                                             })()}
                                                         </div>
+                                                    
+            </>
+        );
+    };
+
+return () => {
+            const existing = document.getElementById(styleId);
+            if (existing) existing.remove();
+        };
+    }, []);
+
+    const [selectedCities, setSelectedCities] = useState({}); // { [orderId]: CityObject }
+    const [selectedDistricts, setSelectedDistricts] = useState({}); // { [orderId]: DistrictObject }
+    const [customDeposits, setCustomDeposits] = useState({}); // { [orderId]: string/number }
+    const [allowToOpenMap, setAllowToOpenMap] = useState({}); // { [orderId]: boolean }
+    const [depositReceivers, setDepositReceivers] = useState({}); // { [orderId]: string }
+    const [bostaSyncMap, setBostaSyncMap] = useState({}); // { [orderId]: boolean } (default true)
+    
+    // Dropdowns UI search states
+    const [citySearch, setCitySearch] = useState({}); // { [orderId]: string }
+    const [districtSearch, setDistrictSearch] = useState({}); // { [orderId]: string }
+    const [activeCityDropdown, setActiveCityDropdown] = useState(null); // orderId
+    const [activeDistrictDropdown, setActiveDistrictDropdown] = useState(null); // orderId
+
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = 10;
+    
+    const currency = state.storeSettings.currency || 'EGP';
+
+    const formatOrderTime = (createdAt) => {
+        if (!createdAt) return '';
+        try {
+            const dateObj = new Date(createdAt);
+            if (isNaN(dateObj.getTime())) return '';
+            let hours = dateObj.getHours();
+            const minutes = dateObj.getMinutes().toString().padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            return `${hours}:${minutes} ${ampm}`;
+        } catch (e) {
+            return '';
+        }
+    };
+
+    // Parse address JSON structure safely
+    const parseAddressData = (addressStr) => {
+        let detailAddress = addressStr || '';
+        let phone = '';
+        let vatEnabled = false;
+        let orderDiscountPercent = 0;
+        let customerCode = 'CUS-0000';
+        
+        if (addressStr && addressStr.startsWith('{')) {
+            try {
+                const parsed = JSON.parse(addressStr);
+                detailAddress = parsed.detailAddress || '';
+                phone = parsed.phone || '';
+                vatEnabled = parsed.vatEnabled || false;
+                orderDiscountPercent = parseFloat(parsed.orderDiscountPercent) || 0;
+                customerCode = parsed.customerCode || 'CUS-0000';
+            } catch(e) {}
+        }
+        return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode };
+    };
+
+    const normalizePhoneNumber = (phoneStr) => {
+        if (!phoneStr) return '';
+        let clean = phoneStr.replace(/\D/g, '');
+        if (clean.startsWith('20') && clean.length > 10) {
+            clean = clean.substring(2);
+        } else if (clean.startsWith('2') && clean.length > 10) {
+            clean = clean.substring(1);
+        }
+        if (clean.length === 10 && (clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15'))) {
+            clean = '0' + clean;
+        }
+        if (!clean.startsWith('0') && clean.length === 10) {
+            clean = '0' + clean;
+        }
+        return clean;
+    };
+
+    // Filter Logic: only pending Shopify orders
+    const pendingOrders = (state.orders || []).filter(ord => {
+        let isReviewed = ord.is_reviewed || ord.isReviewed;
+        if (!isReviewed && ord.address) {
+            if (typeof ord.address === 'object') {
+                isReviewed = ord.address.isReviewed || ord.address.is_reviewed || ord.address.bostaDeliveryId || ord.address.trackingNumber || ord.address.bostaTrackingNumber;
+            } else if (typeof ord.address === 'string') {
+                try {
+                    const parsed = JSON.parse(ord.address);
+                    isReviewed = parsed?.isReviewed || parsed?.is_reviewed || parsed?.bostaDeliveryId || parsed?.trackingNumber || parsed?.bostaTrackingNumber;
+                } catch(e) {}
+            }
+        }
+        if (ord.status !== 'Pending' || ord.source !== 'shopify' || isReviewed) return false;
+        
+        // Search filter
+        if (globalSearch.trim() !== '') {
+            const query = globalSearch.toLowerCase();
+            const clientMatches = (ord.client || '').toLowerCase().includes(query);
+            const idMatches = (ord.id || '').toLowerCase().includes(query);
+            const phoneMatches = parseAddressData(ord.address).phone.includes(query);
+            if (!clientMatches && !idMatches && !phoneMatches) return false;
+        }
+        return true;
+    });
+
+    // Fuzzy matching Shopify governorate to Bosta cities
+    const getAutoMatchedCity = (govName) => {
+        if (!govName) return null;
+        const cleanGov = govName.toLowerCase().trim().replace(" governorate", "").replace("ال", "");
+        return bostaData.data.find(c => {
+            const cleanCityName = c.cityName.toLowerCase().replace(" governorate", "");
+            const cleanCityOther = c.cityOtherName.replace("ال", "");
+            return cleanCityName.includes(cleanGov) || cleanGov.includes(cleanCityName) ||
+                   cleanCityOther.includes(cleanGov) || cleanGov.includes(cleanCityOther);
+        });
+    };
+
+    // Auto-match on mount or when orders list updates
+    useEffect(() => {
+        const initialCities = {};
+        const initialDistricts = {};
+        
+        pendingOrders.forEach(ord => {
+            const { address } = ord;
+            let parsed = {};
+            if (address && address.startsWith('{')) {
+                try { parsed = JSON.parse(address); } catch(e) {}
+            }
+            
+            if (parsed.bostaCityCode) {
+                const matchedCity = bostaData.data.find(c => c.cityCode === parsed.bostaCityCode);
+                if (matchedCity) {
+                    initialCities[ord.id] = matchedCity;
+                    if (parsed.bostaDistrictId) {
+                        const matchedDist = matchedCity.districts.find(d => d.districtId === parsed.bostaDistrictId);
+                        if (matchedDist) {
+                            initialDistricts[ord.id] = matchedDist;
+                        }
+                    }
+                }
+            } else {
+                const matchedCity = getAutoMatchedCity(ord.governorate);
+                if (matchedCity) {
+                    initialCities[ord.id] = matchedCity;
+                }
+            }
+        });
+        
+        setSelectedCities(prev => ({ ...initialCities, ...prev }));
+        setSelectedDistricts(prev => ({ ...initialDistricts, ...prev }));
+    }, [state.orders]);
+
+    // Pagination calculations
+    const totalEntries = pendingOrders.length;
+    const totalPages = Math.ceil(totalEntries / pageSize) || 1;
+    const activePage = currentPage > totalPages ? totalPages : currentPage;
+    const startIdx = (activePage - 1) * pageSize;
+    const endIdx = Math.min(startIdx + pageSize, totalEntries);
+    const paginatedOrders = pendingOrders.slice(startIdx, endIdx);
+
+    // Summary Metric calculations
+    const pendingCount = pendingOrders.length;
+    const pendingValue = pendingOrders.reduce((sum, o) => sum + (parseFloat(o.totalValue) || 0), 0);
+    const avgPendingValue = pendingCount > 0 ? pendingValue / pendingCount : 0;
+
+    // Toggle Row Expansion
+    const toggleRow = (orderId) => {
+        const isWillExpand = !expandedOrderIds[orderId];
+        setExpandedOrderIds(prev => ({
+            ...prev,
+            [orderId]: isWillExpand
+        }));
+        if (isWillExpand) {
+            const target = (state.orders || []).find(o => o.id === orderId);
+            if (!target || !target.items || target.items.length === 0) {
+                fetchMissingOrderItems(orderId);
+            }
+        }
+    };
+
+    const getProductNameBySku = (sku) => {
+        let name = sku;
+        state.products.forEach(p => {
+            const v = p.variants.find(vr => vr.sku === sku);
+            if (v) name = formatProductDisplayName(p.name, v.name);
+        });
+        return name;
+    };
+
+    // Approve Action
+    const handleApprove = (e, ordId) => {
+        e.stopPropagation();
+        
+        const isBostaEnabled = bostaSyncMap[ordId] !== false; // default true
+        const city = selectedCities[ordId];
+        const district = selectedDistricts[ordId];
+        
+        if (isBostaEnabled && (!city || !district)) {
+            showToast('يرجى تحديد المحافظة والمنطقة لشركة بوسطة قبل الموافقة على الطلب', 'warning');
+            return;
+        }
+
+        const depositAmount = customDeposits[ordId] !== undefined ? (parseFloat(customDeposits[ordId]) || 0) : (pendingOrders.find(o => o.id === ordId)?.deposit || 0);
+        const allowToOpen = allowToOpenMap[ordId] !== undefined ? allowToOpenMap[ordId] : false;
+        const receiverId = depositReceivers[ordId] || state.currentUser?.id || null;
+
+        if (depositAmount > 0 && !receiverId) {
+            showToast('يرجى تحديد الأدمن المستلم للعربون للمتابعة', 'warning');
+            return;
+        }
+
+        let depositStatus = 'confirmed';
+        if (depositAmount > 0 && receiverId !== state.currentUser?.id) {
+            depositStatus = 'pending';
+        }
+
+        const confirmMsg = !isBostaEnabled 
+            ? (depositStatus === 'pending' 
+                ? 'الشحن عبر بوسطة غير مفعّل. سيتم تسجيل الطلب معلقاً محلياً بانتظار تأكيد الأدمن لاستلام العربون، هل أنت متأكد؟'
+                : 'الشحن عبر بوسطة غير مفعّل. سيتم اعتماد الطلب وتسجيله على السيستم كـ Completed مباشرة دون إرساله لبوسطة، هل أنت متأكد؟')
+            : (depositStatus === 'pending'
+                ? 'العربون المستلم موجه لأدمن آخر. سيتم حفظ الطلب معلقاً محلياً بانتظار تأكيد الأدمن، هل أنت متأكد؟'
+                : 'هل أنت متأكد من الموافقة على هذا الطلب وتأكيده للخصم من المخزون وإرساله لبوسطة؟');
+
+        showConfirm(
+            confirmMsg,
+            async () => {
+                let originalOrd = pendingOrders.find(o => o.id === ordId);
+                // Guard 1: Race condition check for items during webhook sync
+                if (!originalOrd?.items || originalOrd.items.length === 0) {
+                    if (fetchMissingOrderItems) {
+                        showToast('جاري جلب أصناف الطلب من شوبيفاي...', 'info');
+                        await fetchMissingOrderItems(ordId);
+                    }
+                    if (supabase) {
+                        const { data: dbItems } = await supabase.from('order_items').select('*').eq('order_id', ordId);
+                        if (!dbItems || dbItems.length === 0) {
+                            showToast('لم تكتمل مزامنة أصناف هذا الطلب من شوبيفاي بعد، يرجى الانتظار بضع ثوانٍ والإعادة.', 'warning');
+                            return;
+                        }
+                    }
+                }
+                let existingAddrObj = {};
+                if (originalOrd?.address) {
+                    if (typeof originalOrd.address === 'object') {
+                        existingAddrObj = originalOrd.address;
+                    } else if (typeof originalOrd.address === 'string') {
+                        try {
+                            existingAddrObj = JSON.parse(originalOrd.address);
+                        } catch(e) {
+                            existingAddrObj = { detailAddress: originalOrd.address };
+                        }
+                    }
+                }
+
+                const updatedAddrObj = {
+                    ...existingAddrObj,
+                    isReviewed: true,
+                    is_reviewed: true,
+                    syncWithBosta: isBostaEnabled,
+                    bostaCityCode: city?.cityCode || null,
+                    bostaCityName: city?.cityOtherName || '',
+                    bostaDistrictId: district?.districtId || null,
+                    bostaDistrictName: district?.districtOtherName || '',
+                    bostaZoneId: district?.zoneId || null
+                };
+                const addressStr = JSON.stringify(updatedAddrObj);
+
+                if (!isBostaEnabled) {
+                    // Deduct stock for local approval
+                    if (originalOrd) {
+                        await deductOrderStock(originalOrd);
+                    }
+
+                    if (supabase) {
+                        try {
+                            await supabase.from('orders').update({
+                                deposit: depositAmount,
+                                deposit_receiver_id: receiverId,
+                                deposit_status: depositStatus,
+                                status: 'Pending',
+                                address: addressStr
+                            }).eq('id', ordId);
+                        } catch (err) {
+                            console.error('Error saving shopify order without Bosta:', err);
+                        }
+                    }
+
+                    updateOrderProperties(ordId, {
+                        deposit: depositAmount,
+                        depositReceiverId: receiverId,
+                        depositStatus: depositStatus,
+                        status: 'Pending',
+                        is_reviewed: true,
+                        isReviewed: true,
+                        address: addressStr
+                    });
+
+                    showToast(depositStatus === 'pending' 
+                        ? 'تم حفظ الطلب محلياً وخصم الكميات بانتظار تأكيد العربون (بدون إرسال لبوسطة).' 
+                        : 'تم اعتماد وتأكيد بيانات الطلب محلياً وخصم الكميات من المخزون ونقله إلى المبيعات بقائه (قيد الانتظار).', 'success');
+                } else {
+                    // Bosta Sync is ENABLED
+                    if (depositStatus === 'pending') {
+                        if (originalOrd) {
+                            await deductOrderStock(originalOrd);
+                        }
+
+                        if (supabase) {
+                            try {
+                                await supabase.from('orders').update({
+                                    deposit: depositAmount,
+                                    deposit_receiver_id: receiverId,
+                                    deposit_status: 'pending',
+                                    status: 'Pending',
+                                    address: addressStr
+                                }).eq('id', ordId);
+
+                                updateOrderProperties(ordId, {
+                                    deposit: depositAmount,
+                                    depositReceiverId: receiverId,
+                                    depositStatus: 'pending',
+                                    status: 'Pending',
+                                    is_reviewed: true,
+                                    isReviewed: true,
+                                    address: addressStr
+                                });
+
+                                showToast('تم حفظ الطلب وخصم الكميات بنجاح وهو بانتظار تأكيد استلام العربون من الأدمن المختار قبل الشحن.', 'success');
+                            } catch (err) {
+                                console.error('Error saving pending shopify order:', err);
+                                showToast('حدث خطأ أثناء حفظ الطلب', 'error');
+                            }
+                        }
+                    } else {
+                        approveOrderWithBosta(ordId, {
+                            bostaCityCode: city.cityCode,
+                            bostaCityName: city.cityOtherName,
+                            bostaDistrictId: district.districtId,
+                            bostaDistrictName: district.districtOtherName,
+                            bostaZoneId: district.zoneId,
+                            allowToOpenPackage: allowToOpen
+                        }, depositAmount, receiverId, depositStatus);
+                    }
+                }
+                
+                // Collapse expanded drawer cleanly
+                setExpandedOrderIds(prev => ({ ...prev, [ordId]: false }));
+            }
+        );
+    };
+
+    // Cancel Action
+    const handleCancel = (e, ordId) => {
+        e.stopPropagation();
+        showConfirm('هل أنت متأكد من رفض وإلغاء هذا الطلب؟', (flagAsSpam) => {
+            updateOrderStatus(ordId, 'Cancelled');
+            setExpandedOrderIds(prev => ({ ...prev, [ordId]: false }));
+            showToast('تم إلغاء الطلب بنجاح', 'warning');
+            if (flagAsSpam) {
+                console.log('🚨 Spam flag enabled for Shopify order', ordId);
+                const ord = state.orders.find(o => o.id === ordId);
+                if (ord) {
+                    const { phone } = parseAddressData(ord.address);
+                    const normPhone = normalizePhoneNumber(phone);
+                    const cust = (state.customers || []).find(c => c.id === ord.customer_id || (normPhone && normalizePhoneNumber(c.phone) === normPhone));
+                    if (cust) {
+                        console.log('🔍 Found existing customer:', cust.id, cust.name);
+                        setCustomerSpam(cust.id, true);
+                        logActivity("customer", `Flagged customer ${cust.name} as spam upon order rejection.`);
+                    } else {
+                        console.log('➕ Creating new spam customer for:', ord.client, normPhone);
+                        const newCust = {
+                            id: crypto.randomUUID(),
+                            name: ord.client || "عميل شوبيفاي جديد",
+                            phone: normPhone || "00000000000",
+                            governorate: ord.governorate || "",
+                            customer_type: 'Regular',
+                            total_purchases: 0,
+                            orders_count: 0,
+                            is_spam: true
+                        };
+                        addCustomer(newCust);
+                        logActivity("customer", `Created spam customer profile for ${newCust.name} (${newCust.phone}) upon order rejection.`);
+                    }
+                }
+            }
+        }, null, { showSpamToggle: true });
+    };
+
+    return (
+        <div id="shopify-pending-view" className="view-pane active" dir="rtl" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
+            
+            {/* Header */}
+            <div className="page-header" style={{ marginBottom: '24px' }}>
+                <div className="page-title-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{
+                        width: '38px',
+                        height: '38px',
+                        borderRadius: '8px',
+                        background: 'linear-gradient(135deg, #96bf48, #5a8a1e)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'white',
+                        fontSize: '18px',
+                        boxShadow: '0 4px 15px rgba(150,191,72,0.3)'
+                    }}>
+                        <i className="fa-brands fa-shopify"></i>
+                    </div>
+                    <div>
+                        <h2 style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>طلبات شوبيفاي المعلقة للمراجعة</h2>
+                        <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>مراجعة وتأكيد الطلبات القادمة من المتجر الإلكتروني وتنسيقها مع أكواد بوسطة</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* 3. METRICS ROW */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                <div className="glass-card" style={{ 
+                    padding: '18px 20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(46, 213, 115, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(46, 213, 115, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(46, 213, 115, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '6px' }}>عدد الطلبات في الانتظار</span>
+                    <strong style={{ fontSize: '1.45rem', color: 'var(--color-success)', fontWeight: '800' }}>{pendingCount} طلبات</strong>
+                </div>
+                <div className="glass-card" style={{ 
+                    padding: '18px 20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(212, 175, 55, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(212, 175, 55, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(212, 175, 55, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '6px' }}>إجمالي القيمة المعلقة</span>
+                    <strong style={{ fontSize: '1.45rem', color: 'var(--gold-primary)', fontWeight: '800' }}>{currency} {pendingValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
+                </div>
+                <div className="glass-card" style={{ 
+                    padding: '18px 20px', 
+                    borderRadius: '16px',
+                    border: '1px solid rgba(30, 144, 255, 0.25)', 
+                    background: 'radial-gradient(circle at top right, rgba(30, 144, 255, 0.12) 0%, var(--glass-bg) 80%)',
+                    boxShadow: '0 8px 24px rgba(30, 144, 255, 0.05)'
+                }}>
+                    <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '6px' }}>متوسط قيمة الطلب المعلق</span>
+                    <strong style={{ fontSize: '1.45rem', color: 'var(--color-info)', fontWeight: '800' }}>{currency} {avgPendingValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
+                </div>
+            </div>
+
+            {/* 4. FILTER BAR */}
+            <div className="glass-card filter-bar" style={{ padding: '16px', marginBottom: '24px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div className="search-input-wrapper" style={{ minWidth: '300px', flex: 1 }}>
+                        <i className="fa-solid fa-magnifying-glass search-icon"></i>
+                        <input 
+                            type="text" 
+                            placeholder="ابحث برقم الأوردر، العميل، التليفون..."
+                            value={globalSearch}
+                            onChange={(e) => { setGlobalSearch(e.target.value); setCurrentPage(1); }}
+                            style={{ width: '100%', background: 'var(--glass-bg)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', padding: '8px 12px 8px 36px', borderRadius: '6px' }}
+                        />
+                    </div>
+                    <div style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                        حدد المحافظة والمنطقة المتوافقة مع بوسطة لكل أوردر قبل اعتماده.
+                    </div>
+                </div>
+            </div>
+
+            {/* 5. TABLE / CARDS GRID */}
+            <div className="glass-card" style={{ overflow: 'visible', border: '1px solid var(--glass-border)' }}>
+                <div className="table-wrapper shopify-desktop-only" style={{ overflowX: 'auto', overflowY: 'visible' }}>
+                    <table className="custom-table" style={{ width: '100%', borderCollapse: 'collapse', overflow: 'visible' }}>
+                        <thead>
+                            <tr style={{ borderBottom: '1px solid var(--glass-border-hover)' }}>
+                                <th style={{ textAlign: 'right', padding: '12px 16px' }}>رقم الطلب ERP</th>
+                                <th style={{ textAlign: 'right', padding: '12px 16px' }}>العميل + الهاتف</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>تاريخ الطلب</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>عدد القطع</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>إجمالي الفاتورة</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>طريقة الدفع</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>أكواد بوسطة</th>
+                                <th style={{ textAlign: 'center', padding: '12px 16px' }}>مراجعة وإجراءات</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {paginatedOrders.length === 0 ? (
+                                <tr>
+                                    <td colSpan="8" style={{ textAlign: 'center', padding: '48px', color: 'var(--text-muted)' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                                            <i className="fa-brands fa-shopify" style={{ fontSize: '40px', color: 'rgba(150,191,72,0.2)' }}></i>
+                                            <span>لا توجد طلبات معلقة من متجر شوبيفاي حالياً.</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            ) : (
+                                paginatedOrders.map(ord => {
+                                    const isExpanded = expandedOrderIds[ord.id];
+                                    const isBostaEnabled = bostaSyncMap[ord.id] !== false;
+                                    const { phone, detailAddress } = parseAddressData(ord.address);
+                                    const totalQty = (ord.items || []).reduce((acc, curr) => acc + curr.quantity, 0);
+                                    const matchedCust = (state.customers || []).find(c => c.id === ord.customer_id) || {};
+                                    const customerEmail = matchedCust.email || '';
+
+                                    // Bosta mapping status
+                                    const citySelected = selectedCities[ord.id];
+                                    const districtSelected = selectedDistricts[ord.id];
+
+                                    // Filter city list based on search
+                                    const cleanCityQuery = (citySearch[ord.id] || '').trim().toLowerCase();
+                                    const filteredCities = bostaData.data.filter(c => 
+                                        c.cityName.toLowerCase().includes(cleanCityQuery) ||
+                                        c.cityOtherName.includes(cleanCityQuery)
+                                    );
+
+                                    // Filter district list based on search
+                                    const cleanDistrictQuery = (districtSearch[ord.id] || '');
+                                    const rawDistricts = citySelected ? citySelected.districts || [] : [];
+                                    const filteredDistricts = filterAndSortBostaDistricts(rawDistricts, cleanDistrictQuery);
+
+                                    return (
+                                        <React.Fragment key={ord.id}>
+                                            <tr 
+                                                onClick={() => toggleRow(ord.id)}
+                                                style={{ 
+                                                    borderBottom: '1px solid var(--glass-border)', 
+                                                    cursor: 'pointer',
+                                                    background: isExpanded ? 'rgba(150,191,72,0.03)' : 'transparent',
+                                                    transition: 'background 0.2s ease'
+                                                }}
+                                                className="table-row-hover"
+                                            >
+                                                <td style={{ fontFamily: 'monospace', fontWeight: 600, padding: '14px 16px', color: 'var(--gold-primary)' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        {ord.id}
+                                                        <span style={{
+                                                            background: 'rgba(150,191,72,0.15)',
+                                                            color: '#96bf48',
+                                                            padding: '2px 6px',
+                                                            borderRadius: '4px',
+                                                            fontSize: '0.65rem',
+                                                            fontWeight: 'bold'
+                                                        }}>
+                                                            #{ord.shopifyOrderId || 'Shopify'}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td style={{ padding: '14px 16px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <div style={{ fontWeight: 500 }}>{ord.client}</div>
+                                                        {(() => {
+                                                            const cust = (state.customers || []).find(c => c.id === ord.customer_id || (phone && normalizePhoneNumber(c.phone) === normalizePhoneNumber(phone)));
+                                                            if (cust && cust.is_spam) {
+                                                                return (
+                                                                    <span className="badge badge-danger animate-pulse" style={{ fontSize: '10px', padding: '2px 6px', display: 'inline-flex', alignItems: 'center', gap: '4px', boxShadow: '0 0 8px rgba(239, 68, 68, 0.4)' }} title="عميل مزعج">
+                                                                        <i className="fa-solid fa-triangle-exclamation"></i>
+                                                                    </span>
+                                                                );
+                                                            }
+                                                            return null;
+                                                        })()}
+                                                    </div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{phone || 'بدون هاتف'}</div>
+                                                </td>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px' }}>
+                                                    <div>{ord.date}</div>
+                                                    {ord.createdAt && (
+                                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                                            <i className="fa-regular fa-clock" style={{ marginLeft: '4px', fontSize: '10px' }}></i>
+                                                            {formatOrderTime(ord.createdAt)}
+                                                        </div>
+                                                    )}
+                                                </td>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px' }}>{totalQty} قطع</td>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, color: 'var(--gold-primary)' }}>{currency} {(parseFloat(ord.totalValue || ord.total_value) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '12px' }}>
+                                                    <span style={{ background: 'rgba(255,255,255,0.04)', padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--glass-border)' }}>
+                                                        {ord.paymentMethod || 'COD'}
+                                                    </span>
+                                                </td>
+                                                
+                                                {/* Bosta status indicator */}
+                                                <td style={{ textAlign: 'center', padding: '14px 16px' }}>
+                                                    {citySelected && districtSelected ? (
+                                                        <span className="badge" style={{ background: 'rgba(46,204,113,0.1)', color: '#2ecc71', border: '1px solid rgba(46,204,113,0.2)', fontSize: '11px', padding: '4px 8px', borderRadius: '4px' }}>
+                                                            <i className="fa-solid fa-map-location-dot" style={{ marginLeft: '4px' }}></i>
+                                                            {citySelected.cityOtherName} - {districtSelected.districtOtherName}
+                                                        </span>
+                                                    ) : (
+                                                        <span className="badge" style={{ background: 'rgba(231,76,60,0.1)', color: '#e74c3c', border: '1px solid rgba(231,76,60,0.2)', fontSize: '11px', padding: '4px 8px', borderRadius: '4px' }}>
+                                                            <i className="fa-solid fa-circle-exclamation" style={{ marginLeft: '4px' }}></i>
+                                                            بحاجة لربط المنطقة
+                                                        </span>
+                                                    )}
+                                                </td>
+                                                
+                                                <td style={{ padding: '14px 16px', textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                                        <button 
+                                                            className="btn"
+                                                            disabled={!citySelected || !districtSelected}
+                                                            style={{ 
+                                                                padding: '4px 12px', 
+                                                                fontSize: '11px', 
+                                                                background: (!citySelected || !districtSelected) ? '#3e4e45' : '#2ecc71', 
+                                                                color: (!citySelected || !districtSelected) ? '#a0a0a0' : 'white', 
+                                                                border: 'none', 
+                                                                borderRadius: '4px', 
+                                                                fontWeight: 'bold', 
+                                                                cursor: (!citySelected || !districtSelected) ? 'not-allowed' : 'pointer' 
+                                                            }}
+                                                            onClick={(e) => handleApprove(e, ord.id)}
+                                                        >
+                                                            <i className="fa-solid fa-circle-check" style={{ marginLeft: '4px' }}></i>
+                                                            موافقة
+                                                        </button>
+                                                        <button 
+                                                            className="btn"
+                                                            style={{ padding: '4px 12px', fontSize: '11px', background: '#e74c3c', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}
+                                                            onClick={(e) => handleCancel(e, ord.id)}
+                                                        >
+                                                            <i className="fa-solid fa-circle-xmark" style={{ marginLeft: '4px' }}></i>
+                                                            رفض
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+
+                                            {/* Expandable detailed drawer */}
+                                            {isExpanded && (
+                                                <tr style={{ background: 'var(--glass-bg)' }}>
+                                                    <td colSpan="8" style={{ padding: '20px', borderBottom: '1px solid var(--glass-border)' }}>
+                                                        {renderOrderDetailDrawer(ord)}
                                                     </td>
                                                 </tr>
                                             )}
@@ -1176,6 +1209,104 @@ export default function ShopifyPendingList() {
                         </tbody>
                     </table>
                 </div>
+                {/* Mobile cards for Shopify Pending Orders */}
+                <div className="shopify-mobile-cards" style={{ display: 'none', flexDirection: 'column', gap: '16px', padding: '16px' }}>
+                    {paginatedOrders.map(ord => {
+                        const isExpanded = expandedOrderIds[ord.id];
+                        const isBostaEnabled = bostaSyncMap[ord.id] !== false;
+                        const { phone } = parseAddressData(ord.address);
+                        const totalQty = (ord.items || []).reduce((acc, curr) => acc + curr.quantity, 0);
+                        
+                        const citySelected = selectedCities[ord.id];
+                        const districtSelected = selectedDistricts[ord.id];
+
+                        return (
+                            <div 
+                                key={ord.id}
+                                className="sa-mobile-card"
+                                style={{
+                                    background: isExpanded ? 'rgba(150,191,72,0.03)' : 'rgba(255, 255, 255, 0.02)',
+                                    border: '1px solid var(--glass-border)',
+                                    borderRadius: '12px',
+                                    padding: '16px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '12px',
+                                    transition: 'background 0.2s ease'
+                                }}
+                            >
+                                {/* Header Clickable to Toggle Expand */}
+                                <div 
+                                    onClick={() => toggleRow(ord.id)}
+                                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}
+                                >
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <strong style={{ color: 'var(--gold-primary)', fontSize: '15px', fontFamily: 'monospace' }}>{ord.id}</strong>
+                                        <span style={{
+                                            background: 'rgba(150,191,72,0.15)',
+                                            color: '#96bf48',
+                                            padding: '2px 6px',
+                                            borderRadius: '4px',
+                                            fontSize: '0.65rem',
+                                            fontWeight: 'bold'
+                                        }}>
+                                            #{ord.shopifyOrderId || 'Shopify'}
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{ord.date}</span>
+                                        <i className={`fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} style={{ fontSize: '11px', color: 'var(--text-muted)' }}></i>
+                                    </div>
+                                </div>
+
+                                {/* Customer & Total Value */}
+                                <div 
+                                    onClick={() => toggleRow(ord.id)}
+                                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', cursor: 'pointer' }}
+                                >
+                                    <div>
+                                        <span style={{ color: 'var(--text-muted)' }}>العميل:</span>
+                                        <strong style={{ color: '#fff', marginRight: '4px' }}>{ord.client}</strong>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{phone || 'بدون هاتف'}</div>
+                                    </div>
+                                    <div style={{ textAlign: 'left' }}>
+                                        <span style={{ color: 'var(--text-muted)' }}>الإجمالي:</span>
+                                        <strong style={{ color: 'var(--gold-primary)', marginRight: '4px', display: 'block' }}>{currency} {(parseFloat(ord.totalValue || ord.total_value) || 0).toLocaleString()}</strong>
+                                    </div>
+                                </div>
+
+                                {/* Stats and Bosta Connection Badge */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                                    <div>
+                                        <span style={{ background: 'rgba(255,255,255,0.04)', padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--glass-border)', fontSize: '11px' }}>
+                                            {ord.paymentMethod || 'COD'}
+                                        </span>
+                                        <span style={{ marginRight: '8px', color: 'var(--text-secondary)' }}>{totalQty} قطع</span>
+                                    </div>
+                                    <div>
+                                        {citySelected && districtSelected ? (
+                                            <span className="badge" style={{ background: 'rgba(46,204,113,0.1)', color: '#2ecc71', border: '1px solid rgba(46,204,113,0.2)', fontSize: '10.5px', padding: '3px 6px', borderRadius: '4px' }}>
+                                                {citySelected.cityOtherName}
+                                            </span>
+                                        ) : (
+                                            <span className="badge" style={{ background: 'rgba(231,76,60,0.1)', color: '#e74c3c', border: '1px solid rgba(231,76,60,0.2)', fontSize: '10.5px', padding: '3px 6px', borderRadius: '4px' }}>
+                                                ربط المنطقة ⚠️
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+
+                                {/* Expanded Section inside Mobile Card */}
+                                {isExpanded && (
+                                    <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '12px', marginTop: '8px' }}>
+                                        {renderOrderDetailDrawer(ord)}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+
 
                 {/* Pagination footer */}
                 {totalPages > 1 && (
