@@ -35,7 +35,16 @@ export default function Sidebar() {
         o.depositStatus === 'pending' &&
         (parseFloat(o.deposit) || 0) > 0
     ).length;
-    const totalDepositAlerts = pendingDepositCount;
+
+    // Cancelled orders where this admin still needs to confirm deposit return
+    const pendingRefundCount = (state.orders || []).filter(o =>
+        o.depositReceiverId === state.currentUser?.id &&
+        o.status === 'Cancelled' &&
+        (parseFloat(o.deposit) || 0) > 0 &&
+        o.depositRefundStatus === 'awaiting_return'
+    ).length;
+
+    const totalDepositAlerts = pendingDepositCount + pendingRefundCount;
 
     const navItems = [
         { id: 'dashboard', name: t('dashboard'), icon: 'Home.png', perm: 'view_dashboard' },
