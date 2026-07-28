@@ -160,7 +160,7 @@ export default function ReportsView() {
     const revAreaPath = `${revLinePath} L ${chartNodes[chartNodes.length - 1].x} ${paddingY + graphHeight} L ${chartNodes[0].x} ${paddingY + graphHeight} Z`;
     const profAreaPath = `${profLinePath} L ${chartNodes[chartNodes.length - 1].x} ${paddingY + graphHeight} L ${chartNodes[0].x} ${paddingY + graphHeight} Z`;
 
-    // 3. Category Breakdown (Real Data)
+    // 3. Category Breakdown (Real Data - mapped to Shopify Collections)
     const categoryStats = {};
     (state.orders || []).forEach(ord => {
         if (ord.status !== 'Cancelled' && ord.status !== 'Draft') {
@@ -171,15 +171,29 @@ export default function ReportsView() {
 
             (ord.items || []).forEach(item => {
                 const prod = (state.products || []).find(p => (p.variants || []).some(v => v.sku === item.variantSku));
-                const catName = prod ? prod.category : 'عام';
                 const itemRawTotal = (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
                 const itemNetShare = Math.max(0, itemRawTotal - ((itemRawTotal / ordSubtotal) * ordDiscount));
+                const qty = parseInt(item.quantity) || 1;
 
-                if (!categoryStats[catName]) {
-                    categoryStats[catName] = { name: catName, revenue: 0, itemsSold: 0 };
+                const colIds = prod?.shopifyCollectionIds || [];
+                if (colIds.length > 0) {
+                    colIds.forEach(colId => {
+                        const col = (state.collections || []).find(c => String(c.id) === String(colId));
+                        const catName = col ? col.title : 'عام';
+                        if (!categoryStats[catName]) {
+                            categoryStats[catName] = { name: catName, revenue: 0, itemsSold: 0 };
+                        }
+                        categoryStats[catName].revenue += itemNetShare;
+                        categoryStats[catName].itemsSold += qty;
+                    });
+                } else {
+                    const catName = 'عام';
+                    if (!categoryStats[catName]) {
+                        categoryStats[catName] = { name: catName, revenue: 0, itemsSold: 0 };
+                    }
+                    categoryStats[catName].revenue += itemNetShare;
+                    categoryStats[catName].itemsSold += qty;
                 }
-                categoryStats[catName].revenue += itemNetShare;
-                categoryStats[catName].itemsSold += parseInt(item.quantity) || 1;
             });
         }
     });
@@ -201,11 +215,22 @@ export default function ReportsView() {
                 let catName = 'عام';
                 let unitCost = item.costAtTimeOfSale || 0;
 
-                state.products.forEach(p => {
+                 state.products.forEach(p => {
                     const vr = (p.variants || []).find(v => v.sku === sku);
                     if (vr) {
                         prodName = formatProductDisplayName(p.name, vr.name);
-                        catName = p.category;
+                        
+                        // Map category to Shopify Collection titles
+                        if (p.shopifyCollectionIds && p.shopifyCollectionIds.length > 0) {
+                            const colNames = p.shopifyCollectionIds.map(colId => {
+                                const col = (state.collections || []).find(c => String(c.id) === String(colId));
+                                return col ? col.title : null;
+                            }).filter(Boolean);
+                            catName = colNames.join(', ') || 'عام';
+                        } else {
+                            catName = 'عام';
+                        }
+                        
                         if (!unitCost) unitCost = vr.averageCost || vr.wholesalePrice || 0;
                     }
                 });
