@@ -762,7 +762,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
             <div className="glass-card" style={{ overflow: 'visible', border: '1px solid var(--glass-border)' }}>
                 
                 {/* Desktop view table */}
-                <div className="table-wrapper" style={{ overflowX: 'auto', overflowY: 'visible' }}>
+                <div className="table-wrapper orders-desktop-only" style={{ overflowX: 'auto', overflowY: 'visible' }}>
                     <table className="custom-table" style={{ width: '100%', borderCollapse: 'collapse', overflow: 'visible' }}>
                         <thead>
                             <tr style={{ borderBottom: '1px solid var(--glass-border-hover)' }}>
@@ -1274,8 +1274,384 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                     </table>
                 </div>
 
+                {/* Mobile view cards */}
+                <div className="orders-mobile-cards">
+                    {paginatedOrders.length === 0 ? (
+                        <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', background: 'var(--glass-bg)', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
+                            لا توجد طلبات تطابق معايير البحث
+                        </div>
+                    ) : (
+                        paginatedOrders.map(ord => {
+                            const isExpanded = expandedOrderIds[ord.id];
+                            const { phone, detailAddress, bostaStateName, bostaTrackingNumber } = parseAddressData(ord.address);
+                            const paymentStatus = getPaymentStatus(ord);
+                            const remaining = getRemainingToCollect(ord);
+                            const deliveryBadge = getOrderStatusBadge(ord);
+                            const paymentBadgeClass = getPaymentStatusBadgeClass(paymentStatus);
+                            const isDropdownOpen = activeDropdownOrderId === ord.id;
 
+                            return (
+                                <div 
+                                    key={ord.id} 
+                                    className={`order-mobile-card ${isExpanded ? 'expanded' : ''}`}
+                                    onClick={() => toggleRow(ord.id)}
+                                    style={{
+                                        background: isExpanded ? 'rgba(212, 175, 55, 0.03)' : 'rgba(255, 255, 255, 0.02)',
+                                        border: isExpanded ? '1px solid var(--gold-primary)' : '1px solid var(--glass-border)',
+                                        borderRadius: '12px',
+                                        padding: '16px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '10px',
+                                        transition: 'all 0.2s ease',
+                                        cursor: 'pointer'
+                                    }}
+                                >
+                                    {/* Header: ID, Date, Source */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <strong style={{ color: 'var(--gold-primary)', fontSize: '15px', fontFamily: 'monospace' }}>#{ord.id}</strong>
+                                            {ord.source === 'shopify' && (
+                                                <span style={{
+                                                    background: 'linear-gradient(135deg, #96bf48, #5a8a1e)',
+                                                    color: 'white',
+                                                    padding: '2px 6px',
+                                                    borderRadius: '10px',
+                                                    fontSize: '0.65rem',
+                                                    fontWeight: 'bold',
+                                                    display: 'inline-flex',
+                                                    alignItems: 'center',
+                                                    gap: '3px'
+                                                }}>
+                                                    <i className="fa-brands fa-shopify" style={{ fontSize: '0.75rem' }}></i>
+                                                    متجر
+                                                </span>
+                                            )}
+                                        </div>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{ord.date}</span>
+                                    </div>
 
+                                    {/* Customer name and phone */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <strong style={{ color: '#fff', fontSize: '14px' }}>{ord.client}</strong>
+                                            {(() => {
+                                                const cust = (state.customers || []).find(c => c.id === ord.customer_id || (phone && normalizePhoneNumber(c.phone) === normalizePhoneNumber(phone)));
+                                                if (cust && cust.is_spam) {
+                                                    return (
+                                                        <span className="badge badge-danger animate-pulse" style={{ fontSize: '9px', padding: '2px 4px', display: 'inline-flex', alignItems: 'center', gap: '2px' }} title="عميل مزعج">
+                                                            <i className="fa-solid fa-triangle-exclamation"></i>
+                                                        </span>
+                                                    );
+                                                }
+                                                return null;
+                                            })()}
+                                        </div>
+                                        <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{phone || 'بدون هاتف'}</span>
+                                    </div>
+
+                                    {/* Status Badges & Financial summary */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                            <span className={`badge ${deliveryBadge.className}`} style={{ fontSize: '10px', padding: '3px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                                                {deliveryBadge.label}
+                                            </span>
+                                            <span className={`badge ${paymentBadgeClass}`} style={{ fontSize: '10px', padding: '3px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                                                {paymentStatus}
+                                            </span>
+                                        </div>
+                                        <div style={{ fontSize: '13px' }}>
+                                            <span style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>المتبقي:</span>
+                                            <strong style={{ color: remaining > 0 ? '#e74c3c' : '#2ecc71' }}>
+                                                {ord.depositStatus === 'pending' ? (
+                                                    'عربون معلق'
+                                                ) : ord.depositStatus === 'rejected' ? (
+                                                    'عربون مرفوض'
+                                                ) : ord.status === 'Cancelled' ? (
+                                                    'ملغي'
+                                                ) : (
+                                                    remaining > 0 ? `${currency} ${remaining.toLocaleString('en-US', {maximumFractionDigits: 2})}` : 'خالص'
+                                                )}
+                                            </strong>
+                                        </div>
+                                    </div>
+
+                                    {/* Action Shortcuts for phone / whatsapp */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--glass-border)', paddingTop: '10px', marginTop: '4px' }}>
+                                        <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                            <span>بواسطة: </span>
+                                            <strong style={{ color: 'var(--gold-primary)' }}>{ord.createdBy || 'الآدمن'}</strong>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
+                                            {phone && (
+                                                <>
+                                                    <a 
+                                                        href={`tel:${phone}`} 
+                                                        className="sa-btn-circle-phone" 
+                                                        title="اتصال هاتفياً"
+                                                        style={{ width: '32px', height: '32px', fontSize: '12px' }}
+                                                    >
+                                                        <i className="fa-solid fa-phone"></i>
+                                                    </a>
+                                                    <a 
+                                                        href={getWhatsAppLink(phone, ord)} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer" 
+                                                        className="sa-btn-circle-whatsapp" 
+                                                        title="مراسلة واتساب"
+                                                        style={{ width: '32px', height: '32px', fontSize: '14px' }}
+                                                    >
+                                                        <i className="fa-brands fa-whatsapp"></i>
+                                                    </a>
+                                                </>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* Expanded Details section */}
+                                    {isExpanded && (
+                                        <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '12px', marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '16px' }} onClick={(e) => e.stopPropagation()}>
+                                            {/* 1. Address mapping */}
+                                            <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+                                                <h4 style={{ fontSize: '13px', color: 'var(--gold-primary)', marginBottom: '12px', fontWeight: 600 }}>
+                                                    <i className="fa-solid fa-user-tag" style={{ marginLeft: '6px' }}></i> تفاصيل العميل والشحن
+                                                </h4>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                                                    <div><strong>كود العميل:</strong> {getCustomerCode(ord.client)}</div>
+                                                    <div><strong>الاسم:</strong> {ord.client}</div>
+                                                    <div><strong>رقم الهاتف:</strong> {phone || 'بدون هاتف'}</div>
+                                                    {ord.source === 'shopify' && (
+                                                        <>
+                                                            <div><strong>البريد الإلكتروني:</strong> {(state.customers || []).find(c => c.id === ord.customer_id)?.email || 'غير مسجل'}</div>
+                                                            <div><strong>طريقة الدفع:</strong> {ord.paymentMethod || 'الدفع عند الاستلام'}</div>
+                                                            {ord.shopifyOrderId && <div><strong>رقم طلب شوبيفاي:</strong> #{ord.shopifyOrderId}</div>}
+                                                        </>
+                                                    )}
+                                                    <div><strong>المحافظة:</strong> {ord.governorate || 'غير مسجل'}</div>
+                                                    <div><strong>العنوان بالتفصيل:</strong> {detailAddress || 'غير مسجل'}</div>
+                                                    {ord.discount_reason && (
+                                                        <div style={{ marginTop: '4px', borderTop: '1px dashed var(--glass-border)', paddingTop: '4px' }}>
+                                                            <strong>سبب الخصم:</strong> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{ord.discount_reason}</span>
+                                                        </div>
+                                                    )}
+                                                    {ord.discount_reason_details && (
+                                                        <div>
+                                                            <strong>تفاصيل الخصم:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ord.discount_reason_details}</span>
+                                                        </div>
+                                                    )}
+                                                    {bostaTrackingNumber && (
+                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                            <strong>بوليصة بوسطة:</strong>
+                                                            <span style={{ fontFamily: 'monospace' }}>{bostaTrackingNumber}</span>
+                                                            <button
+                                                                type="button"
+                                                                className="btn btn-secondary"
+                                                                style={{ padding: '2px 6px', fontSize: '10px' }}
+                                                                onClick={() => syncBostaStatus(ord.id, bostaTrackingNumber)}
+                                                            >
+                                                                تحديث الحالة
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            {/* 2. Products table */}
+                                            <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+                                                <h4 style={{ fontSize: '13px', color: 'var(--gold-primary)', marginBottom: '12px', fontWeight: 600 }}>
+                                                    <i className="fa-solid fa-box-open" style={{ marginLeft: '6px' }}></i> المنتجات المطلوبة ({(ord.items || []).reduce((sum, item) => sum + item.quantity, 0)})
+                                                </h4>
+                                                <div style={{ overflowX: 'auto' }}>
+                                                    <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
+                                                        <thead>
+                                                            <tr style={{ borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }}>
+                                                                <th style={{ textAlign: 'right', padding: '6px 4px' }}>اسم الصنف / SKU</th>
+                                                                <th style={{ textAlign: 'center', padding: '6px 4px' }}>الكمية</th>
+                                                                <th style={{ textAlign: 'left', padding: '6px 4px' }}>السعر</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            {(ord.items || []).map((item, idx) => (
+                                                                <tr key={idx} style={{ borderBottom: '1px solid var(--glass-bg)' }}>
+                                                                    <td style={{ padding: '8px 4px' }}>{getProductNameBySku(item.variantSku)}</td>
+                                                                    <td style={{ textAlign: 'center', padding: '8px 4px' }}>{item.quantity}</td>
+                                                                    <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold' }}>{currency} {item.price.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                                </tr>
+                                                            ))}
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            </div>
+
+                                            {/* 3. Detailed Cost breakdown */}
+                                            <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+                                                <h4 style={{ fontSize: '13px', color: 'var(--gold-primary)', marginBottom: '12px', fontWeight: 600 }}>
+                                                    <i className="fa-solid fa-file-invoice-dollar" style={{ marginLeft: '6px' }}></i> تفصيل التكلفة
+                                                </h4>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                                                    {(() => {
+                                                        const productsSubtotal = (ord.items || []).reduce((sum, item) => sum + (item.quantity * item.price), 0);
+                                                        const receiverAdmin = (state.users || []).find(u => u.id === ord.depositReceiverId);
+                                                        const depositLabel = receiverAdmin ? `العربون المدفوع (${receiverAdmin.name})` : 'العربون المدفوع (Deposit)';
+                                                        return (
+                                                            <>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                    <span>إجمالي المنتجات:</span>
+                                                                    <span>{currency} {productsSubtotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                    <span>مصاريف الشحن:</span>
+                                                                    <span>+{currency} {(ord.shipping_fee || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
+                                                                    <span>{depositLabel}:</span>
+                                                                    <span>-{currency} {(ord.deposit || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: ord.status === 'Cancelled' ? 'var(--text-muted)' : 'var(--gold-primary)', borderTop: '1px dashed var(--glass-border-hover)', paddingTop: '8px', marginTop: '4px', fontSize: '13px' }}>
+                                                                    <span>المتبقي للتحصيل:</span>
+                                                                    <span>{ord.status === 'Cancelled' ? 'ملغي' : `${currency} ${remaining > 0 ? remaining.toLocaleString('en-US', {maximumFractionDigits: 2}) : '0.00'}`}</span>
+                                                                </div>
+                                                            </>
+                                                        );
+                                                    })()}
+                                                </div>
+                                            </div>
+
+                                            {/* 4. Delivery Tracker Timeline */}
+                                            <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+                                                <h4 style={{ fontSize: '13px', color: 'var(--gold-primary)', marginBottom: '16px', fontWeight: 600 }}>
+                                                    <i className="fa-solid fa-truck-ramp-box" style={{ marginLeft: '6px' }}></i> حالة الشحن
+                                                </h4>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative', padding: '0 10px', marginTop: '10px' }}>
+                                                    <div style={{ position: 'absolute', top: '12px', right: '20px', left: '20px', height: '2px', background: 'var(--glass-border-hover)', zIndex: 1 }} />
+                                                    <div style={{
+                                                        position: 'absolute',
+                                                        top: '12px',
+                                                        right: '20px',
+                                                        width: ord.status === 'Draft' ? '0%' : (ord.status === 'Pending' ? '33%' : (ord.status === 'Shipped' || ord.status === 'Partially Delivered' ? '66%' : '100%')),
+                                                        height: '2px',
+                                                        background: 'var(--gold-primary)',
+                                                        zIndex: 2,
+                                                        transition: 'width 0.3s ease'
+                                                    }} />
+                                                    {[
+                                                        { label: 'إنشاء', active: true },
+                                                        { label: 'تأكيد', active: ord.status !== 'Draft' },
+                                                        { label: 'شحن', active: ord.status !== 'Draft' && ord.status !== 'Pending' },
+                                                        { label: 'تسليم', active: ord.status === 'Completed' }
+                                                    ].map((step, idx) => (
+                                                        <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', zIndex: 3 }}>
+                                                            <div style={{
+                                                                width: '24px',
+                                                                height: '24px',
+                                                                borderRadius: '50%',
+                                                                background: step.active ? 'var(--gold-primary)' : '#26262b',
+                                                                color: step.active ? '#000' : 'rgba(255,255,255,0.3)',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                fontWeight: 'bold',
+                                                                fontSize: '9px',
+                                                                border: '2px solid',
+                                                                borderColor: step.active ? 'var(--gold-primary)' : 'var(--glass-border-hover)'
+                                                            }}>
+                                                                {step.active ? <i className="fa-solid fa-check" style={{ fontSize: '8px' }}></i> : idx + 1}
+                                                            </div>
+                                                            <span style={{ fontSize: '9px', marginTop: '4px', color: step.active ? 'var(--gold-primary)' : 'rgba(255,255,255,0.4)', fontWeight: step.active ? 'bold' : 'normal' }}>
+                                                                {step.label}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {/* 5. Action buttons */}
+                                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', justifyContent: 'center', marginTop: '8px' }}>
+                                                {ord.status !== 'Cancelled' && (
+                                                    <div style={{ position: 'relative' }}>
+                                                        <button 
+                                                            className="btn btn-secondary" 
+                                                            onClick={(e) => { e.stopPropagation(); setActiveDropdownOrderId(isDropdownOpen ? null : ord.id); }}
+                                                            style={{ fontSize: '11px', padding: '6px 10px' }}
+                                                        >
+                                                            <i className="fa-solid fa-arrows-rotate" style={{ marginLeft: '4px' }}></i> حالة التوصيل
+                                                        </button>
+                                                        
+                                                        {isDropdownOpen && (
+                                                            <div className="glass-card" style={{
+                                                                position: 'absolute',
+                                                                bottom: '100%',
+                                                                left: 0,
+                                                                width: '140px',
+                                                                background: 'var(--bg-secondary)',
+                                                                border: '1px solid var(--glass-border)',
+                                                                borderRadius: '6px',
+                                                                boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+                                                                zIndex: 1000,
+                                                                padding: '4px',
+                                                                marginBottom: '4px'
+                                                            }}>
+                                                                {['Draft', 'Pending', 'Shipped', 'Partially Delivered', 'Completed', 'Cancelled'].map(st => (
+                                                                    <div 
+                                                                        key={st}
+                                                                        onClick={() => {
+                                                                            if (st === 'Shipped' && ord.depositStatus === 'pending') {
+                                                                                showToast("لا يمكن شحن الطلب قبل تأكيد استلام العربون", "warning");
+                                                                                return;
+                                                                            }
+                                                                            setActiveDropdownOrderId(null);
+                                                                            handleStatusChange(ord.id, st, bostaTrackingNumber);
+                                                                        }}
+                                                                        style={{
+                                                                            padding: '8px 10px',
+                                                                            fontSize: '11px',
+                                                                            cursor: 'pointer',
+                                                                            color: 'var(--text-primary)',
+                                                                            borderRadius: '4px',
+                                                                            textAlign: 'right',
+                                                                            background: ord.status === st ? 'rgba(212,175,55,0.15)' : 'transparent'
+                                                                        }}
+                                                                        className="autocomplete-option"
+                                                                    >
+                                                                        {getDeliveryStatusLabel(st)}
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                )}
+
+                                                <button 
+                                                    className="btn btn-secondary" 
+                                                    onClick={(e) => { e.stopPropagation(); onOpenEditOrder(ord.id); }}
+                                                    style={{ fontSize: '11px', padding: '6px 10px' }}
+                                                >
+                                                    <i className="fa-solid fa-pen-to-square" style={{ marginLeft: '4px' }}></i> تعديل
+                                                </button>
+
+                                                <button 
+                                                    className="btn btn-secondary" 
+                                                    onClick={(e) => { e.stopPropagation(); handlePrintInvoice(ord); }}
+                                                    style={{ fontSize: '11px', padding: '6px 10px' }}
+                                                >
+                                                    <i className="fa-solid fa-print" style={{ marginLeft: '4px' }}></i> فاتورة
+                                                </button>
+
+                                                <button 
+                                                    className="btn btn-danger" 
+                                                    onClick={(e) => { e.stopPropagation(); handleDeleteOrder(e, ord.id); }}
+                                                    style={{ fontSize: '11px', padding: '6px 10px', background: 'rgba(231,76,60,0.1)', borderColor: 'rgba(231,76,60,0.2)', color: '#e74c3c' }}
+                                                >
+                                                    <i className="fa-solid fa-trash-can" style={{ marginLeft: '4px' }}></i> حذف
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
             </div>
 
             {/* Pagination footer */}

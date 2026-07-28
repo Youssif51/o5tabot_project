@@ -2640,4 +2640,68 @@ input[type=number] {
     }
 }
 
+/* Orders List Mobile responsive card styles */
+.orders-desktop-only {
+    display: block;
+}
+.orders-mobile-cards {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .orders-desktop-only {
+        display: none !important;
+    }
+    .orders-mobile-cards {
+        display: flex !important;
+        flex-direction: column;
+        gap: 12px;
+    }
+}
+
+/* Global phone and whatsapp circular buttons */
+.sa-btn-circle-phone {
+    width: 36px;
+    height: 36px;
+    border-radius: 50% !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 14px !important;
+    cursor: pointer !important;
+    color: #fff !important;
+    transition: all 0.2s ease !important;
+    text-decoration: none !important;
+    background: linear-gradient(135deg, #e5a93b, #c08418) !important;
+    border: 1px solid rgba(229, 169, 59, 0.3) !important;
+    box-shadow: 0 4px 10px rgba(229, 169, 59, 0.2) !important;
+}
+.sa-btn-circle-phone:hover {
+    background: linear-gradient(135deg, #f0be5a, #d49826) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 15px rgba(229, 169, 59, 0.4) !important;
+}
+.sa-btn-circle-whatsapp {
+    width: 36px;
+    height: 36px;
+    border-radius: 50% !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 16px !important;
+    cursor: pointer !important;
+    color: #fff !important;
+    transition: all 0.2s ease !important;
+    text-decoration: none !important;
+    background: linear-gradient(135deg, #25D366, #128C7E) !important;
+    border: 1px solid rgba(37, 211, 102, 0.3) !important;
+    box-shadow: 0 4px 10px rgba(37, 211, 102, 0.2) !important;
+}
+.sa-btn-circle-whatsapp:hover {
+    background: linear-gradient(135deg, #30e374, #149c8c) !important;
+    transform: translateY(-2px) !important;
+    box-shadow: 0 6px 15px rgba(37, 211, 102, 0.4) !important;
+}
+
+
 
