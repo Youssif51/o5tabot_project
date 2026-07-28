@@ -374,7 +374,7 @@ export default function App() {
                     } />
 
                     <Route path="/reports" element={
-                        state.currentUser?.role === 'SuperAdmin' ? (
+                        (state.currentUser?.role === 'SuperAdmin' || (state.currentUser?.permissions || []).includes('view_reports')) ? (
                             <ReportsView />
                         ) : (
                             <Navigate to="/dashboard" replace />
