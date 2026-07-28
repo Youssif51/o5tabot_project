@@ -256,7 +256,8 @@ export default function DepositConfirmList() {
                         <p>لا توجد عرابين معلقة بانتظار تأكيد استلامك حالياً.</p>
                     </div>
                 ) : (
-                    <div className="table-wrapper" style={{ overflowX: 'auto' }}>
+                    <>
+                        <div className="table-wrapper dc-desktop-only" style={{ overflowX: 'auto' }}>
                         <table className="custom-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                             <thead>
                                 <tr style={{ borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }}>
@@ -349,6 +350,112 @@ export default function DepositConfirmList() {
                             </tbody>
                         </table>
                     </div>
+
+                    {/* Mobile view cards for Section 1 */}
+                    <div className="dc-mobile-cards">
+                        {myPendingDeposits.map(ord => (
+                            <div 
+                                key={ord.id} 
+                                className="sa-mobile-card"
+                                style={{
+                                    background: 'rgba(255, 255, 255, 0.02)',
+                                    border: '1px solid var(--glass-border)',
+                                    borderRadius: '12px',
+                                    padding: '16px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '10px'
+                                }}
+                            >
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}>
+                                    <strong style={{ color: 'var(--gold-primary)', fontSize: '15px', fontFamily: 'monospace' }}>#{ord.id}</strong>
+                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{formatOrderDateWithTime(ord)}</span>
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
+                                    <div>
+                                        <span style={{ color: 'var(--text-muted)' }}>العميل:</span>
+                                        <strong style={{ color: '#fff', marginRight: '6px' }}>{ord.client}</strong>
+                                    </div>
+                                    <div>
+                                        <span style={{ color: 'var(--text-muted)' }}>العربون:</span>
+                                        <strong style={{ color: '#2ecc71', marginRight: '6px' }}>{ord.deposit} {currency}</strong>
+                                    </div>
+                                </div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
+                                    <span>مسجل الطلب: </span>
+                                    <strong style={{ color: 'var(--text-secondary)' }}>{ord.createdBy || 'الآدمن'}</strong>
+                                </div>
+
+                                <div style={{ borderTop: '1px dashed var(--glass-border)', paddingTop: '10px', marginTop: '4px' }}>
+                                    {ord.status === 'Cancelled' ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
+                                            <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: 'bold' }}>⚠️ الطلب ملغى</span>
+                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center', width: '100%' }}>
+                                                <button 
+                                                    className="btn"
+                                                    onClick={() => updateDepositStatus(ord.id, 'confirmed')}
+                                                    style={{ padding: '6px 10px', fontSize: '11px', background: '#2ecc71', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', flex: '1 1 auto' }}
+                                                >
+                                                    نعم، استلمت
+                                                </button>
+                                                <button 
+                                                    className="btn"
+                                                    onClick={() => updateDepositStatus(ord.id, 'rejected')}
+                                                    style={{ padding: '6px 10px', fontSize: '11px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px solid var(--glass-border)', borderRadius: '4px', cursor: 'pointer', flex: '1 1 auto' }}
+                                                >
+                                                    لم تصلني الفلوس
+                                                </button>
+
+                                                <div style={{ display: 'flex', gap: '4px', alignItems: 'center', width: '100%', marginTop: '4px', justifyContent: 'center' }}>
+                                                    <input
+                                                        type="file"
+                                                        accept="image/*"
+                                                        style={{ display: 'none' }}
+                                                        ref={el => fileInputRefs.current[`shortcut-mobile-${ord.id}`] = el}
+                                                        onChange={e => handleRefundFileChange(ord.id, e.target.files?.[0] || null)}
+                                                    />
+                                                    <button
+                                                        onClick={() => fileInputRefs.current[`shortcut-mobile-${ord.id}`]?.click()}
+                                                        title="إرفاق إثبات الاسترداد"
+                                                        style={{ padding: '6px 10px', fontSize: '12px', background: (refundConfirm[ord.id]?.file ? 'rgba(46,204,113,0.2)' : 'rgba(255,255,255,0.1)'), color: (refundConfirm[ord.id]?.file ? '#2ecc71' : '#fff'), border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                                    >
+                                                        <i className={refundConfirm[ord.id]?.file ? 'fa-solid fa-check' : 'fa-solid fa-image'}></i> إثبات
+                                                    </button>
+                                                    <button 
+                                                        className="btn"
+                                                        onClick={() => handleConfirmDepositAndRefund(ord.id)}
+                                                        disabled={refundConfirm[ord.id]?.uploading}
+                                                        style={{ padding: '6px 14px', fontSize: '11px', background: '#eab308', color: '#000', border: 'none', borderRadius: '4px', cursor: (refundConfirm[ord.id]?.uploading ? 'not-allowed' : 'pointer'), fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', flex: '1 1 auto' }}
+                                                    >
+                                                        {refundConfirm[ord.id]?.uploading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-bolt"></i>}
+                                                        استلمتها وأرجعتها
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                            <button 
+                                                className="btn"
+                                                onClick={() => updateDepositStatus(ord.id, 'confirmed')}
+                                                style={{ padding: '6px 14px', fontSize: '12px', background: '#2ecc71', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600, flex: 1 }}
+                                            >
+                                                نعم، استلمت
+                                            </button>
+                                            <button 
+                                                className="btn"
+                                                onClick={() => updateDepositStatus(ord.id, 'rejected')}
+                                                style={{ padding: '6px 14px', fontSize: '12px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600, flex: 1 }}
+                                            >
+                                                لا، لم أستلم
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    </>
                 )}
             </div>
 
@@ -410,7 +517,7 @@ export default function DepositConfirmList() {
                                         <h4 style={{ fontSize: '14px', color: 'var(--gold-primary)', marginBottom: '12px' }}>
                                             كشف الحساب التفصيلي لعهدة الأدمن: <strong>{activeAdminData.name}</strong>
                                         </h4>
-                                        <div className="table-wrapper" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                                        <div className="table-wrapper dc-desktop-only" style={{ maxHeight: '300px', overflowY: 'auto' }}>
                                             <table className="custom-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
                                                 <thead>
                                                     <tr style={{ borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }}>
@@ -447,6 +554,51 @@ export default function DepositConfirmList() {
                                                     ))}
                                                 </tbody>
                                             </table>
+                                        </div>
+
+                                        {/* Mobile view cards for Admin Custody Details */}
+                                        <div className="dc-mobile-cards" style={{ maxHeight: '400px', overflowY: 'auto', gap: '10px' }}>
+                                            {activeAdminData.ordersList.map(ord => (
+                                                <div 
+                                                    key={ord.id} 
+                                                    className="sa-mobile-card"
+                                                    style={{
+                                                        background: 'rgba(255, 255, 255, 0.01)',
+                                                        border: '1px solid var(--glass-border)',
+                                                        borderRadius: '8px',
+                                                        padding: '12px',
+                                                        display: 'flex',
+                                                        flexDirection: 'column',
+                                                        gap: '8px'
+                                                    }}
+                                                >
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                        <strong style={{ color: 'var(--gold-primary)', fontFamily: 'monospace' }}>#{ord.id}</strong>
+                                                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{formatOrderDateWithTime(ord)}</span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                                                        <div>
+                                                            <span style={{ color: 'var(--text-muted)' }}>العميل:</span>
+                                                            <strong style={{ color: '#fff', marginRight: '4px' }}>{ord.client}</strong>
+                                                        </div>
+                                                        <div>
+                                                            <span style={{ color: 'var(--text-muted)' }}>العربون:</span>
+                                                            <strong style={{ color: '#2ecc71', marginRight: '4px' }}>{ord.deposit} {currency}</strong>
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', borderTop: '1px dashed var(--glass-border)', paddingTop: '6px', marginTop: '2px' }}>
+                                                        <span style={{ 
+                                                            padding: '2px 6px', 
+                                                            borderRadius: '4px',
+                                                            background: ord.depositStatus === 'confirmed' ? 'rgba(46, 204, 113, 0.15)' : 'rgba(241, 196, 15, 0.15)',
+                                                            color: ord.depositStatus === 'confirmed' ? '#2ecc71' : '#f1c40f'
+                                                        }}>
+                                                            {ord.depositStatus === 'confirmed' ? 'مؤكد الاستلام' : 'بانتظار التأكيد'}
+                                                        </span>
+                                                        <span style={{ color: 'var(--text-muted)' }}>سجل بواسطة: {ord.createdBy}</span>
+                                                    </div>
+                                                </div>
+                                            ))}
                                         </div>
                                     </div>
                                 );
@@ -506,7 +658,7 @@ export default function DepositConfirmList() {
                             </div>
                         ) : (
                             <>
-                                <div className="table-wrapper" style={{ overflowX: 'auto' }}>
+                                <div className="table-wrapper dc-desktop-only" style={{ overflowX: 'auto' }}>
                                     <table className="custom-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                                         <thead>
                                             <tr style={{ borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }}>
@@ -697,6 +849,176 @@ export default function DepositConfirmList() {
                                             })}
                                         </tbody>
                                     </table>
+                                </div>
+
+                                {/* Mobile view cards for Section 3 (Historical Log) */}
+                                <div className="dc-mobile-cards">
+                                    {paginatedHistory.map(ord => {
+                                        const isExpanded = !!expandedHistoryOrderIds[ord.id];
+                                        const parsedAddress = (() => {
+                                            try {
+                                                return JSON.parse(ord.address || '{}');
+                                            } catch {
+                                                return {};
+                                            }
+                                        })();
+                                        const phone = parsedAddress.phone || '';
+                                        const detailAddress = parsedAddress.detailAddress || '';
+                                        const remaining = getRemainingToCollect(ord);
+                                        const productsSubtotal = (ord.items || []).reduce((sum, item) => sum + (item.quantity * item.price), 0);
+                                        const receiverAdmin = (state.users || []).find(u => u.id === ord.depositReceiverId);
+                                        const depositLabel = receiverAdmin ? `العربون المدفوع (${receiverAdmin.name})` : 'العربون المدفوع';
+
+                                        return (
+                                            <div 
+                                                key={ord.id} 
+                                                className="sa-mobile-card"
+                                                style={{
+                                                    background: isExpanded ? 'rgba(212, 175, 55, 0.03)' : 'rgba(255, 255, 255, 0.02)',
+                                                    border: '1px solid var(--glass-border)',
+                                                    borderRadius: '12px',
+                                                    padding: '16px',
+                                                    display: 'flex',
+                                                    flexDirection: 'column',
+                                                    gap: '10px',
+                                                    transition: 'background 0.2s ease'
+                                                }}
+                                            >
+                                                {/* Header row clickable to expand */}
+                                                <div 
+                                                    onClick={() => toggleHistoryOrder(ord.id)}
+                                                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}
+                                                >
+                                                    <strong style={{ color: 'var(--gold-primary)', fontSize: '15px', fontFamily: 'monospace' }}>#{ord.id}</strong>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{formatOrderDateWithTime(ord)}</span>
+                                                        <i className={`fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} style={{ fontSize: '11px', color: 'var(--text-muted)' }}></i>
+                                                    </div>
+                                                </div>
+
+                                                {/* Client & Deposit Amount */}
+                                                <div 
+                                                    onClick={() => toggleHistoryOrder(ord.id)}
+                                                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', cursor: 'pointer' }}
+                                                >
+                                                    <div>
+                                                        <span style={{ color: 'var(--text-muted)' }}>العميل:</span>
+                                                        <strong style={{ color: '#fff', marginRight: '6px' }}>{ord.client}</strong>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ color: 'var(--text-muted)' }}>العربون:</span>
+                                                        <strong style={{ 
+                                                            color: ord.depositStatus === 'settled' ? '#3498db' : '#ef4444', 
+                                                            marginRight: '6px' 
+                                                        }}>
+                                                            {ord.deposit} {currency}
+                                                        </strong>
+                                                    </div>
+                                                </div>
+
+                                                {/* Status Badges & Admin Info */}
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                                                    <div>
+                                                        <span style={{ 
+                                                            fontSize: '11px', 
+                                                            padding: '3px 8px', 
+                                                            borderRadius: '4px',
+                                                            background: ord.depositStatus === 'settled' ? 'rgba(52, 152, 219, 0.15)' : 'rgba(239, 68, 68, 0.15)',
+                                                            color: ord.depositStatus === 'settled' ? '#3498db' : '#ef4444',
+                                                            fontWeight: 600
+                                                        }}>
+                                                            {ord.depositStatus === 'settled' ? 'مسواة بالكامل' : 'تم الرفض'}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                                        <span>الأدمن المستلم: </span>
+                                                        <strong style={{ color: 'var(--text-secondary)' }}>{getAdminName(ord.depositReceiverId)}</strong>
+                                                    </div>
+                                                </div>
+
+                                                {/* Collapsible Details */}
+                                                {isExpanded && (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px dashed var(--glass-border)', paddingTop: '12px', marginTop: '4px' }}>
+                                                        
+                                                        {/* Client Details Card */}
+                                                        <div style={{ background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: '8px', border: '1px solid var(--glass-border)', fontSize: '12px' }}>
+                                                            <h4 style={{ fontSize: '12px', color: 'var(--gold-primary)', marginBottom: '8px', fontWeight: 600 }}>
+                                                                <i className="fa-solid fa-user-tag" style={{ marginLeft: '6px' }}></i> تفاصيل العميل والشحن
+                                                            </h4>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', color: 'var(--text-secondary)' }}>
+                                                                <div><strong>كود العميل:</strong> {getCustomerCode(ord.client)}</div>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                    <strong>رقم الهاتف:</strong> {phone || 'غير مسجل'}
+                                                                    {phone && (
+                                                                        <a 
+                                                                            href={getWhatsAppLink(phone, ord)} 
+                                                                            target="_blank" 
+                                                                            rel="noopener noreferrer"
+                                                                            style={{ color: '#25D366', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
+                                                                        >
+                                                                            <i className="fa-brands fa-whatsapp" style={{ fontSize: '14px' }}></i>
+                                                                        </a>
+                                                                    )}
+                                                                </div>
+                                                                <div><strong>المحافظة:</strong> {ord.governorate || 'غير مسجل'}</div>
+                                                                <div><strong>العنوان:</strong> {detailAddress || 'غير مسجل'}</div>
+                                                                <div><strong>سجل بواسطة:</strong> {ord.createdBy || 'غير معروف'}</div>
+                                                                {ord.discount_reason && (
+                                                                    <div style={{ marginTop: '4px', borderTop: '1px dashed var(--glass-border)', paddingTop: '4px' }}>
+                                                                        <strong>سبب الخصم:</strong> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{ord.discount_reason}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Products Card */}
+                                                        <div style={{ background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: '8px', border: '1px solid var(--glass-border)', fontSize: '12px' }}>
+                                                            <h4 style={{ fontSize: '12px', color: 'var(--gold-primary)', marginBottom: '8px', fontWeight: 600 }}>
+                                                                <i className="fa-solid fa-box-open" style={{ marginLeft: '6px' }}></i> المنتجات المطلوب ({ (ord.items || []).length } أصناف)
+                                                            </h4>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                                                {(ord.items || []).map((item, idx) => (
+                                                                    <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '6px', fontSize: '11.5px' }}>
+                                                                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                                                                            <span style={{ fontWeight: '500', color: '#fff' }}>{getProductNameBySku(item.variantSku)}</span>
+                                                                            <span style={{ fontSize: '10px', color: 'var(--text-muted)' }}>{item.quantity} قطعة × {currency} {item.price}</span>
+                                                                        </div>
+                                                                        <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{currency} {(item.quantity * item.price).toLocaleString()}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+
+                                                        {/* Cost Card */}
+                                                        <div style={{ background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: '8px', border: '1px solid var(--glass-border)', fontSize: '12px' }}>
+                                                            <h4 style={{ fontSize: '12px', color: 'var(--gold-primary)', marginBottom: '8px', fontWeight: 600 }}>
+                                                                <i className="fa-solid fa-file-invoice-dollar" style={{ marginLeft: '6px' }}></i> تفصيل التكلفة
+                                                            </h4>
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', color: 'var(--text-secondary)' }}>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                    <span>إجمالي المنتجات:</span>
+                                                                    <span>{currency} {productsSubtotal.toLocaleString()}</span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                    <span>مصاريف الشحن:</span>
+                                                                    <span>+{currency} {(ord.shipping_fee || 0).toLocaleString()}</span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
+                                                                    <span>{depositLabel}:</span>
+                                                                    <span>-{currency} {(ord.deposit || 0).toLocaleString()}</span>
+                                                                </div>
+                                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: ord.status === 'Cancelled' ? 'var(--text-muted)' : 'var(--gold-primary)', borderTop: '1px dashed var(--glass-border-hover)', paddingTop: '6px', marginTop: '4px' }}>
+                                                                    <span>المتبقي للتحصيل:</span>
+                                                                    <span>{ord.status === 'Cancelled' ? 'ملغي' : `${currency} ${remaining > 0 ? remaining.toLocaleString() : '0.00'}`}</span>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
                                 </div>
 
                                 {/* Pagination controls */}

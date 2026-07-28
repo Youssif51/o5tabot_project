@@ -1602,6 +1602,27 @@ input[type=number] {
     100% { top: 10%; }
 }
 
+/* Deposit Confirmation Mobile responsive card styles */
+.dc-desktop-only {
+    display: block;
+}
+.dc-mobile-cards {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .dc-desktop-only {
+        display: none !important;
+    }
+    .dc-mobile-cards {
+        display: flex !important;
+        flex-direction: column;
+        gap: 12px;
+    }
+}
+
+/* Global phone and whatsapp circular buttons */
+
 /* SVG Chart Visualizations */
 .chart-bar-rect {
     fill: url(#gold-gradient-svg);
