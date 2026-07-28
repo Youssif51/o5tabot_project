@@ -569,10 +569,13 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         return sum + (item.variantSku ? sub : 0);
     }, 0);
 
+    // Total base for order-level discount is products subtotal + shipping fee
+    const orderDiscountBase = totalProductsSubtotal + shippingFeeVal;
+
     let couponDisc = 0;
     if (couponValid) {
         if (couponDiscountType === 'Percentage') {
-            couponDisc = totalProductsSubtotal * (couponDiscountValue / 100);
+            couponDisc = orderDiscountBase * (couponDiscountValue / 100);
         } else {
             couponDisc = couponDiscountValue;
         }
@@ -582,17 +585,21 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const gDiscountVal = parseFloat(globalDiscountValue) || 0;
     if (gDiscountVal > 0) {
         if (globalDiscountType === 'Percentage') {
-            globalDisc = totalProductsSubtotal * (gDiscountVal / 100);
+            const percentage = Math.min(100, gDiscountVal);
+            globalDisc = orderDiscountBase * (percentage / 100);
         } else {
             globalDisc = gDiscountVal;
         }
     }
 
     const orderDiscountAmount = couponDisc + globalDisc;
-    const discountedProductsTotal = Math.max(0, totalProductsSubtotal - orderDiscountAmount);
     
+    // For VAT calculation: it applies only to products, so we subtract the discount from products first
+    const discountedProductsTotal = Math.max(0, totalProductsSubtotal - orderDiscountAmount);
     const vatAmount = vatEnabled ? Math.round(discountedProductsTotal * 0.14 * 100) / 100 : 0;
-    const finalOrderTotal = Math.round((discountedProductsTotal + vatAmount + shippingFeeVal) * 100) / 100;
+    
+    // Final order total subtracts the discount from the entire (subtotal + shipping) base and adds VAT
+    const finalOrderTotal = Math.round((Math.max(0, orderDiscountBase - orderDiscountAmount) + vatAmount) * 100) / 100;
     const remainingToCollect = Math.round((finalOrderTotal - depositVal) * 100) / 100;
 
     const getCurrentStock = (sku) => {
@@ -1580,7 +1587,17 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             type="number"
                                             min="0"
                                             value={globalDiscountValue}
-                                            onChange={(e) => setGlobalDiscountValue(e.target.value)}
+                                             onChange={(e) => {
+                                                 const valStr = e.target.value;
+                                                 if (valStr === '') {
+                                                     setGlobalDiscountValue('');
+                                                     return;
+                                                 }
+                                                 let val = parseFloat(valStr) || 0;
+                                                 if (val < 0) val = 0;
+                                                 if (globalDiscountType === 'Percentage' && val > 100) val = 100;
+                                                 setGlobalDiscountValue(String(val));
+                                             }}
                                             placeholder="0"
                                             style={{
                                                 flex: 1,
@@ -1593,7 +1610,14 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         />
                                         <select 
                                             value={globalDiscountType}
-                                            onChange={(e) => setGlobalDiscountType(e.target.value)}
+                                             onChange={(e) => {
+                                                 const type = e.target.value;
+                                                 setGlobalDiscountType(type);
+                                                 if (type === 'Percentage') {
+                                                     const val = parseFloat(globalDiscountValue) || 0;
+                                                     if (val > 100) setGlobalDiscountValue('100');
+                                                 }
+                                             }}
                                             style={{
                                                 background: 'var(--glass-bg-hover)',
                                                 border: 'none',
