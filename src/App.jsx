@@ -386,7 +386,7 @@ export default function App() {
                     } />
 
                     <Route path="/store" element={
-                        state.currentUser?.role === 'SuperAdmin' ? (
+                        state.currentUser ? (
                             <StoreSettings />
                         ) : (
                             <Navigate to="/dashboard" replace />

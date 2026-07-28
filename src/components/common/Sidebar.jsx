@@ -149,32 +149,30 @@ export default function Sidebar() {
                         display: 'flex',
                         flexDirection: 'column'
                     }}>
-                        {checkPermission('manage_settings') && (
-                            <a 
-                                href="#" 
-                                onClick={(e) => { 
-                                    e.preventDefault(); 
-                                    setCurrentView('store'); 
-                                    setShowUserDropdown(false); 
-                                }}
-                                style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '10px',
-                                    padding: '12px 16px',
-                                    color: 'var(--text-primary)',
-                                    fontSize: '13px',
-                                    textDecoration: 'none',
-                                    borderBottom: '1px solid rgba(255,255,255,0.05)',
-                                    transition: 'background 0.2s'
-                                }}
-                                onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.05)'}
-                                onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                            >
-                                <img src="/icons/Settings.png" alt="Settings" style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
-                                <span>{t('settings')}</span>
-                            </a>
-                        )}
+                        <a 
+                            href="#" 
+                            onClick={(e) => { 
+                                e.preventDefault(); 
+                                setCurrentView('store'); 
+                                setShowUserDropdown(false); 
+                            }}
+                            style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                padding: '12px 16px',
+                                color: 'var(--text-primary)',
+                                fontSize: '13px',
+                                textDecoration: 'none',
+                                borderBottom: '1px solid rgba(255,255,255,0.05)',
+                                transition: 'background 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.05)'}
+                            onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                        >
+                            <img src="/icons/Settings.png" alt="Settings" style={{ width: '18px', height: '18px', objectFit: 'contain' }} />
+                            <span>{state.currentUser?.role === 'SuperAdmin' ? t('settings') : 'إعدادات الحساب'}</span>
+                        </a>
                         <a 
                             href="#" 
                             onClick={(e) => { 

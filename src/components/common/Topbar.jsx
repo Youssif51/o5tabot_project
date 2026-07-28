@@ -360,33 +360,31 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
                             flexDirection: 'column',
                             overflow: 'hidden'
                         }}>
-                            {(state.currentUser.role === 'SuperAdmin' || (state.currentUser.permissions || []).includes('manage_settings')) && (
-                                <a 
-                                    href="#" 
-                                    onClick={(e) => { 
-                                        e.preventDefault(); 
-                                        setCurrentView('store'); 
-                                        setShowProfileDropdown(false); 
-                                    }}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        gap: '10px',
-                                        padding: '12px 16px',
-                                        color: 'var(--text-primary)',
-                                        fontSize: '13px',
-                                        textDecoration: 'none',
-                                        borderBottom: '1px solid rgba(255,255,255,0.05)',
-                                        transition: 'background 0.2s',
-                                        textAlign: 'right'
-                                    }}
-                                    onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.05)'}
-                                    onMouseLeave={(e) => e.target.style.background = 'transparent'}
-                                >
-                                    <img src="/icons/Settings.png" alt="Settings" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
-                                    <span>{t('settings')}</span>
-                                </a>
-                            )}
+                            <a 
+                                href="#" 
+                                onClick={(e) => { 
+                                    e.preventDefault(); 
+                                    setCurrentView('store'); 
+                                    setShowProfileDropdown(false); 
+                                }}
+                                style={{
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '10px',
+                                    padding: '12px 16px',
+                                    color: 'var(--text-primary)',
+                                    fontSize: '13px',
+                                    textDecoration: 'none',
+                                    borderBottom: '1px solid rgba(255,255,255,0.05)',
+                                    transition: 'background 0.2s',
+                                    textAlign: 'right'
+                                }}
+                                onMouseEnter={(e) => e.target.style.background = 'rgba(255,255,255,0.05)'}
+                                onMouseLeave={(e) => e.target.style.background = 'transparent'}
+                            >
+                                <img src="/icons/Settings.png" alt="Settings" style={{ width: '16px', height: '16px', objectFit: 'contain' }} />
+                                <span>{state.currentUser?.role === 'SuperAdmin' ? t('settings') : 'إعدادات الحساب'}</span>
+                            </a>
                             <a 
                                 href="#" 
                                 onClick={(e) => { 
