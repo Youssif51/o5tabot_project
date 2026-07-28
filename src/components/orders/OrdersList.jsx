@@ -1019,20 +1019,16 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                                                         <button 
                                                              className="action-btn-circle" 
                                                              style={{ 
-                                                                 background: ord.status === 'Cancelled' ? 'rgba(255,255,255,0.03)' : 'var(--glass-bg-hover)', 
-                                                                 color: ord.status === 'Cancelled' ? 'var(--text-muted)' : 'var(--text-primary)', 
-                                                                 borderColor: ord.status === 'Cancelled' ? 'rgba(255,255,255,0.05)' : 'var(--glass-border-hover)',
-                                                                 cursor: ord.status === 'Cancelled' ? 'not-allowed' : 'pointer',
-                                                                 opacity: ord.status === 'Cancelled' ? 0.5 : 1
+                                                                 background: 'var(--glass-bg-hover)', 
+                                                                 color: 'var(--text-primary)', 
+                                                                 borderColor: 'var(--glass-border-hover)',
+                                                                 cursor: 'pointer',
+                                                                 opacity: 1
                                                              }}
-                                                              onClick={() => {
-                                                                  if (ord.status === 'Cancelled') {
-                                                                      showToast("الطلبات الملغية لا يمكن التعديل عليها", "warning");
-                                                                      return;
-                                                                  }
-                                                                  onOpenEditOrder(ord.id);
-                                                              }}
-                                                             title={ord.status === 'Cancelled' ? "لا يمكن تعديل الطلبات الملغية" : "تعديل الطلب"}
+                                                             onClick={() => {
+                                                                 onOpenEditOrder(ord.id);
+                                                             }}
+                                                             title="تعديل الطلب"
                                                          >
                                                              <i className="fa-solid fa-pen-to-square"></i>
                                                          </button>
