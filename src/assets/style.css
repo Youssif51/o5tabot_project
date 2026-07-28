@@ -2659,7 +2659,24 @@ input[type=number] {
     }
 }
 
-/* Global phone and whatsapp circular buttons */
+/* Inventory List Mobile responsive card styles */
+.inventory-desktop-only {
+    display: block;
+}
+.inventory-mobile-cards {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .inventory-desktop-only {
+        display: none !important;
+    }
+    .inventory-mobile-cards {
+        display: flex !important;
+        flex-direction: column;
+        gap: 12px;
+    }
+}
 .sa-btn-circle-phone {
     width: 36px;
     height: 36px;

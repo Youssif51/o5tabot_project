@@ -339,7 +339,7 @@ export default function InventoryList({
                     )}
 
                     {/* Catalog Table */}
-                    <div className="table-wrapper">
+                    <div className="table-wrapper inventory-desktop-only">
                         <table className="custom-table">
                             <thead>
                                 <tr>
@@ -494,6 +494,173 @@ export default function InventoryList({
                         </table>
                     </div>
 
+                    {/* Mobile view cards */}
+                    <div className="inventory-mobile-cards">
+                        {paginatedList.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', background: 'var(--glass-bg)', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
+                                {t('noProducts')}
+                            </div>
+                        ) : (
+                            paginatedList.map(prod => {
+                                // Average Wholesale / Buying price
+                                let totalQty = 0;
+                                let totalWholesale = 0;
+                                prod.variants.forEach(vr => {
+                                    const qty = (vr.stock.Sulur || 0);
+                                    totalQty += qty;
+                                    totalWholesale += qty * vr.wholesalePrice;
+                                });
+                                const buyingPrice = totalQty > 0 ? (totalWholesale / totalQty) : (prod.variants[0]?.wholesalePrice || 0);
+
+                                // Threshold / Reorder limit average
+                                const threshold = prod.variants[0]?.reorderLimit || 1;
+
+                                // Calculate Stock Runway
+                                const dailyBurnRate = (prod.totalConsumed || 0) / 30;
+                                let runwayDays = "Stable";
+                                let runwayBadgeClass = "badge-success";
+                                if (dailyBurnRate > 0) {
+                                    runwayDays = Math.ceil(totalQty / dailyBurnRate);
+                                    if (runwayDays <= 5) {
+                                        runwayBadgeClass = "badge-danger";
+                                    } else if (runwayDays <= 15) {
+                                        runwayBadgeClass = "badge-warning";
+                                    }
+                                }
+
+                                // Availability status
+                                let statusText = t('inStock');
+                                let badgeClass = "badge-success";
+                                let hasOutOfStock = false;
+                                let hasLowStock = false;
+
+                                prod.variants.forEach(vr => {
+                                    const qty = Number(vr.stock?.Sulur || 0);
+                                    const limit = vr.reorderLimit !== undefined && vr.reorderLimit !== null && vr.reorderLimit !== "" ? Number(vr.reorderLimit) : 5;
+                                    if (qty === 0) hasOutOfStock = true;
+                                    else if (qty <= limit) hasLowStock = true;
+                                });
+
+                                if (hasOutOfStock) {
+                                    statusText = t('outOfStock');
+                                    badgeClass = "badge-danger";
+                                } else if (hasLowStock) {
+                                    statusText = t('lowStock');
+                                    badgeClass = "badge-warning";
+                                }
+
+                                return (
+                                    <div 
+                                        key={prod.id} 
+                                        className="sa-mobile-card"
+                                        style={{
+                                            background: 'rgba(255, 255, 255, 0.02)',
+                                            border: '1px solid var(--glass-border)',
+                                            borderRadius: '12px',
+                                            padding: '16px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '10px'
+                                        }}
+                                    >
+                                        {/* Header: Name & Collection */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}>
+                                            <div>
+                                                <strong 
+                                                    style={{ color: 'var(--gold-primary)', fontSize: '14px', cursor: 'pointer' }}
+                                                    onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
+                                                >
+                                                    {deduplicateProductName(prod.name)}
+                                                </strong>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                                    {(() => {
+                                                        if (!prod.shopifyCollectionIds || prod.shopifyCollectionIds.length === 0) {
+                                                            return prod.category || 'بدون مجموعة';
+                                                        }
+                                                        const names = prod.shopifyCollectionIds.map(id => {
+                                                            const col = (state.collections || []).find(c => String(c.id) === String(id));
+                                                            return col ? col.title : null;
+                                                        }).filter(Boolean);
+                                                        return names.length > 0 ? names.join(', ') : (prod.category || 'بدون مجموعة');
+                                                    })()}
+                                                </div>
+                                            </div>
+                                            <span className={`badge ${badgeClass}`} style={{ fontSize: '10px', padding: '3px 6px' }}>{statusText}</span>
+                                        </div>
+
+                                        {/* Body info: Price, Qty, Runway */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                                            <div>
+                                                <span style={{ color: 'var(--text-muted)' }}>سعر الشراء: </span>
+                                                <strong style={{ color: '#fff' }}>{currency} {buyingPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
+                                            </div>
+                                            <div>
+                                                <span style={{ color: 'var(--text-muted)' }}>المخزون الحالي: </span>
+                                                <strong style={{ color: 'var(--gold-primary)' }}>{totalQty} {t('packets')}</strong>
+                                            </div>
+                                        </div>
+
+                                        {/* Threshold & Runway & Admin */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                                            <div>
+                                                <span style={{ color: 'var(--text-muted)' }}>حد التنبيه: </span>
+                                                <strong style={{ color: '#fff' }}>{threshold} {t('packets')}</strong>
+                                            </div>
+                                            <div>
+                                                <span style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>الاستهلاك: </span>
+                                                {runwayDays === "Stable" ? (
+                                                    <span className="badge badge-success" style={{ fontSize: '10px', padding: '2px 5px' }}>{t('stockHealthy')}</span>
+                                                ) : (
+                                                    <span className={`badge ${runwayBadgeClass}`} style={{ fontSize: '10px', padding: '2px 5px' }}>
+                                                        {runwayDays} {t('left')}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Footer details & Action buttons */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--glass-border)', paddingTop: '10px', marginTop: '4px' }}>
+                                            <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                                <span>سجل بواسطة: </span>
+                                                <strong>{prod.createdBy || 'الآدمن'}</strong>
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '6px' }}>
+                                                <button 
+                                                    className="action-btn-circle" 
+                                                    title="Inspect Catalog"
+                                                    onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
+                                                    style={{ width: '30px', height: '30px', fontSize: '11px' }}
+                                                >
+                                                    <i className="fa-solid fa-magnifying-glass"></i>
+                                                </button>
+                                                <button 
+                                                    className="action-btn-circle" 
+                                                    title="Edit Catalog"
+                                                    onClick={() => onOpenEditProduct(prod.id)}
+                                                    style={{ width: '30px', height: '30px', fontSize: '11px' }}
+                                                >
+                                                    <i className="fa-solid fa-pencil"></i>
+                                                </button>
+                                                <button 
+                                                    className="action-btn-circle" 
+                                                    title="Delete Product"
+                                                    style={{ color: 'var(--color-danger)', width: '30px', height: '30px', fontSize: '11px' }}
+                                                    onClick={() => {
+                                                        showConfirm('هل أنت متأكد من مسح هذا المنتج من المتجر ومن شوبيفاي؟', () => {
+                                                            deleteProduct(prod.id);
+                                                        });
+                                                    }}
+                                                >
+                                                    <i className="fa-solid fa-trash"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+
                     {/* Pagination Footer */}
                     <div style={{ padding: '24px 0 12px 0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--glass-border)', marginTop: '16px' }}>
                         <button 
@@ -524,7 +691,7 @@ export default function InventoryList({
                         <h3>{t('stockLedger')}</h3>
                     </div>
 
-                    <div className="table-wrapper">
+                    <div className="table-wrapper inventory-desktop-only">
                         <table className="custom-table">
                             <thead>
                                 <tr>
@@ -580,6 +747,80 @@ export default function InventoryList({
                                 )}
                             </tbody>
                         </table>
+                    </div>
+
+                    {/* Mobile view cards for Stock Ledger */}
+                    <div className="inventory-mobile-cards">
+                        {!state.stockLedger || state.stockLedger.length === 0 ? (
+                            <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', background: 'var(--glass-bg)', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
+                                {t('noRecords')}
+                            </div>
+                        ) : (
+                            state.stockLedger.map((entry, idx) => {
+                                const prod = state.products.find(p => p.id === entry.productId);
+                                const prodName = prod ? deduplicateProductName(prod.name) : entry.productId;
+
+                                let typeBadge = null;
+                                if (entry.type === "Sale") {
+                                    typeBadge = <span className="badge badge-danger" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-arrow-trend-down"></i> {t('sales')}</span>;
+                                } else if (entry.type === "Purchase") {
+                                    typeBadge = <span className="badge badge-success" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-arrow-trend-up"></i> {t('purchase')}</span>;
+                                } else if (entry.type === "Correction") {
+                                    typeBadge = <span className="badge badge-warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-wrench"></i> {t('adjustments')}</span>;
+                                } else if (entry.type === "Waste") {
+                                    typeBadge = <span className="badge badge-danger" style={{ background: '#721c24', display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-trash-can"></i> {t('damagedWaste')}</span>;
+                                } else {
+                                    typeBadge = <span className="badge badge-info" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-rotate-left"></i> {t('return')}</span>;
+                                }
+
+                                return (
+                                    <div 
+                                        key={idx} 
+                                        className="sa-mobile-card"
+                                        style={{
+                                            background: 'rgba(255, 255, 255, 0.02)',
+                                            border: '1px solid var(--glass-border)',
+                                            borderRadius: '12px',
+                                            padding: '16px',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '10px'
+                                        }}
+                                    >
+                                        {/* Header: Product & Date */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}>
+                                            <div>
+                                                <strong style={{ color: 'var(--gold-primary)', fontSize: '14px' }}>{prodName}</strong>
+                                                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', fontFamily: 'monospace' }}>
+                                                    {entry.variantSku}
+                                                </div>
+                                            </div>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{entry.date}</span>
+                                        </div>
+
+                                        {/* Body: Location, Type, Qty */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                <span className="badge badge-info" style={{ fontSize: '10px' }}>{entry.warehouse === 'Sulur' ? t('inSulur') : t('inSinganallur')}</span>
+                                                {typeBadge}
+                                            </div>
+                                            <div>
+                                                <span style={{ color: 'var(--text-muted)' }}>الحركة: </span>
+                                                <strong style={{ color: entry.quantity > 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>
+                                                    {entry.quantity > 0 ? `+${entry.quantity}` : entry.quantity}
+                                                </strong>
+                                            </div>
+                                        </div>
+
+                                        {/* Footer: Balance after */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--glass-border)', paddingTop: '10px', marginTop: '4px', fontSize: '12px' }}>
+                                            <span style={{ color: 'var(--text-muted)' }}>الرصيد بعد الحركة:</span>
+                                            <strong style={{ color: '#fff' }}>{entry.balanceAfter} قطع</strong>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
                     </div>
                 </div>
             )}
