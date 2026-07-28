@@ -284,7 +284,7 @@ export default function App() {
     }
 
     return (
-        <div className={`app-container ${sidebarOpen ? 'sidebar-open' : ''}`}>
+        <div className={`app-container ${sidebarOpen ? 'sidebar-open' : ''}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
             {/* Sidebar Navigation */}
             <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
 

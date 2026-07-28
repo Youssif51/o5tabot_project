@@ -2121,8 +2121,10 @@ input[type=number] {
 
     /* Top Bar Mobile Adjustments */
     .top-bar {
-        flex-direction: row;
-        flex-wrap: wrap;
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        justify-content: space-between !important;
+        align-items: center !important;
         gap: 12px;
         padding-bottom: 12px;
     }
@@ -2133,7 +2135,7 @@ input[type=number] {
     }
 
     .top-bar-actions {
-        width: 100%;
+        width: auto !important;
         display: flex;
         justify-content: flex-end;
         align-items: center;

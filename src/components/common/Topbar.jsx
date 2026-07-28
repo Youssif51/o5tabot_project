@@ -158,14 +158,6 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
                     )}
                 </button>
 
-                {/* Language Switch Button */}
-                <button 
-                    className="btn btn-secondary" 
-                    onClick={() => setLanguage(prev => prev === 'en' ? 'ar' : 'en')}
-                    style={{ padding: '6px 12px', fontSize: '11px', fontWeight: 700 }}
-                >
-                    {language === 'en' ? 'العربية' : 'English'}
-                </button>
 
                 {/* Dynamic Notifications Dropdown */}
                 <div 
