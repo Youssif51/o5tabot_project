@@ -1633,6 +1633,21 @@ export const AppProvider = ({ children }) => {
             ...prev,
             orders: (prev.orders || []).map(o => o.id === orderId ? { ...o, ...props } : o)
         }));
+
+        // Trigger deposit assignment email if deposit is pending and receiver is another admin
+        const hasPendingDeposit = props.depositStatus === 'pending' || (!props.depositStatus && props.deposit > 0);
+        if (props.deposit > 0 && hasPendingDeposit && props.depositReceiverId && props.depositReceiverId !== state.currentUser?.id) {
+            const targetAdmin = (state.users || []).find(u => u.id === props.depositReceiverId);
+            const order = (state.orders || []).find(o => o.id === orderId);
+            if (targetAdmin && targetAdmin.email) {
+                sendAdminNotification("deposit_assignment", targetAdmin.email, {
+                    amount: props.deposit,
+                    clientName: order?.client || props.client || "العميل",
+                    orderId: orderId,
+                    creatorName: state.currentUser?.name || "أدمن"
+                });
+            }
+        }
     };
 
     const settleAdminsCustody = async (adminId, orderIds) => {
@@ -3481,6 +3496,19 @@ export const AppProvider = ({ children }) => {
 
             // Keep status as 'Pending' in DB and state so admin tracks it manually in OrdersList
             updateOrderStatus(orderId, 'Pending', finalAddressStr);
+            
+            // Trigger deposit assignment email if deposit is pending and receiver is another admin
+            if (depositAmount > 0 && depositStatus === 'pending' && depositReceiverId && depositReceiverId !== state.currentUser?.id) {
+                const targetAdmin = (state.users || []).find(u => u.id === depositReceiverId);
+                if (targetAdmin && targetAdmin.email) {
+                    sendAdminNotification("deposit_assignment", targetAdmin.email, {
+                        amount: depositAmount,
+                        clientName: targetOrder?.client || "عميل شوبيفاي",
+                        orderId: orderId,
+                        creatorName: state.currentUser?.name || "أدمن"
+                    });
+                }
+            }
             
             showToast(
                 language === 'ar' 
