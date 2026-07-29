@@ -606,7 +606,7 @@ export default function ReportsView() {
                             )}
                         </div>
 
-                        <div className="table-wrapper" style={{ overflowX: 'auto' }}>
+                        <div className="table-wrapper reports-desktop-only" style={{ overflowX: 'auto' }}>
                             <table className="custom-table" style={{ fontSize: '0.88rem', whiteSpace: 'nowrap' }}>
                                 <thead>
                                     <tr>
@@ -653,6 +653,34 @@ export default function ReportsView() {
                                     )}
                                 </tbody>
                             </table>
+                        </div>
+
+                        {/* Mobile view cards */}
+                        <div className="reports-mobile-cards" style={{ display: 'none', flexDirection: 'column', gap: '12px' }}>
+                            {currentPageProducts.length === 0 ? (
+                                <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '24px' }}>لا توجد بيانات مبيعات مطابقة للفترة المحددة</p>
+                            ) : (
+                                currentPageProducts.map((prod, idx) => (
+                                    <div key={`prod-profit-mob-${idx}`} className="sa-mobile-card" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <strong style={{ color: 'var(--text-primary)', fontSize: '13px' }}>{prod.name}</strong>
+                                            <span className={`badge ${prod.marginPct >= 30 ? 'badge-success' : prod.marginPct >= 15 ? 'badge-warning' : 'badge-danger'}`} style={{ fontSize: '10.5px' }}>
+                                                {prod.marginPct}% هامش
+                                            </span>
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                            <span style={{ background: 'rgba(255,255,255,0.04)', padding: '2px 6px', borderRadius: '4px' }}>SKU: {prod.sku}</span>
+                                            <span style={{ background: 'rgba(255,255,255,0.04)', padding: '2px 6px', borderRadius: '4px' }}>{prod.category}</span>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', padding: '8px', background: 'rgba(255,255,255,0.01)', borderRadius: '4px', fontSize: '11.5px', marginTop: '4px' }}>
+                                            <div>الكمية المباعة: <strong style={{ color: '#fff' }}>{prod.qtySold}</strong></div>
+                                            <div>صافي الإيراد: <strong style={{ color: 'var(--color-info)' }}>{currency} {prod.netRevenue.toLocaleString()}</strong></div>
+                                            <div>تكلفة المباع: <strong style={{ color: '#a084dc' }}>{currency} {prod.cogs.toLocaleString()}</strong></div>
+                                            <div>صافي الربح: <strong style={{ color: prod.netProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>{currency} {prod.netProfit.toLocaleString()}</strong></div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
 
                         {/* Pagination Controls */}
@@ -718,7 +746,7 @@ export default function ReportsView() {
             </Modal>
 
             <Modal isOpen={isProdModalOpen} onClose={() => setIsProdModalOpen(false)} title="ربحية جميع المنتجات والأصناف" width="1000px">
-                <div className="table-wrapper" style={{ maxHeight: '65vh', overflowY: 'auto', overflowX: 'auto' }}>
+                <div className="table-wrapper reports-desktop-only" style={{ maxHeight: '65vh', overflowY: 'auto', overflowX: 'auto' }}>
                     <table className="custom-table" style={{ fontSize: '0.85rem', whiteSpace: 'nowrap' }}>
                         <thead>
                             <tr>
@@ -757,6 +785,28 @@ export default function ReportsView() {
                             ))}
                         </tbody>
                     </table>
+                </div>
+                <div className="reports-mobile-cards" style={{ display: 'none', flexDirection: 'column', gap: '12px', maxHeight: '65vh', overflowY: 'auto', padding: '8px' }}>
+                    {sortedProducts.map((prod, idx) => (
+                        <div key={`mod-prod-mob-${idx}`} className="sa-mobile-card" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <strong style={{ color: 'var(--text-primary)', fontSize: '13px' }}>{prod.name}</strong>
+                                <span className={`badge ${prod.marginPct >= 30 ? 'badge-success' : prod.marginPct >= 15 ? 'badge-warning' : 'badge-danger'}`} style={{ fontSize: '10.5px' }}>
+                                    {prod.marginPct}% هامش
+                                </span>
+                            </div>
+                            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                <span style={{ background: 'rgba(255,255,255,0.04)', padding: '2px 6px', borderRadius: '4px' }}>SKU: {prod.sku}</span>
+                                <span style={{ background: 'rgba(255,255,255,0.04)', padding: '2px 6px', borderRadius: '4px' }}>{prod.category}</span>
+                            </div>
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', padding: '8px', background: 'rgba(255,255,255,0.01)', borderRadius: '4px', fontSize: '11.5px', marginTop: '4px' }}>
+                                <div>الكمية المباعة: <strong style={{ color: '#fff' }}>{prod.qtySold}</strong></div>
+                                <div>صافي الإيراد: <strong style={{ color: 'var(--color-info)' }}>{currency} {prod.netRevenue.toLocaleString()}</strong></div>
+                                <div>تكلفة المباع: <strong style={{ color: '#a084dc' }}>{currency} {prod.cogs.toLocaleString()}</strong></div>
+                                <div>صافي الربح: <strong style={{ color: prod.netProfit >= 0 ? 'var(--color-success)' : 'var(--color-danger)' }}>{currency} {prod.netProfit.toLocaleString()}</strong></div>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </Modal>
 

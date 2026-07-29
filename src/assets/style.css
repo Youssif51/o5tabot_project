@@ -2890,5 +2890,24 @@ input[type=number] {
     }
 }
 
+/* Reports View Mobile responsive styles */
+.reports-desktop-only {
+    display: block;
+}
+.reports-mobile-cards {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .reports-desktop-only {
+        display: none !important;
+    }
+    .reports-mobile-cards {
+        display: flex !important;
+        flex-direction: column;
+        gap: 12px;
+    }
+}
+
 
 
