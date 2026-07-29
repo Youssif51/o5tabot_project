@@ -9,44 +9,6 @@ import { supabase } from '../../utils/supabase';
 
 export default function ShopifyPendingList() {
     const { state, updateOrderStatus, updateOrderProperties, approveOrderWithBosta, deductOrderStock, fetchMissingOrderItems, showToast, showConfirm, addCustomer, setCustomerSpam, logActivity } = useContext(AppContext);
-
-const parseAddressData = (addressStr) => {
-        let detailAddress = addressStr || '';
-        let phone = '';
-        let vatEnabled = false;
-        let orderDiscountPercent = 0;
-        let customerCode = 'CUS-0000';
-        
-        if (addressStr && addressStr.startsWith('{')) {
-            try {
-                const parsed = JSON.parse(addressStr);
-                detailAddress = parsed.detailAddress || '';
-                phone = parsed.phone || '';
-                vatEnabled = parsed.vatEnabled || false;
-                orderDiscountPercent = parseFloat(parsed.orderDiscountPercent) || 0;
-                customerCode = parsed.customerCode || 'CUS-0000';
-            } catch(e) {}
-        }
-        return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode };
-    };
-
-    const normalizePhoneNumber = (phoneStr) => {
-        if (!phoneStr) return '';
-        let clean = phoneStr.replace(/\D/g, '');
-        if (clean.startsWith('20') && clean.length > 10) {
-            clean = clean.substring(2);
-        } else if (clean.startsWith('2') && clean.length > 10) {
-            clean = clean.substring(1);
-        }
-        if (clean.length === 10 && (clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15'))) {
-            clean = '0' + clean;
-        }
-        if (!clean.startsWith('0') && clean.length === 10) {
-            clean = '0' + clean;
-        }
-        return clean;
-    };
-
     const [globalSearch, setGlobalSearch] = useState('');
     const [expandedOrderIds, setExpandedOrderIds] = useState({});
     
@@ -83,7 +45,7 @@ const parseAddressData = (addressStr) => {
             `;
             document.head.appendChild(style);
         }
-        
+    
     const renderOrderDetailDrawer = (ord) => {
         const isBostaEnabled = bostaSyncMap[ord.id] !== false;
         const { phone, detailAddress } = parseAddressData(ord.address);
@@ -603,7 +565,7 @@ const parseAddressData = (addressStr) => {
         );
     };
 
-return () => {
+    return () => {
             const existing = document.getElementById(styleId);
             if (existing) existing.remove();
         };
@@ -645,7 +607,42 @@ return () => {
     };
 
     // Parse address JSON structure safely
-    
+    const parseAddressData = (addressStr) => {
+        let detailAddress = addressStr || '';
+        let phone = '';
+        let vatEnabled = false;
+        let orderDiscountPercent = 0;
+        let customerCode = 'CUS-0000';
+        
+        if (addressStr && addressStr.startsWith('{')) {
+            try {
+                const parsed = JSON.parse(addressStr);
+                detailAddress = parsed.detailAddress || '';
+                phone = parsed.phone || '';
+                vatEnabled = parsed.vatEnabled || false;
+                orderDiscountPercent = parseFloat(parsed.orderDiscountPercent) || 0;
+                customerCode = parsed.customerCode || 'CUS-0000';
+            } catch(e) {}
+        }
+        return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode };
+    };
+
+    const normalizePhoneNumber = (phoneStr) => {
+        if (!phoneStr) return '';
+        let clean = phoneStr.replace(/\D/g, '');
+        if (clean.startsWith('20') && clean.length > 10) {
+            clean = clean.substring(2);
+        } else if (clean.startsWith('2') && clean.length > 10) {
+            clean = clean.substring(1);
+        }
+        if (clean.length === 10 && (clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15'))) {
+            clean = '0' + clean;
+        }
+        if (!clean.startsWith('0') && clean.length === 10) {
+            clean = '0' + clean;
+        }
+        return clean;
+    };
 
     // Filter Logic: only pending Shopify orders
     const pendingOrders = (state.orders || []).filter(ord => {
@@ -1022,7 +1019,7 @@ return () => {
             {/* 4. FILTER BAR */}
             <div className="glass-card filter-bar" style={{ padding: '16px', marginBottom: '24px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div className="search-input-wrapper" style={{ minWidth: '200px', flex: 1 }}>
+                    <div className="search-input-wrapper" style={{ minWidth: '300px', flex: 1 }}>
                         <i className="fa-solid fa-magnifying-glass search-icon"></i>
                         <input 
                             type="text" 
@@ -1238,26 +1235,44 @@ return () => {
                                     transition: 'background 0.2s ease'
                                 }}
                             >
-                                {/* Header Clickable to Toggle Expand */}
+                                {/* Header Clickable to Toggle Expand - Two-row layout to prevent mobile squeeze */}
                                 <div 
                                     onClick={() => toggleRow(ord.id)}
-                                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}
+                                    style={{ 
+                                        display: 'flex', 
+                                        flexDirection: 'column',
+                                        gap: '8px',
+                                        cursor: 'pointer', 
+                                        borderBottom: '1px solid var(--glass-border)', 
+                                        paddingBottom: '10px' 
+                                    }}
                                 >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                        <strong style={{ color: 'var(--gold-primary)', fontSize: '15px', fontFamily: 'monospace' }}>{ord.id}</strong>
+                                    {/* Row 1: ERP ID + Shopify Badge */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <strong style={{ color: 'var(--gold-primary)', fontSize: '14.5px', fontFamily: 'monospace' }}>{ord.id}</strong>
                                         <span style={{
                                             background: 'rgba(150,191,72,0.15)',
                                             color: '#96bf48',
-                                            padding: '2px 6px',
+                                            padding: '2px 8px',
                                             borderRadius: '4px',
-                                            fontSize: '0.65rem',
+                                            fontSize: '0.7rem',
                                             fontWeight: 'bold'
                                         }}>
                                             #{ord.shopifyOrderId || 'Shopify'}
                                         </span>
                                     </div>
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{ord.date}</span>
+                                    {/* Row 2: Date & Chevron */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <i className="fa-regular fa-calendar-days" style={{ fontSize: '11px', color: 'var(--gold-primary)' }}></i>
+                                            <span>{ord.date}</span>
+                                            {ord.createdAt && (
+                                                <span style={{ opacity: 0.8, marginRight: '6px' }}>
+                                                    <i className="fa-regular fa-clock" style={{ marginLeft: '3px' }}></i>
+                                                    {formatOrderTime(ord.createdAt)}
+                                                </span>
+                                            )}
+                                        </div>
                                         <i className={`fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} style={{ fontSize: '11px', color: 'var(--text-muted)' }}></i>
                                     </div>
                                 </div>
@@ -1270,7 +1285,7 @@ return () => {
                                     <div>
                                         <span style={{ color: 'var(--text-muted)' }}>العميل:</span>
                                         <strong style={{ color: '#fff', marginRight: '4px' }}>{ord.client}</strong>
-                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{phone || 'بدون هاتف'}</div>
+                                        <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>{phone || 'بدون هاتف'}</div>
                                     </div>
                                     <div style={{ textAlign: 'left' }}>
                                         <span style={{ color: 'var(--text-muted)' }}>الإجمالي:</span>
@@ -1278,13 +1293,13 @@ return () => {
                                     </div>
                                 </div>
 
-                                {/* Stats and Bosta Connection Badge */}
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
-                                    <div>
+                                {/* Stats and Bosta Connection Badge - Wrap enabled to prevent overlaps */}
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
                                         <span style={{ background: 'rgba(255,255,255,0.04)', padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--glass-border)', fontSize: '11px' }}>
                                             {ord.paymentMethod || 'COD'}
                                         </span>
-                                        <span style={{ marginRight: '8px', color: 'var(--text-secondary)' }}>{totalQty} قطع</span>
+                                        <span style={{ color: 'var(--text-secondary)', fontSize: '11.5px' }}>{totalQty} قطع</span>
                                     </div>
                                     <div>
                                         {citySelected && districtSelected ? (
@@ -1292,8 +1307,8 @@ return () => {
                                                 {citySelected.cityOtherName}
                                             </span>
                                         ) : (
-                                            <span className="badge" style={{ background: 'rgba(231,76,60,0.1)', color: '#e74c3c', border: '1px solid rgba(231,76,60,0.2)', fontSize: '10.5px', padding: '3px 6px', borderRadius: '4px' }}>
-                                                ربط المنطقة ⚠️
+                                            <span className="badge" style={{ background: 'rgba(231,76,60,0.1)', color: '#e74c3c', border: '1px solid rgba(231,76,60,0.2)', fontSize: '10.5px', padding: '4px 8px', borderRadius: '4px', fontWeight: 'bold' }}>
+                                                ⚠️ ربط المنطقة
                                             </span>
                                         )}
                                     </div>
