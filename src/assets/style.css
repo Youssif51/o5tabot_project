@@ -2909,5 +2909,24 @@ input[type=number] {
     }
 }
 
+/* Generic Global responsive toggles */
+.g-desktop-only {
+    display: block;
+}
+.g-mobile-only {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .g-desktop-only {
+        display: none !important;
+    }
+    .g-mobile-only {
+        display: flex !important;
+        flex-direction: column;
+        gap: 12px;
+    }
+}
+
 
 

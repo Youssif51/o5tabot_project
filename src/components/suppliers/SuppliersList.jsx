@@ -330,7 +330,7 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
 
                     {/* Suppliers Table */}
                     <div className="glass-card" style={{ marginTop: '24px', overflow: 'hidden' }}>
-                        <div className="table-wrapper">
+                        <div className="table-wrapper g-desktop-only">
                             <table className="custom-table">
                                 <thead>
                                     <tr>
@@ -404,12 +404,69 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
                                 </tbody>
                             </table>
                         </div>
+
+                        <div className="g-mobile-only" style={{ display: 'none', flexDirection: 'column', gap: '12px', padding: '16px' }}>
+                            {filteredSuppliers.length === 0 ? (
+                                <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '16px' }}>{t('noSuppliers')}</p>
+                            ) : (
+                                filteredSuppliers.map(sup => {
+                                    const statusBadge = sup.debt > 0 
+                                        ? <span className="badge badge-danger" style={{ fontSize: '9.5px' }}>{t('liabilityOutstanding')}</span> 
+                                        : <span className="badge badge-success" style={{ fontSize: '9.5px' }}>{t('clearedLedger')}</span>;
+                                    return (
+                                        <div key={sup.id} className="sa-mobile-card" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <strong style={{ color: 'var(--gold-primary)', fontSize: '13.5px' }}>{sup.name}</strong>
+                                                {statusBadge}
+                                            </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                                                <div>الهاتف: <strong style={{ color: '#fff' }}>{sup.phone || 'N/A'}</strong></div>
+                                                <div>البريد: <strong style={{ color: '#fff' }}>{sup.email || 'N/A'}</strong></div>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.01)', padding: '8px', borderRadius: '4px', fontSize: '12px' }}>
+                                                <span>الكتالوج: <span className="badge badge-grey" style={{ fontSize: '10px' }}>{sup.suppliedVariants?.length || 0} صنف</span></span>
+                                                <span>المسجل: <strong style={{ color: 'var(--text-secondary)' }}>{sup.createdBy || 'sfsf'}</strong></span>
+                                            </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '12px' }}>
+                                                <div>المدفوع: <strong style={{ color: '#4ae290' }}>{currency} {(sup.paid || 0).toLocaleString()}</strong></div>
+                                                <div>الديون: <strong style={{ color: sup.debt > 0 ? 'var(--color-danger)' : '#fff' }}>{currency} {(sup.debt || 0).toLocaleString()}</strong></div>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px dashed var(--glass-border)', paddingTop: '10px', marginTop: '4px' }}>
+                                                {sup.debt > 0 && (
+                                                    <button 
+                                                        className="btn btn-primary" 
+                                                        style={{ padding: '6px 12px', fontSize: '11px', gap: '4px', display: 'flex', alignItems: 'center' }}
+                                                        onClick={() => handleOpenPay(sup)}
+                                                    >
+                                                        <i className="fa-solid fa-credit-card"></i> {t('payDebt')}
+                                                    </button>
+                                                )}
+                                                <button 
+                                                    className="action-btn-circle" 
+                                                    onClick={() => handleOpenEdit(sup)}
+                                                    title="Edit Profile"
+                                                >
+                                                    <i className="fa-solid fa-pencil"></i>
+                                                </button>
+                                                <button 
+                                                    className="action-btn-circle" 
+                                                    onClick={() => handleDeleteSupplier(sup.id)}
+                                                    title="Remove Profile"
+                                                >
+                                                    <i className="fa-solid fa-trash-can"></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })
+                            )}
+                        </div>
                     </div>
                 </>
             ) : (
                 /* Purchase Orders Log View */
                 <div className="glass-card" style={{ marginTop: '24px', overflow: 'hidden' }}>
-                    <div className="table-wrapper">
+                    <div className="table-wrapper g-desktop-only">
                         <table className="custom-table">
                             <thead>
                                 <tr>
@@ -455,6 +512,44 @@ export default function SuppliersList({ globalSearch, setGlobalSearch }) {
                                 )}
                             </tbody>
                         </table>
+                    </div>
+
+                    <div className="g-mobile-only" style={{ display: 'none', flexDirection: 'column', gap: '12px', padding: '16px' }}>
+                        {(!state.purchaseOrders || state.purchaseOrders.length === 0) ? (
+                            <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '16px' }}>{t('noRecords')}</p>
+                        ) : (
+                            state.purchaseOrders.map(po => {
+                                const supplier = state.suppliers.find(s => s.id === po.supplierId);
+                                return (
+                                    <div key={po.id} className="sa-mobile-card" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                            <strong style={{ color: 'var(--gold-primary)', fontFamily: 'monospace' }}>{po.id}</strong>
+                                            <span style={{ color: 'var(--text-secondary)' }}>{po.date}</span>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr', gap: '4px' }}>
+                                            <span style={{ color: 'var(--text-secondary)' }}>المورد:</span>
+                                            <span style={{ color: '#fff' }}>{supplier ? supplier.name : po.supplierId}</span>
+                                        </div>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr', gap: '4px' }}>
+                                            <span style={{ color: 'var(--text-secondary)' }}>المستودع:</span>
+                                            <span style={{ color: '#fff' }}>{t('inSulur')}</span>
+                                        </div>
+                                        <div style={{ borderTop: '1px dashed var(--glass-border)', borderBottom: '1px dashed var(--glass-border)', padding: '8px 0', margin: '4px 0' }}>
+                                            <span style={{ color: 'var(--text-secondary)', display: 'block', marginBottom: '4px', fontSize: '11px' }}>المنتجات:</span>
+                                            {po.items.map((it, idx) => (
+                                                <div key={idx} style={{ fontSize: '11px', color: '#fff', paddingRight: '6px' }}>
+                                                    • {it.variantSku} (x{it.quantity}) @ {currency} {it.cost}
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px', marginTop: '2px' }}>
+                                            <span>بواسطة: <strong style={{ color: 'var(--text-secondary)' }}>{po.createdBy || 'sfsf'}</strong></span>
+                                            <span>الإجمالي: <strong style={{ color: 'var(--gold-primary)' }}>{currency} {po.totalCost.toLocaleString()}</strong></span>
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
                     </div>
                 </div>
             )}

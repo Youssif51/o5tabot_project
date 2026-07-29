@@ -267,7 +267,7 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
 
             {/* Customers Table */}
             <div className="glass-card" style={{ marginTop: '24px', overflow: 'hidden' }}>
-                <div className="table-wrapper">
+                <div className="table-wrapper g-desktop-only">
                     <table className="custom-table">
                         <thead>
                             <tr>
@@ -352,6 +352,78 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
                             )}
                         </tbody>
                     </table>
+                </div>
+
+                <div className="g-mobile-only" style={{ display: 'none', flexDirection: 'column', gap: '12px', padding: '16px' }}>
+                    {paginatedCustomers.length === 0 ? (
+                        <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '16px' }}>{t('noRecords')}</p>
+                    ) : (
+                        paginatedCustomers.map(c => {
+                            const isVip = c.customer_type === 'VIP';
+                            return (
+                                <div key={c.id} className="sa-mobile-card" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <strong style={{ color: c.is_spam ? 'var(--color-danger)' : (isVip ? 'var(--gold-primary)' : '#fff'), fontSize: '13.5px' }}>
+                                            {c.name}
+                                            {isVip && <i className="fa-solid fa-crown" style={{ marginLeft: '6px', fontSize: '10px', color: 'var(--gold-primary)' }}></i>}
+                                        </strong>
+                                        <div style={{ display: 'flex', gap: '6px' }}>
+                                            {c.is_spam && <span className="badge badge-danger" style={{ fontSize: '9px', padding: '2px 6px' }}>⚠️ مزعج</span>}
+                                            <span className={`badge ${isVip ? 'badge-warning' : 'badge-grey'}`} style={isVip ? { backgroundColor: 'rgba(212, 175, 55, 0.1)', color: 'var(--gold-primary)', fontSize: '9.5px' } : { fontSize: '9.5px' }}>
+                                                {isVip ? t('vip') : t('regular')}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                                        <span style={{ fontFamily: 'monospace' }}>رقم الهاتف: {c.phone}</span>
+                                        <span>المحافظة: {c.governorate || 'N/A'}</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.01)', padding: '8px', borderRadius: '4px', fontSize: '12px' }}>
+                                        <span>عدد الطلبات: <strong style={{ color: 'var(--color-info)' }}>{c.orders_count || 0}</strong></span>
+                                        <span>إجمالي المشتريات: <strong style={{ color: '#fff' }}>{currency} {(parseFloat(c.total_purchases) || 0).toLocaleString()}</strong></span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px dashed var(--glass-border)', paddingTop: '10px', marginTop: '4px' }}>
+                                        <button 
+                                            className="action-btn-circle" 
+                                            onClick={() => setSelectedProfileCustomer(c)}
+                                            title="View History"
+                                        >
+                                            <i className="fa-solid fa-eye" style={{ color: 'var(--text-secondary)' }}></i>
+                                        </button>
+                                        <button 
+                                            className="action-btn-circle" 
+                                            onClick={() => handleToggleVip(c)}
+                                            title={isVip ? "Remove VIP" : "Make VIP"}
+                                        >
+                                            <i className="fa-solid fa-crown" style={{ color: isVip ? 'var(--text-muted)' : 'var(--gold-primary)' }}></i>
+                                        </button>
+                                        <button 
+                                            className="action-btn-circle" 
+                                            onClick={() => handleToggleSpam(c)}
+                                            title={c.is_spam ? "إزالة من قائمة المزعجين" : "تحديد كـ مزعج"}
+                                            style={c.is_spam ? { color: 'var(--color-danger)', backgroundColor: 'rgba(239, 68, 68, 0.15)' } : {}}
+                                        >
+                                            <i className="fa-solid fa-circle-exclamation" style={{ color: c.is_spam ? 'var(--color-danger)' : 'var(--text-secondary)' }}></i>
+                                        </button>
+                                        <button 
+                                            className="action-btn-circle" 
+                                            onClick={() => handleOpenEdit(c)}
+                                            title="Edit Profile"
+                                        >
+                                            <i className="fa-solid fa-pencil"></i>
+                                        </button>
+                                        <button 
+                                            className="action-btn-circle" 
+                                            onClick={() => handleDeleteCustomer(c)}
+                                            title="Delete Customer"
+                                        >
+                                            <i className="fa-solid fa-trash" style={{ color: 'var(--color-danger)' }}></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
                 </div>
                 
                 {/* Pagination Controls */}

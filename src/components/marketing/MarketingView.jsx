@@ -455,7 +455,7 @@ export default function MarketingView() {
                 ) : (
                     <>
                         {/* Desktop Table */}
-                        <div className="table-wrapper desktop-marketing-table" style={{ width: '100%' }}>
+                        <div className="table-wrapper desktop-marketing-table g-desktop-only" style={{ width: '100%' }}>
                             <table className="custom-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
                                 <thead>
                                     <tr>
@@ -614,7 +614,7 @@ export default function MarketingView() {
                         </div>
 
                         {/* Mobile Cards (Visible only < 768px) */}
-                        <div className="mobile-marketing-cards" style={{ padding: '16px' }}>
+                        <div className="mobile-marketing-cards g-mobile-only" style={{ padding: '16px', display: 'none', flexDirection: 'column', gap: '12px' }}>
                             {sortedAnalytics.map((inf, index) => {
                                 const isExpanded = expandedInfluencer === inf.code;
                                 return (
