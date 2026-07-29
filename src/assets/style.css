@@ -2755,6 +2755,25 @@ input[type=number] {
         gap: 12px;
     }
 }
+
+/* Shopify Pending List Mobile responsive card styles */
+.shopify-desktop-only {
+    display: block;
+}
+.shopify-mobile-cards {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .shopify-desktop-only {
+        display: none !important;
+    }
+    .shopify-mobile-cards {
+        display: flex !important;
+        flex-direction: column;
+        gap: 16px;
+    }
+}
 .sa-btn-circle-phone {
     width: 36px;
     height: 36px;

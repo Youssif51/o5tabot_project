@@ -9,6 +9,44 @@ import { supabase } from '../../utils/supabase';
 
 export default function ShopifyPendingList() {
     const { state, updateOrderStatus, updateOrderProperties, approveOrderWithBosta, deductOrderStock, fetchMissingOrderItems, showToast, showConfirm, addCustomer, setCustomerSpam, logActivity } = useContext(AppContext);
+
+const parseAddressData = (addressStr) => {
+        let detailAddress = addressStr || '';
+        let phone = '';
+        let vatEnabled = false;
+        let orderDiscountPercent = 0;
+        let customerCode = 'CUS-0000';
+        
+        if (addressStr && addressStr.startsWith('{')) {
+            try {
+                const parsed = JSON.parse(addressStr);
+                detailAddress = parsed.detailAddress || '';
+                phone = parsed.phone || '';
+                vatEnabled = parsed.vatEnabled || false;
+                orderDiscountPercent = parseFloat(parsed.orderDiscountPercent) || 0;
+                customerCode = parsed.customerCode || 'CUS-0000';
+            } catch(e) {}
+        }
+        return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode };
+    };
+
+    const normalizePhoneNumber = (phoneStr) => {
+        if (!phoneStr) return '';
+        let clean = phoneStr.replace(/\D/g, '');
+        if (clean.startsWith('20') && clean.length > 10) {
+            clean = clean.substring(2);
+        } else if (clean.startsWith('2') && clean.length > 10) {
+            clean = clean.substring(1);
+        }
+        if (clean.length === 10 && (clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15'))) {
+            clean = '0' + clean;
+        }
+        if (!clean.startsWith('0') && clean.length === 10) {
+            clean = '0' + clean;
+        }
+        return clean;
+    };
+
     const [globalSearch, setGlobalSearch] = useState('');
     const [expandedOrderIds, setExpandedOrderIds] = useState({});
     
@@ -607,42 +645,7 @@ return () => {
     };
 
     // Parse address JSON structure safely
-    const parseAddressData = (addressStr) => {
-        let detailAddress = addressStr || '';
-        let phone = '';
-        let vatEnabled = false;
-        let orderDiscountPercent = 0;
-        let customerCode = 'CUS-0000';
-        
-        if (addressStr && addressStr.startsWith('{')) {
-            try {
-                const parsed = JSON.parse(addressStr);
-                detailAddress = parsed.detailAddress || '';
-                phone = parsed.phone || '';
-                vatEnabled = parsed.vatEnabled || false;
-                orderDiscountPercent = parseFloat(parsed.orderDiscountPercent) || 0;
-                customerCode = parsed.customerCode || 'CUS-0000';
-            } catch(e) {}
-        }
-        return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode };
-    };
-
-    const normalizePhoneNumber = (phoneStr) => {
-        if (!phoneStr) return '';
-        let clean = phoneStr.replace(/\D/g, '');
-        if (clean.startsWith('20') && clean.length > 10) {
-            clean = clean.substring(2);
-        } else if (clean.startsWith('2') && clean.length > 10) {
-            clean = clean.substring(1);
-        }
-        if (clean.length === 10 && (clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15'))) {
-            clean = '0' + clean;
-        }
-        if (!clean.startsWith('0') && clean.length === 10) {
-            clean = '0' + clean;
-        }
-        return clean;
-    };
+    
 
     // Filter Logic: only pending Shopify orders
     const pendingOrders = (state.orders || []).filter(ord => {
@@ -1019,7 +1022,7 @@ return () => {
             {/* 4. FILTER BAR */}
             <div className="glass-card filter-bar" style={{ padding: '16px', marginBottom: '24px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <div className="search-input-wrapper" style={{ minWidth: '300px', flex: 1 }}>
+                    <div className="search-input-wrapper" style={{ minWidth: '200px', flex: 1 }}>
                         <i className="fa-solid fa-magnifying-glass search-icon"></i>
                         <input 
                             type="text" 
