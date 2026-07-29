@@ -47,7 +47,7 @@ export default function TopSelling() {
                     {t('seeAll')}
                 </a>
             </div>
-            <div className="table-wrapper">
+            <div className="table-wrapper g-desktop-only">
                 <table className="custom-table" style={{ fontSize: '13px' }}>
                     <thead>
                         <tr>
@@ -79,8 +79,50 @@ export default function TopSelling() {
                     </tbody>
                 </table>
             </div>
+
+            <div className="g-mobile-only" style={{ display: 'none', flexDirection: 'column', gap: '8px', padding: '12px' }}>
+                {displayList.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)' }}>
+                        {t('noItemsSold')}
+                    </div>
+                ) : (
+                    displayList.map((item, idx) => (
+                        <div key={`top-sell-mob-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', padding: '10px 12px', borderRadius: '8px' }}>
+                            <div style={{
+                                width: '28px',
+                                height: '28px',
+                                borderRadius: '50%',
+                                background: idx === 0 ? 'rgba(212, 175, 55, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                                color: idx === 0 ? 'var(--gold-primary)' : 'var(--text-secondary)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                fontWeight: 'bold',
+                                fontSize: '13px',
+                                border: idx === 0 ? '1px solid rgba(212, 175, 55, 0.3)' : '1px solid transparent'
+                            }}>
+                                {idx + 1}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+                                <div style={{ fontWeight: '600', fontSize: '13.5px', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: '4px' }}>
+                                    {item.name}
+                                </div>
+                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                    <span>{t('soldQuantity')}: <strong style={{ color: '#2ecc71' }}>{item.soldQty}</strong></span>
+                                    <span style={{ color: 'var(--glass-border)' }}>|</span>
+                                    <span>{t('remainingQuantity')}: <strong style={{ color: item.remainingQty < 10 ? 'var(--color-danger)' : 'inherit' }}>{item.remainingQty}</strong></span>
+                                </div>
+                            </div>
+                            <div style={{ textAlign: 'left', fontWeight: '600', color: 'var(--gold-primary)', fontSize: '13.5px' }}>
+                                {currency} {item.price.toLocaleString()}
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+
             <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={t('topSellingStock')} width="900px">
-                <div className="table-wrapper" style={{ maxHeight: '60vh', overflowY: 'auto', overflowX: 'auto' }}>
+                <div className="table-wrapper g-desktop-only" style={{ maxHeight: '60vh', overflowY: 'auto', overflowX: 'auto' }}>
                     <table className="custom-table" style={{ fontSize: '13px', whiteSpace: 'nowrap', textAlign: 'right' }}>
                         <thead>
                             <tr>
@@ -111,6 +153,45 @@ export default function TopSelling() {
                             )}
                         </tbody>
                     </table>
+                </div>
+
+                <div className="g-mobile-only" style={{ display: 'none', flexDirection: 'column', gap: '8px', padding: '8px 0', maxHeight: '60vh', overflowY: 'auto' }}>
+                    {topSelling.slice(0, 15).length === 0 ? (
+                        <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{t('noItemsSold')}</p>
+                    ) : (
+                        topSelling.slice(0, 15).map((item, idx) => (
+                            <div key={`modal-top-sell-mob-${idx}`} style={{ display: 'flex', alignItems: 'center', gap: '12px', background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', padding: '10px 12px', borderRadius: '8px' }}>
+                                <div style={{
+                                    width: '28px',
+                                    height: '28px',
+                                    borderRadius: '50%',
+                                    background: idx === 0 ? 'rgba(212, 175, 55, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                                    color: idx === 0 ? 'var(--gold-primary)' : 'var(--text-secondary)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    fontWeight: 'bold',
+                                    fontSize: '13px',
+                                    border: idx === 0 ? '1px solid rgba(212, 175, 55, 0.3)' : '1px solid transparent'
+                                }}>
+                                    {idx + 1}
+                                </div>
+                                <div style={{ flex: 1, minWidth: 0, textAlign: 'right' }}>
+                                    <div style={{ fontWeight: '600', fontSize: '13px', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: '2px' }}>
+                                        {item.name}
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                        <span>{t('soldQuantity')}: <strong style={{ color: '#2ecc71' }}>{item.soldQty}</strong></span>
+                                        <span style={{ color: 'var(--glass-border)' }}>|</span>
+                                        <span>{t('remainingQuantity')}: <strong style={{ color: item.remainingQty < 10 ? 'var(--color-danger)' : 'inherit' }}>{item.remainingQty}</strong></span>
+                                    </div>
+                                </div>
+                                <div style={{ textAlign: 'left', fontWeight: '600', color: 'var(--gold-primary)', fontSize: '13px' }}>
+                                    {currency} {item.price.toLocaleString()}
+                                </div>
+                            </div>
+                        ))
+                    )}
                 </div>
             </Modal>
         </div>
