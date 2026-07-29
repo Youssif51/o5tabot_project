@@ -124,6 +124,17 @@ export default function ShopifyPendingList() {
         return clean;
     };
 
+    const getWhatsAppLink = (phoneStr) => {
+        if (!phoneStr) return '';
+        let clean = phoneStr.replace(/\D/g, '');
+        if (clean.length === 11 && clean.startsWith('0')) {
+            clean = '2' + clean;
+        } else if (clean.length === 10 && (clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15'))) {
+            clean = '20' + clean;
+        }
+        return `https://wa.me/${clean}`;
+    };
+
     // Filter Logic: only pending Shopify orders
     const pendingOrders = (state.orders || []).filter(ord => {
         let isReviewed = ord.is_reviewed || ord.isReviewed;
@@ -793,7 +804,22 @@ export default function ShopifyPendingList() {
                                                                                 return null;
                                                                             })()}
                                                                         </div>
-                                                                        <div><strong>رقم الهاتف:</strong> {phone || 'غير مسجل'}</div>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                            <strong>رقم الهاتف:</strong> 
+                                                                            <span>{phone || 'غير مسجل'}</span>
+                                                                            {phone && (
+                                                                                <a 
+                                                                                    href={getWhatsAppLink(phone)} 
+                                                                                    target="_blank" 
+                                                                                    rel="noopener noreferrer" 
+                                                                                    style={{ marginRight: '6px', color: '#25D366', fontSize: '13px', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
+                                                                                    title="افتح شات واتساب"
+                                                                                    onClick={(e) => e.stopPropagation()}
+                                                                                >
+                                                                                    <i className="fa-brands fa-whatsapp"></i>
+                                                                                </a>
+                                                                            )}
+                                                                        </div>
                                                                         <div><strong>البريد الإلكتروني:</strong> {customerEmail || 'غير مسجل'}</div>
                                                                         <div><strong>طريقة الدفع شوبيفاي:</strong> {ord.paymentMethod || 'COD'}</div>
                                                                     </div>
@@ -1129,7 +1155,21 @@ export default function ShopifyPendingList() {
                                                             return null;
                                                         })()}
                                                     </div>
-                                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>{phone || 'بدون هاتف'}</div>
+                                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span>{phone || 'بدون هاتف'}</span>
+                                                        {phone && (
+                                                            <a 
+                                                                href={getWhatsAppLink(phone)} 
+                                                                target="_blank" 
+                                                                rel="noopener noreferrer" 
+                                                                style={{ color: '#25D366', fontSize: '12px', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
+                                                                title="افتح شات واتساب"
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                <i className="fa-brands fa-whatsapp"></i>
+                                                            </a>
+                                                        )}
+                                                    </div>
                                                 </td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px' }}>
                                                     <div>{ord.date}</div>
@@ -1286,7 +1326,21 @@ export default function ShopifyPendingList() {
                                     <div>
                                         <span style={{ color: 'var(--text-muted)' }}>العميل:</span>
                                         <strong style={{ color: '#fff', marginRight: '4px' }}>{ord.client}</strong>
-                                        <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px' }}>{phone || 'بدون هاتف'}</div>
+                                        <div style={{ fontSize: '11.5px', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <span>{phone || 'بدون هاتف'}</span>
+                                            {phone && (
+                                                <a 
+                                                    href={getWhatsAppLink(phone)} 
+                                                    target="_blank" 
+                                                    rel="noopener noreferrer" 
+                                                    style={{ color: '#25D366', fontSize: '12.5px', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
+                                                    title="افتح شات واتساب"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <i className="fa-brands fa-whatsapp"></i>
+                                                </a>
+                                            )}
+                                        </div>
                                     </div>
                                     <div style={{ textAlign: 'left' }}>
                                         <span style={{ color: 'var(--text-muted)' }}>الإجمالي:</span>
