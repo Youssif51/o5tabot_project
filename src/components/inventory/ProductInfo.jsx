@@ -100,7 +100,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
     return (
         <div>
             {/* Header section with actions */}
-            <div className="page-header" style={{ marginBottom: '20px' }}>
+            <div className="page-header inspect-page-header" style={{ marginBottom: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                     <button 
                         className="action-btn-circle" 
@@ -111,22 +111,22 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                         <i className="fa-solid fa-arrow-left"></i>
                     </button>
                     <div>
-                        <h2 style={{ margin: 0 }}>{deduplicateProductName(product.name)}</h2>
+                        <h2 style={{ margin: 0, fontSize: '1.5rem', lineHeight: '1.3' }}>{deduplicateProductName(product.name)}</h2>
                     </div>
                 </div>
 
-                <div style={{ display: 'flex', gap: '10px' }}>
-                    <button className="btn btn-secondary" onClick={() => onEditProduct(product.id)}>
+                <div className="inspect-header-actions" style={{ display: 'flex', gap: '10px' }}>
+                    <button className="btn btn-secondary" onClick={() => onEditProduct(product.id)} style={{ flex: 1, justifyContent: 'center' }}>
                         <i className="fa-solid fa-pencil" style={{ marginRight: '6px' }}></i> {t('edit')}
                     </button>
-                    <button className="btn btn-secondary" onClick={handleDownloadReport}>
+                    <button className="btn btn-secondary" onClick={handleDownloadReport} style={{ flex: 1, justifyContent: 'center' }}>
                         {t('downloadAll')}
                     </button>
                 </div>
             </div>
 
             {/* Tab controls */}
-            <div style={{ display: 'flex', borderBottom: '1px solid var(--glass-border)', gap: '24px', marginBottom: '24px' }}>
+            <div className="custom-horizontal-slider" style={{ display: 'flex', borderBottom: '1px solid var(--glass-border)', gap: '24px', marginBottom: '24px', overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '4px' }}>
                 {['Overview', 'Purchases', 'Adjustments', 'History'].map(tab => (
                     <button
                         key={tab}
@@ -204,7 +204,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                             <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '18px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
                                 {t('variants')}
                             </h3>
-                            <div className="table-wrapper">
+                            <div className="table-wrapper inspect-desktop-only">
                                 <table className="custom-table" style={{ fontSize: '12px' }}>
                                     <thead>
                                         <tr>
@@ -244,6 +244,46 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                         })}
                                     </tbody>
                                 </table>
+                            </div>
+
+                            {/* Mobile responsive cards for variants */}
+                            <div className="inspect-mobile-cards" style={{ display: 'none', flexDirection: 'column', gap: '12px' }}>
+                                {product.variants.map(v => {
+                                    const costVal = v.averageCost || v.wholesalePrice || 0;
+                                    const profitMargin = v.retailPrice > 0 ? ((v.retailPrice - costVal) / v.retailPrice * 100).toFixed(1) : 0;
+                                    return (
+                                        <div key={v.sku} className="sa-mobile-card" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <strong style={{ color: '#fff', fontSize: '13px' }}>{formatProductDisplayName(product.name, v.name)}</strong>
+                                                <span className="badge badge-success" style={{ fontSize: '10.5px' }}>{profitMargin}% هامش</span>
+                                            </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', fontSize: '11px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.01)', padding: '8px', borderRadius: '4px' }}>
+                                                <div>
+                                                    <span style={{ display: 'block', fontSize: '9px', textTransform: 'uppercase', marginBottom: '2px' }}>شراء</span>
+                                                    <strong style={{ color: '#fff' }}>{currency} {v.wholesalePrice}</strong>
+                                                </div>
+                                                <div>
+                                                    <span style={{ display: 'block', fontSize: '9px', textTransform: 'uppercase', marginBottom: '2px' }}>متوسط التكلفة</span>
+                                                    <strong style={{ color: 'var(--color-warning)' }}>{currency} {costVal}</strong>
+                                                </div>
+                                                <div>
+                                                    <span style={{ display: 'block', fontSize: '9px', textTransform: 'uppercase', marginBottom: '2px' }}>بيع</span>
+                                                    <strong style={{ color: 'var(--gold-primary)' }}>{currency} {v.retailPrice}</strong>
+                                                </div>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px' }}>
+                                                <span>المخزون الحالي: <strong style={{ color: '#fff' }}>{v.stock?.Sulur || 0} قطع</strong></span>
+                                                <button 
+                                                    className="btn btn-primary" 
+                                                    style={{ padding: '6px 12px', fontSize: '11px', gap: '4px', display: 'flex', alignItems: 'center' }} 
+                                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRestockVariantObj(v); }}
+                                                >
+                                                    <i className="fa-solid fa-plus"></i> إضافة مخزون
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
                             </div>
                         </div>
 
@@ -436,34 +476,59 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                             }
 
                             return (
-                                <div className="table-wrapper">
-                                    <table className="custom-table" style={{ fontSize: '12px' }}>
-                                        <thead>
-                                            <tr>
-                                                <th>التاريخ</th>
-                                                <th>رقم الفاتورة</th>
-                                                <th>المورد</th>
-                                                <th>الخيار (Variant)</th>
-                                                <th>الكمية</th>
-                                                <th>سعر الشراء الفعلي</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {purchaseHistory.map((item, idx) => (
-                                                <tr key={idx}>
-                                                    <td>{item.date}</td>
-                                                    <td style={{ fontWeight: 600 }}>{item.id}</td>
-                                                    <td>{item.supplierName}</td>
-                                                    <td>{formatProductDisplayName(product.name, item.variantName)}</td>
-                                                    <td>{item.quantity} قطعة</td>
-                                                    <td style={{ fontWeight: 600, color: 'var(--gold-primary)' }}>
-                                                        {currency} {item.cost.toLocaleString('en-US', {maximumFractionDigits: 2})}
-                                                    </td>
+                                <>
+                                    <div className="table-wrapper inspect-desktop-only">
+                                        <table className="custom-table" style={{ fontSize: '12px' }}>
+                                            <thead>
+                                                <tr>
+                                                    <th>التاريخ</th>
+                                                    <th>رقم الفاتورة</th>
+                                                    <th>المورد</th>
+                                                    <th>الخيار (Variant)</th>
+                                                    <th>الكمية</th>
+                                                    <th>سعر الشراء الفعلي</th>
                                                 </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
+                                            </thead>
+                                            <tbody>
+                                                {purchaseHistory.map((item, idx) => (
+                                                    <tr key={idx}>
+                                                        <td>{item.date}</td>
+                                                        <td style={{ fontWeight: 600 }}>{item.id}</td>
+                                                        <td>{item.supplierName}</td>
+                                                        <td>{formatProductDisplayName(product.name, item.variantName)}</td>
+                                                        <td>{item.quantity} قطعة</td>
+                                                        <td style={{ fontWeight: 600, color: 'var(--gold-primary)' }}>
+                                                            {currency} {item.cost.toLocaleString('en-US', {maximumFractionDigits: 2})}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+
+                                    <div className="inspect-mobile-cards" style={{ display: 'none', flexDirection: 'column', gap: '12px' }}>
+                                        {purchaseHistory.map((item, idx) => (
+                                            <div key={idx} className="sa-mobile-card" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <strong style={{ color: 'var(--gold-primary)' }}>{item.id}</strong>
+                                                    <span style={{ color: 'var(--text-secondary)' }}>{item.date}</span>
+                                                </div>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr', gap: '4px' }}>
+                                                    <span style={{ color: 'var(--text-secondary)' }}>المورد:</span>
+                                                    <span style={{ color: '#fff' }}>{item.supplierName}</span>
+                                                </div>
+                                                <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr', gap: '4px' }}>
+                                                    <span style={{ color: 'var(--text-secondary)' }}>الخيار:</span>
+                                                    <span style={{ color: '#fff' }}>{formatProductDisplayName(product.name, item.variantName)}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--glass-border)', paddingTop: '6px', marginTop: '2px' }}>
+                                                    <span>الكمية: <strong>{item.quantity} قطعة</strong></span>
+                                                    <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold' }}>{currency} {item.cost.toLocaleString()}</span>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
                             );
                         })()}
                     </div>
@@ -590,32 +655,59 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                         {(!product.adjustments || product.adjustments.length === 0) ? (
                             <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>{t('noStockCorrections')}</p>
                         ) : (
-                            <div className="table-wrapper">
-                                <table className="custom-table" style={{ fontSize: '11px' }}>
-                                    <thead>
-                                        <tr>
-                                            <th>{t('date')}</th>
-                                            <th>{t('warehouse') || 'المستودع'}</th>
-                                            <th>{t('type')}</th>
-                                            <th style={{ textAlign: 'right' }}>{t('qty') || 'الكمية'}</th>
-                                            <th>{t('reason')}</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {product.adjustments.map((adj, i) => (
-                                            <tr key={i}>
-                                                <td>{adj.date}</td>
-                                                <td>{t('inSulur')}</td>
-                                                <td style={{ color: adj.type === 'increase' ? 'var(--color-success)' : 'var(--color-danger)', fontWeight: 600 }}>
-                                                    {adj.type === 'increase' ? `+ ${t('increase')}` : `- ${t('decrease')}`}
-                                                </td>
-                                                <td style={{ textAlign: 'right', fontWeight: 600 }}>{adj.quantity}</td>
-                                                <td style={{ color: 'var(--text-secondary)' }}>{adj.reason}</td>
+                            <>
+                                <div className="table-wrapper inspect-desktop-only">
+                                    <table className="custom-table" style={{ fontSize: '11px' }}>
+                                        <thead>
+                                            <tr>
+                                                <th>{t('date')}</th>
+                                                <th>{t('warehouse') || 'المستودع'}</th>
+                                                <th>{t('type')}</th>
+                                                <th style={{ textAlign: 'right' }}>{t('qty') || 'الكمية'}</th>
+                                                <th>{t('reason')}</th>
                                             </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                                        </thead>
+                                        <tbody>
+                                            {product.adjustments.map((adj, i) => (
+                                                <tr key={i}>
+                                                    <td>{adj.date}</td>
+                                                    <td>{t('inSulur')}</td>
+                                                    <td style={{ color: adj.type === 'increase' ? 'var(--color-success)' : 'var(--color-danger)', fontWeight: 600 }}>
+                                                        {adj.type === 'increase' ? `+ ${t('increase')}` : `- ${t('decrease')}`}
+                                                    </td>
+                                                    <td style={{ textAlign: 'right', fontWeight: 600 }}>{adj.quantity}</td>
+                                                    <td style={{ color: 'var(--text-secondary)' }}>{adj.reason}</td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                <div className="inspect-mobile-cards" style={{ display: 'none', flexDirection: 'column', gap: '12px' }}>
+                                    {product.adjustments.map((adj, i) => (
+                                        <div key={i} className="sa-mobile-card" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span style={{ color: 'var(--text-secondary)' }}>{adj.date}</span>
+                                                <span className={`badge ${adj.type === 'increase' ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '10.5px' }}>
+                                                    {adj.type === 'increase' ? `+ ${t('increase')}` : `- ${t('decrease')}`}
+                                                </span>
+                                            </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr', gap: '4px' }}>
+                                                <span style={{ color: 'var(--text-secondary)' }}>المستودع:</span>
+                                                <span style={{ color: '#fff' }}>{t('inSulur')}</span>
+                                            </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr', gap: '4px' }}>
+                                                <span style={{ color: 'var(--text-secondary)' }}>الكمية:</span>
+                                                <strong style={{ color: '#fff' }}>{adj.quantity}</strong>
+                                            </div>
+                                            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr', gap: '4px', borderTop: '1px dashed var(--glass-border)', paddingTop: '6px' }}>
+                                                <span style={{ color: 'var(--text-secondary)' }}>السبب:</span>
+                                                <span style={{ color: '#fff' }}>{adj.reason}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>
                         )}
                     </div>
                 </div>
@@ -625,127 +717,186 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                         <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '18px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
                             تاريخ الحركات وتتبع التكلفة (Stock & Cost History)
                         </h3>
-                        <div className="table-wrapper">
-                            <table className="custom-table" style={{ fontSize: '13px' }}>
-                                <thead>
-                                    <tr>
-                                        <th>التاريخ</th>
-                                        <th>النوع</th>
-                                        <th>النوع (VARIANT)</th>
-                                        <th>التغير</th>
-                                        <th>تكلفة القطعة (UNIT COST)</th>
-                                        <th>إجمالي التكلفة</th>
-                                        <th>الرصيد بعد الحركة</th>
-                                        <th>ملاحظات</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(() => {
-                                        const rawLogs = (state.stockLedger || []).filter(log => {
-                                            const pId = log.product_id || log.productId;
-                                            return String(pId) === String(productId);
-                                        });
+                        {(() => {
+                            const rawLogs = (state.stockLedger || []).filter(log => {
+                                const pId = log.product_id || log.productId;
+                                return String(pId) === String(productId);
+                            });
 
-                                        // Group by variant_sku to calculate accurate running balance per variant
-                                        const logsByVariant = {};
-                                        rawLogs.forEach(log => {
-                                            const sku = log.variant_sku || log.variantSku || 'DEFAULT';
-                                            if (!logsByVariant[sku]) logsByVariant[sku] = [];
-                                            logsByVariant[sku].push({ ...log });
-                                        });
+                            // Group by variant_sku to calculate accurate running balance per variant
+                            const logsByVariant = {};
+                            rawLogs.forEach(log => {
+                                const sku = log.variant_sku || log.variantSku || 'DEFAULT';
+                                if (!logsByVariant[sku]) logsByVariant[sku] = [];
+                                logsByVariant[sku].push({ ...log });
+                            });
 
-                                        const processedLogs = [];
+                            const processedLogs = [];
 
-                                        Object.keys(logsByVariant).forEach(sku => {
-                                            const variantLogs = logsByVariant[sku];
+                            Object.keys(logsByVariant).forEach(sku => {
+                                const variantLogs = logsByVariant[sku];
 
-                                            // Sort ASC (oldest first)
-                                            variantLogs.sort((a, b) => {
-                                                const dA = new Date(a.date || a.created_at).getTime();
-                                                const dB = new Date(b.date || b.created_at).getTime();
-                                                if (dA !== dB) return dA - dB;
-                                                return (a.id || 0) - (b.id || 0);
-                                            });
+                                // Sort ASC (oldest first)
+                                variantLogs.sort((a, b) => {
+                                    const dA = new Date(a.date || a.created_at).getTime();
+                                    const dB = new Date(b.date || b.created_at).getTime();
+                                    if (dA !== dB) return dA - dB;
+                                    return (a.id || 0) - (b.id || 0);
+                                });
 
-                                            let runningBalance = 0;
-                                            if (variantLogs.length > 0) {
-                                                const first = variantLogs[0];
-                                                const firstBal = first.balance_after ?? first.balanceAfter;
-                                                const firstQty = first.quantity || 0;
-                                                if (firstBal !== undefined && firstBal !== null && !isNaN(firstBal)) {
-                                                    runningBalance = Math.max(0, Number(firstBal) - firstQty);
-                                                }
-                                            }
+                                let runningBalance = 0;
+                                if (variantLogs.length > 0) {
+                                    const first = variantLogs[0];
+                                    const firstBal = first.balance_after ?? first.balanceAfter;
+                                    const firstQty = first.quantity || 0;
+                                    if (firstBal !== undefined && firstBal !== null && !isNaN(firstBal)) {
+                                        runningBalance = Math.max(0, Number(firstBal) - firstQty);
+                                    }
+                                }
 
-                                            variantLogs.forEach(log => {
-                                                const qty = log.quantity || 0;
-                                                runningBalance += qty;
-                                                log.calculated_balance_after = runningBalance;
-                                                processedLogs.push(log);
-                                            });
-                                        });
+                                variantLogs.forEach(log => {
+                                    const qty = log.quantity || 0;
+                                    runningBalance += qty;
+                                    log.calculated_balance_after = runningBalance;
+                                    processedLogs.push(log);
+                                });
+                            });
 
-                                        // Sort DESC (newest first for display)
-                                        processedLogs.sort((a, b) => {
-                                            const dA = new Date(a.date || a.created_at).getTime();
-                                            const dB = new Date(b.date || b.created_at).getTime();
-                                            if (dA !== dB) return dB - dA;
-                                            return (b.id || 0) - (a.id || 0);
-                                        });
+                            // Sort DESC (newest first for display)
+                            processedLogs.sort((a, b) => {
+                                const dA = new Date(a.date || a.created_at).getTime();
+                                const dB = new Date(b.date || b.created_at).getTime();
+                                if (dA !== dB) return dB - dA;
+                                return (b.id || 0) - (a.id || 0);
+                            });
 
-                                        if (processedLogs.length === 0) {
-                                            return (
+                            return (
+                                <>
+                                    <div className="table-wrapper inspect-desktop-only">
+                                        <table className="custom-table" style={{ fontSize: '13px' }}>
+                                            <thead>
                                                 <tr>
-                                                    <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '20px' }}>
-                                                        لا توجد حركات مخزنية مسجلة.
-                                                    </td>
+                                                    <th>التاريخ</th>
+                                                    <th>النوع</th>
+                                                    <th>النوع (VARIANT)</th>
+                                                    <th>التغير</th>
+                                                    <th>تكلفة القطعة (UNIT COST)</th>
+                                                    <th>إجمالي التكلفة</th>
+                                                    <th>الرصيد بعد الحركة</th>
+                                                    <th>ملاحظات</th>
                                                 </tr>
-                                            );
-                                        }
+                                            </thead>
+                                            <tbody>
+                                                {processedLogs.length === 0 ? (
+                                                    <tr>
+                                                        <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '20px' }}>
+                                                            لا توجد حركات مخزنية مسجلة.
+                                                        </td>
+                                                    </tr>
+                                                ) : (
+                                                    processedLogs.map((log, idx) => {
+                                                        const qty = log.quantity || 0;
+                                                        const uCost = log.unit_cost || log.unitCost || 0;
+                                                        const tCost = log.total_cost || log.totalCost || 0;
+                                                        const isIncrease = qty > 0;
+                                                        const typeLabel = {
+                                                            'Sale': 'بيع',
+                                                            'Return': 'مرتجع',
+                                                            'Purchase': 'مشتريات',
+                                                            'Restock': 'إضافة مخزون (Restock)',
+                                                            'Correction': 'تعديل جرد',
+                                                            'Waste': 'هالك'
+                                                        }[log.type] || log.type;
+                                                        const logSku = log.variant_sku || log.variantSku;
+                                                        const variant = product.variants?.find(v => v.sku === logSku);
+                                                        const variantLabel = variant ? formatProductDisplayName(product.name, variant.name) : formatProductDisplayName(product.name, logSku);
+                                                        return (
+                                                            <tr key={idx}>
+                                                                <td style={{ whiteSpace: 'nowrap' }}>
+                                                                    {new Date(log.date || log.created_at).toLocaleString('en-GB', { 
+                                                                        day: '2-digit', month: '2-digit', year: 'numeric', 
+                                                                        hour: '2-digit', minute: '2-digit', hour12: true 
+                                                                    })}
+                                                                </td>
+                                                                <td><span className={`badge ${isIncrease ? 'badge-success' : 'badge-danger'}`}>{typeLabel}</span></td>
+                                                                <td>{variantLabel}</td>
+                                                                <td style={{ color: isIncrease ? '#4ae290' : '#ff4d4d', fontWeight: 'bold' }}>
+                                                                    {isIncrease ? '+' : ''}{qty}
+                                                                </td>
+                                                                <td>{uCost !== undefined && uCost !== null ? `${parseFloat(uCost).toFixed(2)} ج.م.` : '0.00 ج.م.'}</td>
+                                                                <td>{tCost !== undefined && tCost !== null ? `${parseFloat(tCost).toFixed(2)} ج.م.` : '0.00 ج.م.'}</td>
+                                                                <td style={{ fontWeight: 'bold' }}>{log.calculated_balance_after}</td>
+                                                                <td style={{ color: '#aaa' }}>{log.notes || '-'}</td>
+                                                            </tr>
+                                                        );
+                                                    })
+                                                )}
+                                            </tbody>
+                                        </table>
+                                    </div>
 
-                                        return processedLogs.map((log, idx) => {
-                                            const qty = log.quantity || 0;
-                                            const uCost = log.unit_cost || log.unitCost || 0;
-                                            const tCost = log.total_cost || log.totalCost || 0;
-                                            const isIncrease = qty > 0;
-                                            
-                                            const typeLabel = {
-                                                'Sale': 'بيع',
-                                                'Return': 'مرتجع',
-                                                'Purchase': 'مشتريات',
-                                                'Restock': 'إضافة مخزون (Restock)',
-                                                'Correction': 'تعديل جرد',
-                                                'Waste': 'هالك'
-                                            }[log.type] || log.type;
-
-                                            const logSku = log.variant_sku || log.variantSku;
-                                            const variant = product.variants?.find(v => v.sku === logSku);
-                                            const variantLabel = variant ? formatProductDisplayName(product.name, variant.name) : formatProductDisplayName(product.name, logSku);
-                                            
-                                            return (
-                                                <tr key={idx}>
-                                                    <td style={{ whiteSpace: 'nowrap' }}>
-                                                        {new Date(log.date || log.created_at).toLocaleString('en-GB', { 
-                                                            day: '2-digit', month: '2-digit', year: 'numeric', 
-                                                            hour: '2-digit', minute: '2-digit', hour12: true 
-                                                        })}
-                                                    </td>
-                                                    <td><span className={`badge ${isIncrease ? 'badge-success' : 'badge-danger'}`}>{typeLabel}</span></td>
-                                                    <td>{variantLabel}</td>
-                                                    <td style={{ color: isIncrease ? '#4ae290' : '#ff4d4d', fontWeight: 'bold' }}>
-                                                        {isIncrease ? '+' : ''}{qty}
-                                                    </td>
-                                                    <td>{uCost !== undefined && uCost !== null ? `${parseFloat(uCost).toFixed(2)} ج.م.` : '0.00 ج.م.'}</td>
-                                                    <td>{tCost !== undefined && tCost !== null ? `${parseFloat(tCost).toFixed(2)} ج.م.` : '0.00 ج.م.'}</td>
-                                                    <td style={{ fontWeight: 'bold' }}>{log.calculated_balance_after}</td>
-                                                    <td style={{ color: '#aaa' }}>{log.notes || '-'}</td>
-                                                </tr>
-                                            );
-                                        });
-                                    })()}
-                                </tbody>
-                            </table>
-                        </div>
+                                    <div className="inspect-mobile-cards" style={{ display: 'none', flexDirection: 'column', gap: '12px' }}>
+                                        {processedLogs.length === 0 ? (
+                                            <p style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '20px' }}>لا توجد حركات مخزنية مسجلة.</p>
+                                        ) : (
+                                            processedLogs.map((log, idx) => {
+                                                const qty = log.quantity || 0;
+                                                const uCost = log.unit_cost || log.unitCost || 0;
+                                                const tCost = log.total_cost || log.totalCost || 0;
+                                                const isIncrease = qty > 0;
+                                                const typeLabel = {
+                                                    'Sale': 'بيع',
+                                                    'Return': 'مرتجع',
+                                                    'Purchase': 'مشتريات',
+                                                    'Restock': 'إضافة مخزون (Restock)',
+                                                    'Correction': 'تعديل جرد',
+                                                    'Waste': 'هالك'
+                                                }[log.type] || log.type;
+                                                const logSku = log.variant_sku || log.variantSku;
+                                                const variant = product.variants?.find(v => v.sku === logSku);
+                                                const variantLabel = variant ? formatProductDisplayName(product.name, variant.name) : formatProductDisplayName(product.name, logSku);
+                                                
+                                                return (
+                                                    <div key={idx} className="sa-mobile-card" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                            <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>
+                                                                {new Date(log.date || log.created_at).toLocaleString('en-GB', { 
+                                                                    day: '2-digit', month: '2-digit', year: 'numeric', 
+                                                                    hour: '2-digit', minute: '2-digit', hour12: true 
+                                                                })}
+                                                            </span>
+                                                            <span className={`badge ${isIncrease ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '10px' }}>
+                                                                {typeLabel}
+                                                            </span>
+                                                        </div>
+                                                        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr', gap: '4px' }}>
+                                                            <span style={{ color: 'var(--text-secondary)' }}>الخيار:</span>
+                                                            <span style={{ color: '#fff' }}>{variantLabel}</span>
+                                                        </div>
+                                                        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr', gap: '4px' }}>
+                                                            <span style={{ color: 'var(--text-secondary)' }}>التغير:</span>
+                                                            <strong style={{ color: isIncrease ? '#4ae290' : '#ff4d4d' }}>{isIncrease ? '+' : ''}{qty}</strong>
+                                                        </div>
+                                                        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr', gap: '4px' }}>
+                                                            <span style={{ color: 'var(--text-secondary)' }}>تكلفة القطعة:</span>
+                                                            <span style={{ color: '#fff' }}>{uCost !== undefined && uCost !== null ? `${parseFloat(uCost).toFixed(2)} ج.م.` : '0.00 ج.م.'}</span>
+                                                        </div>
+                                                        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr', gap: '4px' }}>
+                                                            <span style={{ color: 'var(--text-secondary)' }}>إجمالي التكلفة:</span>
+                                                            <span style={{ color: '#fff' }}>{tCost !== undefined && tCost !== null ? `${parseFloat(tCost).toFixed(2)} ج.م.` : '0.00 ج.م.'}</span>
+                                                        </div>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--glass-border)', paddingTop: '6px', marginTop: '2px' }}>
+                                                            <span>الرصيد بعد الحركة: <strong style={{ color: '#fff' }}>{log.calculated_balance_after}</strong></span>
+                                                            <span style={{ color: '#aaa', fontSize: '11px' }}>{log.notes || '-'}</span>
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })
+                                        )}
+                                    </div>
+                                </>
+                            );
+                        })()}
                     </div>
                 </div>
             )}

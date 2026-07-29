@@ -2859,5 +2859,36 @@ input[type=number] {
     }
 }
 
+/* Product Info (Inspect Catalog) Mobile responsive styles */
+.inspect-desktop-only {
+    display: block;
+}
+.inspect-mobile-cards {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .inspect-desktop-only {
+        display: none !important;
+    }
+    .inspect-mobile-cards {
+        display: flex !important;
+        flex-direction: column;
+        gap: 12px;
+    }
+    .inspect-page-header {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 16px !important;
+    }
+    .inspect-page-header > div {
+        width: 100% !important;
+        justify-content: space-between !important;
+    }
+    .inspect-header-actions {
+        width: 100% !important;
+    }
+}
+
 
 
