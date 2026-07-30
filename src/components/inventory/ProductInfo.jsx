@@ -961,7 +961,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                             }}
                         >
                             <div style={{ fontSize: '16px', fontWeight: 700, color: 'var(--gold-primary)', letterSpacing: '0.5px', marginBottom: '2px' }}>
-                                {state.storeSettings.name || 'o5taboad store'}
+                                {state.storeSettings.name || 'a5tabot dashboard'}
                             </div>
                             <div style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text-primary)', marginBottom: '14px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                 {deduplicateProductName(product.name)}

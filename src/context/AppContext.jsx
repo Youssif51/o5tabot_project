@@ -28,7 +28,7 @@ const defaultActivities = [];
         users: [],
         activities: [],
         collections: [],
-        storeSettings: { name: "o5taboad store", address: "Egypt", currency: "EGP", vipThresholdPurchases: 5000, vipThresholdOrders: 10 },
+        storeSettings: { name: "a5tabot dashboard", address: "Egypt", currency: "EGP", vipThresholdPurchases: 5000, vipThresholdOrders: 10 },
         userAvatars: {},
         influencers: [],
         currentUser: null
@@ -352,8 +352,8 @@ export const AppProvider = ({ children }) => {
         totalValue: 0,
         itemCount: 0
     });
-    const [language, setLanguage] = useState(() => localStorage.getItem("octabot_lang") || "ar");
-    const [theme, setTheme] = useState(() => localStorage.getItem("octabot_theme") || "dark");
+    const [language, setLanguage] = useState("ar");
+    const [theme, setTheme] = useState("dark");
 
     const [confirmSpamToggle, setConfirmSpamToggle] = useState(false);
     const confirmSpamToggleRef = useRef(false);
@@ -4644,7 +4644,7 @@ const translations = {
         lowStock: "Low stock",
         packets: "Packets",
         units: "Units",
-        brandName: "o5taboad sror",
+        brandName: "a5tabot dashboard",
         totalActiveSuppliers: "Total Active Suppliers",
         outstandingLiabilities: "Outstanding Liabilities",
         totalPaidAssets: "Total Paid Assets",

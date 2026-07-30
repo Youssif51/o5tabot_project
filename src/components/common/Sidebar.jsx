@@ -62,7 +62,7 @@ export default function Sidebar() {
         <aside className="sidebar">
             <div className="sidebar-logo">
                 <img src="/octabot-logo-final.png" alt="Octabot Logo" />
-                <h1>o5taboad store</h1>
+                <h1>a5tabot dashboard</h1>
             </div>
             
             <ul className="nav-links">

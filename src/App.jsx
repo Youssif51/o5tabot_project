@@ -330,7 +330,7 @@ export default function App() {
                                 <div className="page-title-group">
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
                                         <h2 style={{ fontSize: '24px', fontWeight: '800', background: 'linear-gradient(135deg, #fff 30%, var(--gold-primary) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', margin: 0 }}>
-                                            لوحة التحكم والتحليلات الإستراتيجية
+                                            لوحة التحكم والتحليلات
                                         </h2>
                                         <div className={`live-indicator ${isOnline ? '' : 'offline'}`} title={isOnline ? "اتصال مباشر بسيرفر النظام وقاعدة البيانات" : "تم قطع الاتصال بالسيرفر"}>
                                             <span className="live-indicator-dot"></span>
@@ -338,7 +338,7 @@ export default function App() {
                                         </div>
                                     </div>
                                     <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '6px', lineHeight: 1.5 }}>
-                                        مرحباً بك مجدداً يا رئيس! إليك نظرة شاملة على مؤشرات الأداء ومستوى المخزون لمتجرك <strong style={{ color: 'var(--gold-primary)' }}>{state.storeSettings?.storeName || 'o5taboad'}</strong>.
+                                        مرحباً بك مجدداً يا رئيس! إليك نظرة شاملة على مؤشرات الأداء ومستوى المخزون لمتجرك <strong style={{ color: 'var(--gold-primary)' }}>{state.storeSettings?.storeName || 'a5tabot'}</strong>.
                                     </p>
                                 </div>
                                 <div className="page-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
