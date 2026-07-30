@@ -405,15 +405,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         }
     }, [isOpen, editOrderId]);
 
-    // Keep global discount value capped to subtotal
-    useEffect(() => {
-        if (globalDiscountType === 'Fixed') {
-            const val = parseFloat(globalDiscountValue) || 0;
-            if (val > totalProductsSubtotal) {
-                setGlobalDiscountValue(String(totalProductsSubtotal));
-            }
-        }
-    }, [totalProductsSubtotal, globalDiscountType, globalDiscountValue]);
+
 
     // Helper to find stock for a SKU in the default warehouse 'Sulur'
     const getStockQty = (sku) => {
@@ -606,6 +598,16 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         const sub = item.discountType === 'Percentage' ? (item.quantity * item.price * (1 - (item.discountPercent || 0) / 100)) : Math.max(0, (item.quantity * item.price) - (item.discountPercent || 0));
         return sum + (item.variantSku ? sub : 0);
     }, 0);
+
+    // Keep global discount value capped to subtotal
+    useEffect(() => {
+        if (globalDiscountType === 'Fixed') {
+            const val = parseFloat(globalDiscountValue) || 0;
+            if (val > totalProductsSubtotal) {
+                setGlobalDiscountValue(String(totalProductsSubtotal));
+            }
+        }
+    }, [totalProductsSubtotal, globalDiscountType, globalDiscountValue]);
 
     // Total base for order-level discount is products subtotal + shipping fee
     const orderDiscountBase = totalProductsSubtotal + shippingFeeVal;
