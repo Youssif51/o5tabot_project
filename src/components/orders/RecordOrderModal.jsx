@@ -599,15 +599,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         return sum + (item.variantSku ? sub : 0);
     }, 0);
 
-    // Keep global discount value capped to subtotal
-    useEffect(() => {
-        if (globalDiscountType === 'Fixed') {
-            const val = parseFloat(globalDiscountValue) || 0;
-            if (val > totalProductsSubtotal) {
-                setGlobalDiscountValue(String(totalProductsSubtotal));
-            }
-        }
-    }, [totalProductsSubtotal, globalDiscountType, globalDiscountValue]);
+
 
     // Total base for order-level discount is products subtotal + shipping fee
     const orderDiscountBase = totalProductsSubtotal + shippingFeeVal;
@@ -641,6 +633,16 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     // Final order total subtracts the discount from the entire (subtotal + shipping) base and adds VAT
     const finalOrderTotal = Math.round((Math.max(0, orderDiscountBase - orderDiscountAmount) + vatAmount) * 100) / 100;
     const remainingToCollect = Math.round((finalOrderTotal - depositVal) * 100) / 100;
+
+    // Keep global discount value capped to subtotal + shipping (orderDiscountBase)
+    useEffect(() => {
+        if (globalDiscountType === 'Fixed') {
+            const val = parseFloat(globalDiscountValue) || 0;
+            if (val > orderDiscountBase) {
+                setGlobalDiscountValue(String(orderDiscountBase));
+            }
+        }
+    }, [orderDiscountBase, globalDiscountType, globalDiscountValue]);
 
     const getCurrentStock = (sku) => {
         if (!sku) return 0;
@@ -1875,7 +1877,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                   if (globalDiscountType === 'Percentage') {
                                                       if (val > 100) val = 100;
                                                   } else {
-                                                      if (val > totalProductsSubtotal) val = totalProductsSubtotal;
+                                                      if (val > orderDiscountBase) val = orderDiscountBase;
                                                   }
                                                   setGlobalDiscountValue(String(val));
                                              }}
