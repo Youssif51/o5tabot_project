@@ -12,7 +12,7 @@ const PERMISSIONS_LIST = [
 ];
 
 export default function UserManagement() {
-    const { state, authSignup, toggleUserStatus, deleteUser, updateUserPermissions, t, showConfirm } = useContext(AppContext);
+    const { state, authSignup, toggleUserStatus, deleteUser, updateUserPermissions, updateUserTelegramChatId, t, showConfirm } = useContext(AppContext);
     
     if (!state.currentUser || !['Admin', 'SuperAdmin'].includes(state.currentUser.role)) {
         return null;
@@ -28,6 +28,7 @@ export default function UserManagement() {
 
     const [editingUserId, setEditingUserId] = useState(null);
     const [editingPermissions, setEditingPermissions] = useState([]);
+    const [tempTelegramChatId, setTempTelegramChatId] = useState('');
 
     const handleTogglePermission = (permId, isEditing = false) => {
         if (isEditing) {
@@ -58,9 +59,10 @@ export default function UserManagement() {
 
     const handleSavePermissions = async (userId) => {
         setLoading(true);
-        const success = await updateUserPermissions(userId, editingPermissions);
+        const success1 = await updateUserPermissions(userId, editingPermissions);
+        const success2 = await updateUserTelegramChatId(userId, tempTelegramChatId);
         setLoading(false);
-        if (success) {
+        if (success1 && success2) {
             setEditingUserId(null);
         }
     };
@@ -162,6 +164,7 @@ export default function UserManagement() {
                             <th>الموظف</th>
                             <th>المنصب</th>
                             <th>الصلاحيات</th>
+                            <th>معرف التلغرام (Telegram ID)</th>
                             <th>الحالة</th>
                             <th style={{ textAlign: 'center' }}>الإجراءات</th>
                         </tr>
@@ -228,16 +231,37 @@ export default function UserManagement() {
                                                         return p ? <span key={pid} className="status-badge" style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--text-color)', fontSize: '11px', padding: '2px 6px' }}>{p.label}</span> : null;
                                                     })
                                                 )}
-                                                {u.id !== state.currentUser.id && (
+                                                {(u.id !== state.currentUser.id || state.currentUser.role === 'SuperAdmin') && (
                                                     <button 
                                                         className="btn btn-secondary" 
                                                         style={{ padding: '2px 6px', fontSize: '11px', border: 'none', background: 'transparent' }} 
-                                                        onClick={() => { setEditingUserId(u.id); setEditingPermissions(u.permissions || []); }}
+                                                        onClick={() => { setEditingUserId(u.id); setEditingPermissions(u.permissions || []); setTempTelegramChatId(u.telegram_chat_id || ''); }}
                                                     >
                                                         <i className="fa-solid fa-pen"></i> تعديل
                                                     </button>
                                                 )}
                                             </div>
+                                        )}
+                                    </td>
+                                    <td>
+                                        {editingUserId === u.id ? (
+                                            <input 
+                                                type="text" 
+                                                className="form-input" 
+                                                placeholder="مثال: 7724624736" 
+                                                value={tempTelegramChatId} 
+                                                onChange={e => setTempTelegramChatId(e.target.value)} 
+                                                style={{ width: '135px', fontSize: '12px', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--glass-border)' }}
+                                            />
+                                        ) : (
+                                            u.telegram_chat_id ? (
+                                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-color)', fontSize: '12.5px' }}>
+                                                    <i className="fa-brands fa-telegram" style={{ color: '#0088cc', fontSize: '15px' }}></i>
+                                                    <code>{u.telegram_chat_id}</code>
+                                                </span>
+                                            ) : (
+                                                <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>غير مسجل</span>
+                                            )
                                         )}
                                     </td>
                                     <td>

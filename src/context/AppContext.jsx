@@ -100,6 +100,14 @@ export const AppProvider = ({ children }) => {
                     supabase.from('shopify_collections').select('*')
                 ]);
 
+                let telegramMappings = [];
+                try {
+                    const { data: tmData } = await supabase.from('telegram_mappings').select('*');
+                    if (tmData) telegramMappings = tmData;
+                } catch (e) {
+                    console.error("Failed to load telegram mappings:", e);
+                }
+
                 if (pErr || vErr || sErr || oErr || oiErr || poErr || poiErr || lErr || wErr || cErr || couErr || uErr || colErr) {
                     console.error("Supabase load error detail:", { pErr, vErr, sErr, oErr, oiErr, poErr, poiErr, lErr, wErr, cErr, couErr, uErr, colErr });
                     showToast("فشل تحميل البيانات من السيرفر. يرجى تحديث الصفحة أو التحقق من الاتصال بالإنترنت.", "error");
@@ -311,7 +319,10 @@ export const AppProvider = ({ children }) => {
                         minOrderValue: c.min_order_value || null,
                         createdAt: c.created_at
                     })),
-                    users: users || [],
+                    users: (users || []).map(u => {
+                        const tm = (telegramMappings || []).find(m => m.user_id === u.id);
+                        return { ...u, telegram_chat_id: tm ? tm.telegram_chat_id : '' };
+                    }),
                     userAvatars: { ...prev.userAvatars, ...loadedUserAvatars },
                     stockLedger: mappedLedger,
                     collections: collections || []
@@ -775,6 +786,34 @@ export const AppProvider = ({ children }) => {
         return true;
     };
 
+    const updateUserTelegramChatId = async (userId, chatId) => {
+        if (!supabase) return false;
+        let error;
+        if (!chatId) {
+            const { error: err } = await supabase
+                .from('telegram_mappings')
+                .delete()
+                .eq('user_id', userId);
+            error = err;
+        } else {
+            const { error: err } = await supabase
+                .from('telegram_mappings')
+                .upsert({ user_id: userId, telegram_chat_id: chatId });
+            error = err;
+        }
+        if (error) {
+            showToast(error.message, "error");
+            return false;
+        }
+        
+        setState(prev => ({
+            ...prev,
+            users: (prev.users || []).map(u => u.id === userId ? { ...u, telegram_chat_id: chatId } : u)
+        }));
+        showToast("Telegram ID updated successfully");
+        return true;
+    };
+
     const sendAdminNotification = async (action, recipientEmail, data) => {
         try {
             const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -825,7 +864,16 @@ export const AppProvider = ({ children }) => {
         
         // Refresh users list
         const { data: users } = await supabase.from('user_profiles').select('*');
-        setState(prev => ({ ...prev, users: users || [] }));
+        let telegramMappings = [];
+        try {
+            const { data: tmData } = await supabase.from('telegram_mappings').select('*');
+            if (tmData) telegramMappings = tmData;
+        } catch (e) {}
+        const enrichedUsers = (users || []).map(u => {
+            const tm = (telegramMappings || []).find(m => m.user_id === u.id);
+            return { ...u, telegram_chat_id: tm ? tm.telegram_chat_id : '' };
+        });
+        setState(prev => ({ ...prev, users: enrichedUsers }));
         
         return true;
     };
@@ -4304,6 +4352,7 @@ export const AppProvider = ({ children }) => {
             authLogin,
             authSignup,
             updateUserPermissions,
+            updateUserTelegramChatId,
             toggleUserStatus,
             deleteUser,
             authLogout,
