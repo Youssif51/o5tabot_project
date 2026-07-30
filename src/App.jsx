@@ -88,6 +88,22 @@ export default function App() {
     const [scannerSource, setScannerSource] = useState('search'); // 'search' or 'field'
     const [scannerSelectedBarcode, setScannerSelectedBarcode] = useState('');
     const [scannerCallback, setScannerCallback] = useState(null);
+
+    // Realtime connection check
+    const [isOnline, setIsOnline] = useState(navigator.onLine);
+
+    React.useEffect(() => {
+        const handleOnline = () => setIsOnline(true);
+        const handleOffline = () => setIsOnline(false);
+
+        window.addEventListener('online', handleOnline);
+        window.addEventListener('offline', handleOffline);
+
+        return () => {
+            window.removeEventListener('online', handleOnline);
+            window.removeEventListener('offline', handleOffline);
+        };
+    }, []);
     const [isScanning, setIsScanning] = useState(false);
 
     // Gather all active barcodes for scanner dropdown
@@ -316,9 +332,9 @@ export default function App() {
                                         <h2 style={{ fontSize: '24px', fontWeight: '800', background: 'linear-gradient(135deg, #fff 30%, var(--gold-primary) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', margin: 0 }}>
                                             لوحة التحكم والتحليلات الإستراتيجية
                                         </h2>
-                                        <div className="live-indicator" title="اتصال مباشر بسيرفرات وقاعدة بيانات Supabase">
+                                        <div className={`live-indicator ${isOnline ? '' : 'offline'}`} title={isOnline ? "اتصال مباشر بسيرفر النظام وقاعدة البيانات" : "تم قطع الاتصال بالسيرفر"}>
                                             <span className="live-indicator-dot"></span>
-                                            <span>نظام Supabase متصل ونشط</span>
+                                            <span>{isOnline ? "اتصال السيرفر نشط" : "السيرفر غير متصل"}</span>
                                         </div>
                                     </div>
                                     <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '6px', lineHeight: 1.5 }}>
