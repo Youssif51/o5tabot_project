@@ -405,6 +405,16 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         }
     }, [isOpen, editOrderId]);
 
+    // Keep global discount value capped to subtotal
+    useEffect(() => {
+        if (globalDiscountType === 'Fixed') {
+            const val = parseFloat(globalDiscountValue) || 0;
+            if (val > totalProductsSubtotal) {
+                setGlobalDiscountValue(String(totalProductsSubtotal));
+            }
+        }
+    }, [totalProductsSubtotal, globalDiscountType, globalDiscountValue]);
+
     // Helper to find stock for a SKU in the default warehouse 'Sulur'
     const getStockQty = (sku) => {
         let stock = 0;
@@ -503,16 +513,27 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         if (liveStock <= 0) {
             showToast("عفواً هذا المنتج غير متوفر في المخزن حالياً (الاستوك صفر)", "error");
         }
-        setItems(prev => prev.map((item, i) => i === index ? {
-            ...item,
-            variantSku: variant.sku,
-            price: variant.retailPrice,
-            maxStock: liveStock,
-            productName: variant.productName,
-            variantName: variant.name,
-            searchVal: formatProductDisplayName(variant.productName, variant.name),
-            isOpen: false
-        } : item));
+        setItems(prev => prev.map((item, i) => {
+            if (i === index) {
+                let disc = item.discountPercent || 0;
+                if (item.discountType === 'Fixed') {
+                    const maxDisc = item.quantity * variant.retailPrice;
+                    if (disc > maxDisc) disc = maxDisc;
+                }
+                return {
+                    ...item,
+                    variantSku: variant.sku,
+                    price: variant.retailPrice,
+                    maxStock: liveStock,
+                    productName: variant.productName,
+                    variantName: variant.name,
+                    searchVal: formatProductDisplayName(variant.productName, variant.name),
+                    isOpen: false,
+                    discountPercent: disc
+                };
+            }
+            return item;
+        }));
     };
 
     const handleClearItem = (index) => {
@@ -536,20 +557,37 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         const liveStock = getCurrentStock(targetItem?.variantSku);
         const maxStock = isEditMode ? (liveStock + (initialItemQtyMap[targetItem?.variantSku] || 0)) : liveStock;
         
+        let finalQty = qty;
         if (maxStock > 0 && qty > maxStock) {
             showToast(`الكمية المدخلة تتجاوز المخزون المتاح (${maxStock} وحدة)`, "warning");
-            setItems(prev => prev.map((item, i) => i === index ? { ...item, quantity: maxStock } : item));
+            finalQty = maxStock;
         } else if (qty < 1) {
-            setItems(prev => prev.map((item, i) => i === index ? { ...item, quantity: 1 } : item));
-        } else {
-            setItems(prev => prev.map((item, i) => i === index ? { ...item, quantity: qty } : item));
+            finalQty = 1;
         }
+
+        setItems(prev => prev.map((item, i) => {
+            if (i === index) {
+                let disc = item.discountPercent || 0;
+                if (item.discountType === 'Fixed') {
+                    const maxDisc = finalQty * item.price;
+                    if (disc > maxDisc) disc = maxDisc;
+                }
+                return { ...item, quantity: finalQty, discountPercent: disc };
+            }
+            return item;
+        }));
     };
 
     const handleDiscountChange = (index, val, type) => {
         let disc = parseFloat(val) || 0;
         if (disc < 0) disc = 0;
-        if (type === 'Percentage' && disc > 100) disc = 100;
+        if (type === 'Percentage') {
+            if (disc > 100) disc = 100;
+        } else {
+            const item = items[index];
+            const maxDisc = item ? item.quantity * item.price : 0;
+            if (disc > maxDisc) disc = maxDisc;
+        }
         setItems(prev => prev.map((item, i) => i === index ? { ...item, discountPercent: disc, discountType: type } : item));
     };
 
@@ -1831,9 +1869,13 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                      return;
                                                  }
                                                  let val = parseFloat(valStr) || 0;
-                                                 if (val < 0) val = 0;
-                                                 if (globalDiscountType === 'Percentage' && val > 100) val = 100;
-                                                 setGlobalDiscountValue(String(val));
+                                                  if (val < 0) val = 0;
+                                                  if (globalDiscountType === 'Percentage') {
+                                                      if (val > 100) val = 100;
+                                                  } else {
+                                                      if (val > totalProductsSubtotal) val = totalProductsSubtotal;
+                                                  }
+                                                  setGlobalDiscountValue(String(val));
                                              }}
                                             placeholder="0"
                                             style={{
