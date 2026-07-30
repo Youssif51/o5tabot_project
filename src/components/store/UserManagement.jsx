@@ -166,7 +166,7 @@ export default function UserManagement() {
                 </div>
             )}
 
-            <div className="table-responsive">
+            <div className="table-responsive g-desktop-only">
                 <table className="custom-table">
                     <thead>
                         <tr>
@@ -331,6 +331,173 @@ export default function UserManagement() {
                         )}
                     </tbody>
                 </table>
+            </div>
+
+            <div className="g-mobile-only" style={{ display: 'none', flexDirection: 'column', gap: '12px', padding: '16px 0' }}>
+                {usersList.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: 'var(--text-muted)' }}>لا يوجد موظفين حالياً</p>
+                ) : (
+                    usersList.map(u => {
+                        const isSuperAdmin = u.role === 'SuperAdmin';
+                        return (
+                            <div key={u.id} className="sa-mobile-card" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <strong style={{ color: '#fff', fontSize: '14px' }}>{u.name}</strong>
+                                        <div style={{ fontSize: '11.5px', color: 'var(--text-secondary)', marginTop: '2px' }}>{u.email}</div>
+                                    </div>
+                                    <span className={`status-badge ${u.role === 'SuperAdmin' ? 'status-completed' : u.role === 'Admin' ? 'status-processing' : 'status-pending'}`} style={{ fontSize: '10px' }}>
+                                        {u.role}
+                                    </span>
+                                </div>
+
+                                <div style={{ borderTop: '1px dashed var(--glass-border)', borderBottom: '1px dashed var(--glass-border)', padding: '10px 0', margin: '4px 0', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                                    {/* Telegram ID Inline Editing Card View */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                                        <span style={{ color: 'var(--text-secondary)' }}>معرف التلغرام:</span>
+                                        {editingTelegramUserId === u.id ? (
+                                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                                <input 
+                                                    type="text" 
+                                                    className="form-input" 
+                                                    placeholder="مثال: 7724624736" 
+                                                    value={tempTelegramChatId} 
+                                                    onChange={e => setTempTelegramChatId(e.target.value)} 
+                                                    style={{ width: '120px', fontSize: '11px', padding: '4px 8px', borderRadius: '4px', border: '1px solid var(--glass-border)', background: 'rgba(0,0,0,0.2)', color: '#fff' }}
+                                                />
+                                                <button 
+                                                    className="btn btn-primary" 
+                                                    style={{ padding: '2px 6px', fontSize: '10px' }}
+                                                    onClick={() => handleSaveTelegram(u.id)}
+                                                    disabled={loading}
+                                                >
+                                                    حفظ
+                                                </button>
+                                                <button 
+                                                    className="btn btn-secondary" 
+                                                    style={{ padding: '2px 6px', fontSize: '10px' }}
+                                                    onClick={() => setEditingTelegramUserId(null)}
+                                                >
+                                                    إلغاء
+                                                </button>
+                                            </div>
+                                        ) : (
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                {u.telegram_chat_id ? (
+                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#fff', fontFamily: 'monospace' }}>
+                                                        <i className="fa-brands fa-telegram" style={{ color: '#0088cc' }}></i>
+                                                        {u.telegram_chat_id}
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--text-muted)' }}>غير مسجل</span>
+                                                )}
+                                                <button 
+                                                    onClick={() => { setEditingTelegramUserId(u.id); setTempTelegramChatId(u.telegram_chat_id || ''); }}
+                                                    style={{ background: 'transparent', border: 'none', color: 'var(--gold-primary)', cursor: 'pointer', padding: '2px' }}
+                                                >
+                                                    <i className="fa-solid fa-pencil" style={{ fontSize: '10px' }}></i>
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Status */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                                        <span style={{ color: 'var(--text-secondary)' }}>حالة الحساب:</span>
+                                        <span className={`status-badge ${u.is_active ? 'status-completed' : 'status-cancelled'}`} style={{ fontSize: '10px', padding: '2px 6px' }}>
+                                            {u.is_active ? 'نشط' : 'موقوف'}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                {/* Permissions Card View */}
+                                <div style={{ fontSize: '12px', textAlign: 'right' }}>
+                                    <span style={{ color: 'var(--text-secondary)', display: 'block', marginBottom: '6px' }}>الصلاحيات:</span>
+                                    {isSuperAdmin ? (
+                                        <span style={{ color: 'var(--primary-color)', fontSize: '11.5px', fontWeight: 'bold' }}>كافة الصلاحيات (SuperAdmin)</span>
+                                    ) : editingUserId === u.id ? (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                                {PERMISSIONS_LIST.map(p => {
+                                                    const isSelected = editingPermissions.includes(p.id);
+                                                    return (
+                                                        <div 
+                                                            key={p.id} 
+                                                            onClick={() => handleTogglePermission(p.id, true)}
+                                                            style={{ 
+                                                                padding: '4px 8px', 
+                                                                borderRadius: '10px', 
+                                                                border: `1px solid ${isSelected ? 'var(--primary-color)' : 'var(--border-color)'}`,
+                                                                background: isSelected ? 'var(--primary-color)' : 'transparent',
+                                                                color: isSelected ? 'white' : 'var(--text-color)',
+                                                                cursor: 'pointer',
+                                                                fontSize: '10.5px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                gap: '4px'
+                                                            }}
+                                                        >
+                                                            <i className={`fa-solid ${isSelected ? 'fa-check' : 'fa-plus'}`}></i>
+                                                            {p.label}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '6px', marginTop: '4px' }}>
+                                                <button className="btn btn-primary" style={{ padding: '3px 10px', fontSize: '11px' }} onClick={() => handleSavePermissions(u.id)} disabled={loading}>حفظ الصلاحيات</button>
+                                                <button className="btn btn-secondary" style={{ padding: '3px 10px', fontSize: '11px' }} onClick={() => setEditingUserId(null)}>إلغاء</button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px', alignItems: 'center' }}>
+                                            {(u.permissions || []).length === 0 ? (
+                                                <span style={{ color: '#999', fontSize: '11px' }}>لا توجد صلاحيات</span>
+                                            ) : (
+                                                (u.permissions || []).map(pid => {
+                                                    const p = PERMISSIONS_LIST.find(x => x.id === pid);
+                                                    return p ? <span key={pid} className="status-badge" style={{ background: 'rgba(255,255,255,0.06)', color: '#fff', fontSize: '10px', padding: '2px 6px' }}>{p.label}</span> : null;
+                                                })
+                                            )}
+                                            {u.id !== state.currentUser.id && (
+                                                <button 
+                                                    className="btn btn-secondary" 
+                                                    style={{ padding: '2px 6px', fontSize: '10.5px', border: 'none', background: 'transparent', display: 'inline-flex', alignItems: 'center', gap: '3px' }} 
+                                                    onClick={() => { setEditingUserId(u.id); setEditingPermissions(u.permissions || []); }}
+                                                >
+                                                    <i className="fa-solid fa-pen" style={{ fontSize: '9.5px' }}></i> تعديل الصلاحيات
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Actions Card View */}
+                                {u.id !== state.currentUser.id && u.role !== 'SuperAdmin' && (
+                                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', borderTop: '1px dashed var(--glass-border)', paddingTop: '10px', marginTop: '4px' }}>
+                                        <button 
+                                            className="btn btn-secondary" 
+                                            style={{ padding: '6px 12px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                            onClick={() => handleToggleStatus(u.id, u.is_active)}
+                                            title={u.is_active ? 'إيقاف الحساب' : 'تفعيل الحساب'}
+                                        >
+                                            <i className={`fa-solid ${u.is_active ? 'fa-ban' : 'fa-check'}`}></i>
+                                            {u.is_active ? 'إيقاف' : 'تفعيل'}
+                                        </button>
+                                        <button 
+                                            className="btn btn-danger" 
+                                            style={{ padding: '6px 12px', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                            onClick={() => handleDelete(u.id)}
+                                            title="حذف نهائي"
+                                        >
+                                            <i className="fa-solid fa-trash"></i>
+                                            حذف
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })
+                )}
             </div>
         </div>
     );
