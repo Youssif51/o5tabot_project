@@ -28,6 +28,7 @@ export default function UserManagement() {
 
     const [editingUserId, setEditingUserId] = useState(null);
     const [editingPermissions, setEditingPermissions] = useState([]);
+    const [editingTelegramUserId, setEditingTelegramUserId] = useState(null);
     const [tempTelegramChatId, setTempTelegramChatId] = useState('');
 
     const handleTogglePermission = (permId, isEditing = false) => {
@@ -59,11 +60,19 @@ export default function UserManagement() {
 
     const handleSavePermissions = async (userId) => {
         setLoading(true);
-        const success1 = await updateUserPermissions(userId, editingPermissions);
-        const success2 = await updateUserTelegramChatId(userId, tempTelegramChatId);
+        const success = await updateUserPermissions(userId, editingPermissions);
         setLoading(false);
-        if (success1 && success2) {
+        if (success) {
             setEditingUserId(null);
+        }
+    };
+
+    const handleSaveTelegram = async (userId) => {
+        setLoading(true);
+        const success = await updateUserTelegramChatId(userId, tempTelegramChatId);
+        setLoading(false);
+        if (success) {
+            setEditingTelegramUserId(null);
         }
     };
 
@@ -231,11 +240,11 @@ export default function UserManagement() {
                                                         return p ? <span key={pid} className="status-badge" style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--text-color)', fontSize: '11px', padding: '2px 6px' }}>{p.label}</span> : null;
                                                     })
                                                 )}
-                                                {(u.id !== state.currentUser.id || state.currentUser.role === 'SuperAdmin') && (
+                                                {u.id !== state.currentUser.id && (
                                                     <button 
                                                         className="btn btn-secondary" 
                                                         style={{ padding: '2px 6px', fontSize: '11px', border: 'none', background: 'transparent' }} 
-                                                        onClick={() => { setEditingUserId(u.id); setEditingPermissions(u.permissions || []); setTempTelegramChatId(u.telegram_chat_id || ''); }}
+                                                        onClick={() => { setEditingUserId(u.id); setEditingPermissions(u.permissions || []); }}
                                                     >
                                                         <i className="fa-solid fa-pen"></i> تعديل
                                                     </button>
@@ -244,24 +253,50 @@ export default function UserManagement() {
                                         )}
                                     </td>
                                     <td>
-                                        {editingUserId === u.id ? (
-                                            <input 
-                                                type="text" 
-                                                className="form-input" 
-                                                placeholder="مثال: 7724624736" 
-                                                value={tempTelegramChatId} 
-                                                onChange={e => setTempTelegramChatId(e.target.value)} 
-                                                style={{ width: '135px', fontSize: '12px', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--glass-border)' }}
-                                            />
+                                        {editingTelegramUserId === u.id ? (
+                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                <input 
+                                                    type="text" 
+                                                    className="form-input" 
+                                                    placeholder="مثال: 7724624736" 
+                                                    value={tempTelegramChatId} 
+                                                    onChange={e => setTempTelegramChatId(e.target.value)} 
+                                                    style={{ width: '135px', fontSize: '12px', padding: '6px 10px', borderRadius: '6px', border: '1px solid var(--glass-border)', background: 'rgba(0,0,0,0.2)', color: '#fff' }}
+                                                />
+                                                <button 
+                                                    className="btn btn-primary" 
+                                                    style={{ padding: '4px 8px', fontSize: '11px', minWidth: '45px' }}
+                                                    onClick={() => handleSaveTelegram(u.id)}
+                                                    disabled={loading}
+                                                >
+                                                    {loading ? '...' : 'حفظ'}
+                                                </button>
+                                                <button 
+                                                    className="btn btn-secondary" 
+                                                    style={{ padding: '4px 8px', fontSize: '11px', minWidth: '45px' }}
+                                                    onClick={() => setEditingTelegramUserId(null)}
+                                                >
+                                                    إلغاء
+                                                </button>
+                                            </div>
                                         ) : (
-                                            u.telegram_chat_id ? (
-                                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-color)', fontSize: '12.5px' }}>
-                                                    <i className="fa-brands fa-telegram" style={{ color: '#0088cc', fontSize: '15px' }}></i>
-                                                    <code>{u.telegram_chat_id}</code>
-                                                </span>
-                                            ) : (
-                                                <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>غير مسجل</span>
-                                            )
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                {u.telegram_chat_id ? (
+                                                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--text-color)', fontSize: '12.5px' }}>
+                                                        <i className="fa-brands fa-telegram" style={{ color: '#0088cc', fontSize: '15px' }}></i>
+                                                        <code>{u.telegram_chat_id}</code>
+                                                    </span>
+                                                ) : (
+                                                    <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>غير مسجل</span>
+                                                )}
+                                                <button 
+                                                    onClick={() => { setEditingTelegramUserId(u.id); setTempTelegramChatId(u.telegram_chat_id || ''); }}
+                                                    style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: '4px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                                                    title="تعديل معرف تلغرام"
+                                                >
+                                                    <i className="fa-solid fa-pencil" style={{ fontSize: '11px', color: 'var(--gold-primary)' }}></i>
+                                                </button>
+                                            </div>
                                         )}
                                     </td>
                                     <td>
