@@ -1,4 +1,5 @@
 import React, { useContext, useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { AppContext } from '../../context/AppContext';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { formatProductDisplayName } from '../../utils/productUtils';
@@ -10,6 +11,13 @@ import { supabase } from '../../utils/supabase';
 export default function ShopifyPendingList() {
     const { state, updateOrderStatus, updateOrderProperties, approveOrderWithBosta, deductOrderStock, fetchMissingOrderItems, showToast, showConfirm, addCustomer, setCustomerSpam, logActivity } = useContext(AppContext);
     const [globalSearch, setGlobalSearch] = useState('');
+    const location = useLocation();
+
+    useEffect(() => {
+        if (location.state?.highlightOrderId) {
+            setGlobalSearch(location.state.highlightOrderId.toString());
+        }
+    }, [location.state]);
     const [expandedOrderIds, setExpandedOrderIds] = useState({});
     
     // Auto-fetch missing items for pending orders

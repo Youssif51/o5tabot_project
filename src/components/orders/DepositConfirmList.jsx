@@ -1,4 +1,5 @@
-import React, { useContext, useState, useRef } from 'react';
+import React, { useContext, useState, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 import { AppContext } from '../../context/AppContext';
 import { formatProductDisplayName } from '../../utils/productUtils';
 
@@ -83,6 +84,28 @@ const getRemainingToCollect = (ord) => {
 export default function DepositConfirmList() {
     const { state, updateDepositStatus, settleAdminsCustody, confirmDepositRefund, confirmDepositAndRefund } = useContext(AppContext);
     const [expandedAdminId, setExpandedAdminId] = useState(null);
+    const location = useLocation();
+
+    useEffect(() => {
+        if (location.state?.highlightOrderId) {
+            const orderId = location.state.highlightOrderId;
+            setTimeout(() => {
+                const element = document.getElementById(`pending-deposit-row-${orderId}`) || 
+                                document.getElementById(`pending-deposit-card-${orderId}`);
+                if (element) {
+                    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    element.style.boxShadow = '0 0 20px rgba(229, 169, 59, 0.45)';
+                    element.style.borderColor = 'var(--gold-primary)';
+                    element.style.background = 'rgba(229, 169, 59, 0.08)';
+                    setTimeout(() => {
+                        element.style.boxShadow = '';
+                        element.style.borderColor = '';
+                        element.style.background = '';
+                    }, 4000);
+                }
+            }, 300);
+        }
+    }, [location.state]);
     const [proofsPage, setProofsPage] = useState(1);
     // Refund confirmation state: { orderId, file, uploading }
     const [refundConfirm, setRefundConfirm] = useState({});
@@ -305,7 +328,7 @@ export default function DepositConfirmList() {
                             </thead>
                             <tbody>
                                 {myPendingDeposits.map(ord => (
-                                    <tr key={ord.id} style={{ borderBottom: '1px solid var(--glass-bg)', textAlign: 'center' }}>
+                                    <tr key={ord.id} id={`pending-deposit-row-${ord.id}`} style={{ borderBottom: '1px solid var(--glass-bg)', textAlign: 'center', transition: 'all 0.5s ease' }}>
                                         <td style={{ padding: '12px 8px', fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--gold-primary)' }}>#{ord.id}</td>
                                         <td style={{ padding: '12px 8px' }}>{ord.client}</td>
                                         <td style={{ padding: '12px 8px', fontWeight: 'bold', color: '#2ecc71' }}>{ord.deposit} {currency}</td>
@@ -390,6 +413,7 @@ export default function DepositConfirmList() {
                         {myPendingDeposits.map(ord => (
                             <div 
                                 key={ord.id} 
+                                id={`pending-deposit-card-${ord.id}`}
                                 className="sa-mobile-card"
                                 style={{
                                     background: 'rgba(255, 255, 255, 0.02)',
@@ -398,7 +422,8 @@ export default function DepositConfirmList() {
                                     padding: '16px',
                                     display: 'flex',
                                     flexDirection: 'column',
-                                    gap: '10px'
+                                    gap: '10px',
+                                    transition: 'all 0.5s ease'
                                 }}
                             >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}>

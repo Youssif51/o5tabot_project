@@ -80,7 +80,8 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
             text: language === 'en'
                 ? `Confirm receipt of ${o.deposit} EGP for order #${o.id} (${o.client})`
                 : `تأكيد استلام عربون بقيمة ${o.deposit} ج.م للطلب #${o.id} للعميل ${o.client}`,
-            targetView: 'supabaseTasks'
+            targetView: 'depositConfirm',
+            orderId: o.id
         })),
         ...pendingShopifyOrders.map(o => {
             const val = parseFloat(o.totalValue || o.total_value) || 0;
@@ -91,7 +92,8 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
                 text: language === 'en' 
                     ? `Order ${o.id} for ${o.client || 'Customer'} (${val.toLocaleString('en-US', {maximumFractionDigits: 2})} EGP)`
                     : `طلب جديد بقيمة ${val.toLocaleString('en-US', {maximumFractionDigits: 2})} ج.م للعميل ${o.client || 'عميل'}`,
-                targetView: 'shopifyPending'
+                targetView: 'shopifyPending',
+                orderId: o.id
             };
         }),
         ...lowStockItems.map(item => ({
@@ -101,14 +103,24 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
             text: language === 'en'
                 ? `Item "${item.name}" has only ${item.stock} left.`
                 : `الصنف "${item.name}" متبقي منه ${item.stock} قطعة فقط.`,
-            targetView: 'inventory'
+            targetView: 'inventory',
+            sku: item.sku
         }))
     ];
 
     const notificationCount = notificationsList.length;
 
     const handleNotificationClick = (item) => {
-        setCurrentView(item.targetView);
+        if (item.type === 'deposit') {
+            navigate('/depositConfirm', { state: { highlightOrderId: item.orderId } });
+        } else if (item.type === 'shopify') {
+            navigate('/shopifyPending', { state: { highlightOrderId: item.orderId } });
+        } else if (item.type === 'lowstock') {
+            setGlobalSearch(item.sku);
+            navigate('/inventory');
+        } else {
+            setCurrentView(item.targetView);
+        }
         setIsOpen(false);
     };
 
