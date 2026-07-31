@@ -72,13 +72,14 @@ export default function MetricsRow({ timeFilter = 'all' }) {
 
     // 2. Inventory Summary calculations
     let invQty = 0;
-    let invReceived = 0;
+    let lowStockCount = 0;
     state.products.forEach(prod => {
         prod.variants.forEach(vr => {
             const totalQty = (vr.stock.Sulur || 0);
             invQty += totalQty;
-            if (totalQty <= vr.reorderLimit) {
-                invReceived += (vr.reorderLimit - totalQty + 10);
+            const limit = vr.reorderLimit || 5;
+            if (totalQty <= limit) {
+                lowStockCount++;
             }
         });
     });
@@ -162,12 +163,12 @@ export default function MetricsRow({ timeFilter = 'all' }) {
                             </div>
                         </div>
                         <div className="sub-metric-item">
-                            <div className="sub-metric-icon" style={{ background: 'rgba(160, 132, 220, 0.1)' }}>
-                                <img src="/icons/On the way.png" alt="To be received" style={{ width: '34px', height: '34px', objectFit: 'contain', imageRendering: '-webkit-optimize-contrast', filter: 'contrast(1.15) brightness(1.05)' }} />
+                            <div className="sub-metric-icon" style={{ background: 'rgba(235, 104, 76, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <i className="fa-solid fa-triangle-exclamation" style={{ fontSize: '20px', color: 'rgba(235, 104, 76, 0.9)' }}></i>
                             </div>
                             <div className="sub-metric-info">
-                                <h4 id="dash-inv-received">{invReceived}</h4>
-                                <span>{t('toBeReceived')}</span>
+                                <h4 id="dash-inv-received" style={{ color: 'rgba(235, 104, 76, 0.95)' }}>{lowStockCount}</h4>
+                                <span>{language === 'en' ? 'Low Stock Items' : 'أصناف منخفضة المخزون'}</span>
                             </div>
                         </div>
                     </div>
