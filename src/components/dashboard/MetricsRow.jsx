@@ -36,7 +36,7 @@ const isDateInPeriod = (dateStr, period) => {
 
 
 export default function MetricsRow({ timeFilter = 'all' }) {
-    const { state, t, theme } = useContext(AppContext);
+    const { state, t, theme, language } = useContext(AppContext);
     const currency = state.storeSettings.currency || '$';
 
     // 1. Sales Overview calculations
