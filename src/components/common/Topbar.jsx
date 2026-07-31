@@ -151,8 +151,41 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
                             setCurrentView('inventory');
                         }
                     }}
-                    style={{ paddingLeft: '44px' }}
+                    style={{ paddingLeft: '44px', paddingRight: globalSearch ? '36px' : '16px' }}
                 />
+                {globalSearch && (
+                    <button
+                        onClick={() => setGlobalSearch('')}
+                        style={{
+                            position: 'absolute',
+                            right: '12px',
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--text-muted, #888)',
+                            cursor: 'pointer',
+                            fontSize: '13px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            padding: '4px',
+                            borderRadius: '50%',
+                            transition: 'all 0.2s',
+                            width: '22px',
+                            height: '22px'
+                        }}
+                        onMouseEnter={(e) => {
+                            e.currentTarget.style.color = '#fff';
+                            e.currentTarget.style.background = 'rgba(255,255,255,0.08)';
+                        }}
+                        onMouseLeave={(e) => {
+                            e.currentTarget.style.color = 'var(--text-muted, #888)';
+                            e.currentTarget.style.background = 'none';
+                        }}
+                        title="Clear Search"
+                    >
+                        ✕
+                    </button>
+                )}
             </div>
             
             <div className="top-bar-actions" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
