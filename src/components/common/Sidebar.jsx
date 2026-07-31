@@ -44,7 +44,7 @@ export default function Sidebar() {
         o.depositRefundStatus === 'awaiting_return'
     ).length;
 
-    const totalDepositAlerts = pendingDepositCount + pendingRefundCount;
+    const totalDepositAlerts = pendingDepositCount;
 
     const navItems = [
         { id: 'dashboard', name: t('dashboard'), icon: 'Home.png', perm: 'view_dashboard' },
