@@ -1,7 +1,7 @@
 import { formatProductDisplayName, normalizePhone } from '../utils/productUtils';
 import { supabase } from '../utils/supabase';
 import { getLocalDateString } from '../utils/dateUtils';
-import React, { createContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 export const AppContext = createContext();
@@ -65,8 +65,7 @@ export const AppProvider = ({ children }) => {
     });
 
         // Fetch WMS ERP records from Supabase on load
-    useEffect(() => {
-        const loadSupabaseData = async () => {
+    const loadSupabaseData = useCallback(async () => {
             if (!supabase) return;
             if (!state.currentUser) return;
             try {
@@ -330,9 +329,34 @@ export const AppProvider = ({ children }) => {
             } catch (err) {
                 console.error("Supabase load error:", err);
             }
-        };
-        loadSupabaseData();
     }, [state.currentUser?.id]);
+
+    useEffect(() => {
+        loadSupabaseData();
+    }, [loadSupabaseData]);
+
+    // Auto-refresh when tab is focused or became visible (handles tab hibernation)
+    useEffect(() => {
+        const handleRefresh = () => {
+            if (document.visibilityState === 'visible') {
+                console.log("App visibility changed: tab became active. Fetching updates...");
+                loadSupabaseData();
+            }
+        };
+
+        const handleFocus = () => {
+            console.log("App window focused. Fetching updates...");
+            loadSupabaseData();
+        };
+
+        window.addEventListener('visibilitychange', handleRefresh);
+        window.addEventListener('focus', handleFocus);
+
+        return () => {
+            window.removeEventListener('visibilitychange', handleRefresh);
+            window.removeEventListener('focus', handleFocus);
+        };
+    }, [loadSupabaseData]);
 
 
     const navigate = useNavigate();
@@ -4400,6 +4424,7 @@ export const AppProvider = ({ children }) => {
             setLanguage,
             theme,
             setTheme,
+            refreshData: loadSupabaseData,
             t,
             showConfirm,
             showAlert
