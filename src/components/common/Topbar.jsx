@@ -139,26 +139,36 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
                 <img 
                     src="/icons/Search.png" 
                     alt="Search" 
-                    style={{ position: 'absolute', left: '14px', width: '18px', height: '18px', objectFit: 'contain', pointerEvents: 'none' }} 
+                    style={{ position: 'absolute', right: '14px', width: '18px', height: '18px', objectFit: 'contain', pointerEvents: 'none' }} 
                 />
                 <input 
                     type="text" 
                     placeholder={t('searchPlaceholder')}
                     value={globalSearch || ''}
                     onChange={(e) => {
-                        setGlobalSearch(e.target.value);
-                        if (currentView !== 'inventory' && currentView !== 'orders' && currentView !== 'suppliers') {
-                            setCurrentView('inventory');
+                        const query = e.target.value;
+                        setGlobalSearch(query);
+                        if (query.trim()) {
+                            const searchSupportedViews = ['inventory', 'orders', 'suppliers', 'customers'];
+                            if (!searchSupportedViews.includes(currentView)) {
+                                const cleanQuery = query.trim().replace('#', '');
+                                const isNumeric = /^\d+$/.test(cleanQuery);
+                                if (isNumeric) {
+                                    setCurrentView('orders');
+                                } else {
+                                    setCurrentView('inventory');
+                                }
+                            }
                         }
                     }}
-                    style={{ paddingLeft: '44px', paddingRight: globalSearch ? '36px' : '16px' }}
+                    style={{ paddingRight: '44px', paddingLeft: globalSearch ? '36px' : '16px' }}
                 />
                 {globalSearch && (
                     <button
                         onClick={() => setGlobalSearch('')}
                         style={{
                             position: 'absolute',
-                            right: '12px',
+                            left: '12px',
                             background: 'none',
                             border: 'none',
                             color: 'var(--text-muted, #888)',
