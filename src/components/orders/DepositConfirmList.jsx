@@ -81,8 +81,42 @@ const getRemainingToCollect = (ord) => {
 };
 
 export default function DepositConfirmList() {
-    const { state, updateDepositStatus, settleAdminsCustody } = useContext(AppContext);
+    const { state, updateDepositStatus, settleAdminsCustody, confirmDepositRefund, confirmDepositAndRefund } = useContext(AppContext);
     const [expandedAdminId, setExpandedAdminId] = useState(null);
+    const [proofsPage, setProofsPage] = useState(1);
+    // Refund confirmation state: { orderId, file, uploading }
+    const [refundConfirm, setRefundConfirm] = useState({});
+    const [previewProofUrl, setPreviewProofUrl] = useState(null);
+    const fileInputRefs = useRef({});
+
+    // Handler: set selected file for a specific order
+    const handleRefundFileChange = (orderId, file) => {
+        setRefundConfirm(prev => ({ ...prev, [orderId]: { ...prev[orderId], file } }));
+    };
+
+    // Handler: confirm refund submission
+    const handleConfirmRefund = async (orderId) => {
+        const file = refundConfirm[orderId]?.file || null;
+        setRefundConfirm(prev => ({ ...prev, [orderId]: { ...prev[orderId], uploading: true } }));
+        await confirmDepositRefund(orderId, file);
+        setRefundConfirm(prev => { const n = { ...prev }; delete n[orderId]; return n; });
+    };
+
+    // Handler: shortcut confirm deposit and refund at the same time
+    const handleConfirmDepositAndRefund = async (orderId) => {
+        const file = refundConfirm[orderId]?.file || null;
+        setRefundConfirm(prev => ({ ...prev, [orderId]: { ...prev[orderId], uploading: true } }));
+        await confirmDepositAndRefund(orderId, file);
+        setRefundConfirm(prev => { const n = { ...prev }; delete n[orderId]; return n; });
+    };
+
+    // Orders that were cancelled but this admin still needs to return the deposit
+    const myPendingRefunds = (state.orders || []).filter(o =>
+        o.depositReceiverId === state.currentUser?.id &&
+        o.status === 'Cancelled' &&
+        (parseFloat(o.deposit) || 0) > 0 &&
+        o.depositRefundStatus === 'awaiting_return'
+    );
     const [historySearch, setHistorySearch] = useState('');
     const [historyAdminFilter, setHistoryAdminFilter] = useState('');
     const [historyPage, setHistoryPage] = useState(1);
@@ -238,6 +272,160 @@ export default function DepositConfirmList() {
                 </div>
             </div>
 
+
+            {/* ⚠️ Section 0: Deposit Refund Required — cancelled orders needing return */}
+            {myPendingRefunds.length > 0 && (
+                <div className="glass-card" style={{
+                    padding: '24px',
+                    marginBottom: '24px',
+                    border: '1px solid rgba(239,68,68,0.45)',
+                    background: 'rgba(239,68,68,0.07)',
+                    borderRadius: '12px'
+                }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', borderBottom: '1px solid rgba(239,68,68,0.25)', paddingBottom: '12px' }}>
+                        <h3 style={{ margin: 0, color: '#ef4444', fontSize: '16px', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <i className="fa-solid fa-triangle-exclamation"></i>
+                            طلبات ملغية — عليك إعادة العربون للعميل
+                        </h3>
+                        <span style={{ background: 'rgba(239,68,68,0.2)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', padding: '3px 10px', borderRadius: '999px', fontSize: '12px', fontWeight: 700 }}>
+                            {myPendingRefunds.length} طلب
+                        </span>
+                    </div>
+
+                    <p style={{ fontSize: '13px', color: '#fca5a5', marginBottom: '20px', lineHeight: 1.6 }}>
+                        الطلبات التالية تم إلغاؤها وأنت الأدمن الذي استلم العربون من العميل.
+                        يُرجى إرجاع المبلغ للعميل وتأكيد ذلك برفع سكرين شوت للتحويل كدليل.
+                    </p>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {myPendingRefunds.map(ord => {
+                            const rc = refundConfirm[ord.id] || {};
+                            const phone = (() => {
+                                try {
+                                    const parsed = JSON.parse(ord.address || '{}');
+                                    return parsed.phone || '';
+                                } catch { return ''; }
+                            })();
+                            return (
+                                <div key={ord.id} style={{
+                                    background: 'rgba(0,0,0,0.25)',
+                                    border: '1px solid rgba(239,68,68,0.3)',
+                                    borderRadius: '10px',
+                                    padding: '18px 20px',
+                                    display: 'flex',
+                                    flexDirection: 'column',
+                                    gap: '14px'
+                                }}>
+                                    {/* Order info row */}
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '20px', alignItems: 'center' }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>رقم الطلب</span>
+                                            <span style={{ fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--gold-primary)', fontSize: '15px' }}>#{ord.id}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>اسم العميل</span>
+                                            <span style={{ fontWeight: 600, fontSize: '14px' }}>{ord.client}</span>
+                                        </div>
+                                        {phone && (
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>رقم الهاتف</span>
+                                                <span style={{ fontWeight: 600, fontSize: '14px', direction: 'ltr' }}>{phone}</span>
+                                            </div>
+                                        )}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>مبلغ العربون</span>
+                                            <span style={{ fontWeight: 800, fontSize: '18px', color: '#ef4444' }}>{ord.deposit} {currency}</span>
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>تاريخ الطلب</span>
+                                            <span style={{ fontSize: '13px' }}>{ord.date}</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Alert message */}
+                                    <div style={{
+                                        background: 'rgba(239,68,68,0.12)',
+                                        border: '1px solid rgba(239,68,68,0.3)',
+                                        borderRadius: '8px',
+                                        padding: '12px 16px',
+                                        fontSize: '13px',
+                                        color: '#fca5a5',
+                                        lineHeight: 1.7
+                                    }}>
+                                        ⚠️ الطلب رقم <strong style={{ color: '#ef4444' }}>#{ord.id}</strong> الخاص بالعميل{' '}
+                                        <strong>{ord.client}</strong>
+                                        {phone ? <> صاحب الرقم <strong style={{ direction: 'ltr', display: 'inline-block' }}>{phone}</strong></> : ''}
+                                        {' '} — أنت استلمت منه عربون بمبلغ{' '}
+                                        <strong style={{ color: '#ef4444', fontSize: '15px' }}>{ord.deposit} {currency}</strong>.
+                                        {' '}أكّد أنك أعدته إليه وأرفق سكرين شوت كدليل.
+                                    </div>
+
+                                    {/* Upload + Confirm row */}
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '12px', alignItems: 'center' }}>
+                                        {/* Hidden file input */}
+                                        <input
+                                            type="file"
+                                            accept="image/*"
+                                            style={{ display: 'none' }}
+                                            ref={el => fileInputRefs.current[ord.id] = el}
+                                            onChange={e => handleRefundFileChange(ord.id, e.target.files?.[0] || null)}
+                                        />
+                                        <button
+                                            onClick={() => fileInputRefs.current[ord.id]?.click()}
+                                            style={{
+                                                padding: '8px 16px',
+                                                background: rc.file ? 'rgba(46,204,113,0.15)' : 'rgba(255,255,255,0.07)',
+                                                color: rc.file ? '#2ecc71' : 'var(--text-secondary)',
+                                                border: `1px solid ${rc.file ? 'rgba(46,204,113,0.4)' : 'var(--glass-border)'}`,
+                                                borderRadius: '8px',
+                                                cursor: 'pointer',
+                                                fontSize: '13px',
+                                                fontWeight: 500,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                transition: 'all 0.2s'
+                                            }}
+                                        >
+                                            <i className={rc.file ? 'fa-solid fa-circle-check' : 'fa-solid fa-image'}></i>
+                                            {rc.file ? `✓ ${rc.file.name}` : 'ارفع سكرين شوت'}
+                                        </button>
+
+                                        <button
+                                            onClick={() => handleConfirmRefund(ord.id)}
+                                            disabled={rc.uploading}
+                                            style={{
+                                                padding: '8px 22px',
+                                                background: rc.uploading ? 'rgba(239,68,68,0.3)' : '#ef4444',
+                                                color: '#fff',
+                                                border: 'none',
+                                                borderRadius: '8px',
+                                                cursor: rc.uploading ? 'not-allowed' : 'pointer',
+                                                fontSize: '13px',
+                                                fontWeight: 700,
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '8px',
+                                                transition: 'all 0.2s'
+                                            }}
+                                        >
+                                            {rc.uploading ? (
+                                                <><i className="fa-solid fa-spinner fa-spin"></i> جاري التأكيد...</>
+                                            ) : (
+                                                <><i className="fa-solid fa-check-double"></i> نعم، أعدت العربون</>  
+                                            )}
+                                        </button>
+
+                                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                                            {rc.file ? '' : '(يمكن التأكيد بدون سكرين شوت أيضاً)'}
+                                        </span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
 
             {/* Section 1: My Pending Deposits */}
             <div className="glass-card" style={{ padding: '24px', marginBottom: '24px', border: '1px solid var(--glass-border)', background: 'var(--glass-bg)' }}>
@@ -1384,6 +1572,90 @@ export default function DepositConfirmList() {
                     </div>
                 );
             })()}
+
+            {/* Modal Preview for Deposit Refund Screenshot */}
+            {previewProofUrl && (
+                <div style={{
+                    position: 'fixed',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: 'rgba(0,0,0,0.85)',
+                    backdropFilter: 'blur(8px)',
+                    zIndex: 99999,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '20px'
+                }} onClick={() => setPreviewProofUrl(null)}>
+                    <div style={{
+                        background: 'var(--bg-secondary, #1a1d24)',
+                        border: '1px solid var(--gold-primary)',
+                        borderRadius: '14px',
+                        maxWidth: '650px',
+                        width: '100%',
+                        maxHeight: '90vh',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        overflow: 'hidden',
+                        boxShadow: '0 20px 50px rgba(0,0,0,0.7)'
+                    }} onClick={e => e.stopPropagation()}>
+                        <div style={{
+                            padding: '16px 20px',
+                            borderBottom: '1px solid var(--glass-border)',
+                            display: 'flex',
+                            justify: 'space-between',
+                            alignItems: 'center',
+                            background: 'rgba(0,0,0,0.2)'
+                        }}>
+                            <h3 style={{ margin: 0, fontSize: '15px', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                <i className="fa-solid fa-image"></i>
+                                إثبات إرجاع العربون للطلب #{previewProofUrl.orderId}
+                            </h3>
+                            <button
+                                onClick={() => setPreviewProofUrl(null)}
+                                style={{ background: 'none', border: 'none', color: '#fff', fontSize: '18px', cursor: 'pointer' }}
+                            >
+                                ✕
+                            </button>
+                        </div>
+
+                        <div style={{ padding: '20px', overflowY: 'auto', textAlign: 'center' }}>
+                            <div style={{ marginBottom: '14px', fontSize: '13px', color: 'var(--text-secondary)' }}>
+                                العميل: <strong style={{ color: '#fff' }}>{previewProofUrl.client}</strong> | 
+                                المبلغ: <strong style={{ color: '#2ecc71' }}>{previewProofUrl.amount} {currency}</strong> | 
+                                الأدمن: <strong style={{ color: 'var(--gold-primary)' }}>{previewProofUrl.admin}</strong>
+                            </div>
+
+                            <div style={{ background: '#000', padding: '10px', borderRadius: '10px', display: 'inline-block', maxWidth: '100%' }}>
+                                <img
+                                    src={previewProofUrl.url}
+                                    alt="إثبات الإرجاع"
+                                    style={{ maxWidth: '100%', maxHeight: '60vh', borderRadius: '6px', objectFit: 'contain' }}
+                                />
+                            </div>
+                        </div>
+
+                        <div style={{ padding: '14px 20px', borderTop: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.2)' }}>
+                            <a
+                                href={previewProofUrl.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                style={{ color: '#3498db', fontSize: '13px', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '6px' }}
+                            >
+                                <i className="fa-solid fa-up-right-from-square"></i> فتح الصورة في نافذة جديدة
+                            </a>
+                            <button
+                                onClick={() => setPreviewProofUrl(null)}
+                                style={{ padding: '6px 18px', background: 'var(--glass-border)', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontSize: '13px' }}
+                            >
+                                إغلاق
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
