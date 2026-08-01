@@ -905,7 +905,7 @@ Deno.serve(async (req) => {
     // تجهيز خيارات البدائل (Options) إذا كان هناك أكثر من بديل أو بديل مخصص
     const shopifyOptions = (shopifyVariants.length > 1 || (shopifyVariants[0] && shopifyVariants[0].option1 !== "Default Title"))
       ? [{ name: "Options", values: shopifyVariants.map(v => v.option1) }]
-      : [];
+      : [{ name: "Title", values: ["Default Title"] }];
 
     // تجهيز الصور (Images) - تحويل الروابط الخارجية إلى base64 attachments أو إرسال المرفوع مباشرة من الجهاز
     const shopifyImages = [];
@@ -1130,7 +1130,7 @@ Deno.serve(async (req) => {
                 console.log(`Deleting orphaned variant ${ev.id} on Shopify...`);
                 try {
                   const delVarRes = await fetch(
-                    `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/products/${shopify_id}/variants/${ev.id}.json`,
+                    `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/variants/${ev.id}.json`,
                     {
                       method: "DELETE",
                       headers: { "X-Shopify-Access-Token": accessToken }
