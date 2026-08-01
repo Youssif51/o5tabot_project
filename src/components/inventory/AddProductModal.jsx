@@ -141,11 +141,14 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
 
     const handleAddVariantRow = () => {
         const index = variants.length + 1;
+        const cleanId = productId.startsWith('PROD-') 
+            ? productId.replace('PROD-', '') 
+            : (productId.includes('-') ? productId.split('-')[0] : productId);
         setVariants([
             ...variants,
             { 
                 name: `Option ${index}`, 
-                sku: `OCT-SKU-${productId.replace('PROD-', '')}-${index}`, 
+                sku: `SKU-${cleanId}-${index}`, 
                 barcode: `${Math.floor(100000000000 + Math.random() * 900000000000)}`, 
                 wholesalePrice: 50.00, 
                 retailPrice: 90.00, 
@@ -259,7 +262,9 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
         try {
             // Auto-generate SKUs and Barcodes internally
             const mappedVariants = variants.map((v, idx) => {
-                const cleanId = productId.replace('PROD-', '').replace(/[^a-zA-Z0-9]/g, '');
+                const cleanId = productId.startsWith('PROD-') 
+                    ? productId.replace('PROD-', '') 
+                    : (productId.includes('-') ? productId.split('-')[0] : productId);
                 const generatedSku = v.sku || `SKU-${cleanId}-${idx + 1}`;
                 const generatedBarcode = v.barcode || `${Math.floor(100000000000 + Math.random() * 900000000000)}`;
                 return {
