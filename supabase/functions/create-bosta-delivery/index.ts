@@ -79,6 +79,26 @@ Deno.serve(async (req) => {
       });
     }
 
+    // CRITICAL CONCURRENCY CHECK: Prevent duplicate Bosta shipment creation
+    let hasBostaDelivery = false;
+    if (order.address && order.address.startsWith('{')) {
+      try {
+        const parsed = JSON.parse(order.address);
+        if (parsed.bostaTrackingNumber || parsed.bostaDeliveryId) {
+          hasBostaDelivery = true;
+        }
+      } catch (e) {}
+    }
+
+    if (order.is_reviewed || order.status === 'Pending' || hasBostaDelivery) {
+      return new Response(JSON.stringify({ 
+        error: "هذا الطلب تم تأكيده ومراجعته بالفعل من قبل أدمن آخر!" 
+      }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
     // Fetch order items
     const { data: orderItems, error: itemsErr } = await supabaseAdmin
       .from('order_items')

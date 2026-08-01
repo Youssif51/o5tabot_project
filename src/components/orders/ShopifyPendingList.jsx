@@ -265,36 +265,26 @@ export default function ShopifyPendingList() {
             const systemId = ord.id;
             const shopifyId = ord.shopifyOrderId || 'غير متوفر';
 
-            const emojiBox = "\uD83D\uDCE6";
-            const emojiMoney = "\uD83D\uDCB0";
-            const emojiGift = "\uD83C\uDF81";
-            const emojiCard = "\uD83C\uDFB3";
-            const emojiTruck = "\uD83D\uDE9A";
-            const emojiSparkles = "\u2728";
-            const emojiPray = "\uD83D\uDE4F";
-            const emojiKeycap1 = "1\uFE0F\u20E3";
-            const emojiKeycap2 = "2\uFE0F\u20E3";
-
             const messageText = `بتواصل معاك بخصوص طلبك رقم ${systemId} (رقمه على شوبيفاي: ${shopifyId})
 
-${emojiBox} تفاصيل الطلب:
+- تفاصيل الطلب:
 
 ${itemsList}
 
-${emojiMoney} إجمالي الطلب: ${total} جنيه
+- إجمالي الطلب: ${total} جنيه
 
 عشان نأكد الطلب ونبدأ نجهزه للشحن، محتاجين نحصل على عربون لتأكيد الحجز، وليك اختيار من اتنين:
 
-${emojiKeycap1} عربون 50 جنيه فقط، والباقي بيتحصل عند الاستلام
-${emojiKeycap2} أو تحويل قيمة الطلب كاملة، وفي الحالة دي هيتم شحن الطلب مجانًا وتستلمه من غير أي مبلغ إضافي ${emojiGift}
+1- عربون 50 جنيه فقط، والباقي بيتحصل عند الاستلام
+2- أو تحويل قيمة الطلب كاملة، وفي الحالة دي هيتم شحن الطلب مجانًا وتستلمه من غير أي مبلغ إضافي
 
-${emojiCard} وسائل الدفع المتاحة:
+- وسائل الدفع المتاحة:
 
 	•	إنستاباي (InstaPay)
 	•	فودافون كاش
 
-في انتظار تأكيدك عشان نبدأ فورًا في تجهيز وشحن طلبك ${emojiTruck}${emojiSparkles}
-ولو عندك أي استفسار، إحنا في الخدمة ${emojiPray}`;
+في انتظار تأكيدك عشان نبدأ فورًا في تجهيز وشحن طلبك
+ولو عندك أي استفسار، إحنا في الخدمة`;
 
             textParam = `?text=${encodeURIComponent(messageText)}`;
         }
