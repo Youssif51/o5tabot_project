@@ -3,6 +3,7 @@ import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
 import RichTextEditor from '../common/RichTextEditor';
+import { cleanVariantName } from '../../utils/productUtils';
 
 export default function AddProductModal({ isOpen, onClose, editProductId }) {
     const { state, addProduct, editProduct, syncShopifyCollections, t, showAlert } = useContext(AppContext);
@@ -269,7 +270,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 const generatedBarcode = v.barcode || `${Math.floor(100000000000 + Math.random() * 900000000000)}`;
                 return {
                     sku: generatedSku,
-                    name: v.name || 'Standard Option',
+                    name: cleanVariantName(name, v.name) || 'Standard Option',
                     barcode: generatedBarcode,
                     wholesalePrice: parseFloat(v.wholesalePrice) || 0,
                     retailPrice: parseFloat(v.retailPrice) || 0,

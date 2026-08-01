@@ -1,4 +1,4 @@
-import { formatProductDisplayName, deduplicateProductName } from '../../utils/productUtils';
+import { formatProductDisplayName, deduplicateProductName, cleanVariantName } from '../../utils/productUtils';
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
@@ -224,7 +224,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                             const profitMargin = v.retailPrice > 0 ? ((v.retailPrice - costVal) / v.retailPrice * 100).toFixed(1) : 0;
                                             return (
                                                 <tr key={v.sku}>
-                                                    <td style={{ fontWeight: 600 }}>{formatProductDisplayName(product.name, v.name)}</td>
+                                                    <td style={{ fontWeight: 600 }}>{cleanVariantName(product.name, v.name) || 'اساسي'}</td>
                                                     <td>{currency} {v.wholesalePrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                     <td style={{ fontWeight: 600, color: 'var(--color-warning)' }}>{currency} {costVal.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                     <td style={{ color: 'var(--gold-primary)', fontWeight: 600 }}>{currency} {v.retailPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
@@ -254,7 +254,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                     return (
                                         <div key={v.sku} className="sa-mobile-card" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <strong style={{ color: '#fff', fontSize: '13px' }}>{formatProductDisplayName(product.name, v.name)}</strong>
+                                                <strong style={{ color: '#fff', fontSize: '13px' }}>{cleanVariantName(product.name, v.name) || 'اساسي'}</strong>
                                                 <span className="badge badge-success" style={{ fontSize: '10.5px' }}>{profitMargin}% هامش</span>
                                             </div>
                                             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', fontSize: '11px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.01)', padding: '8px', borderRadius: '4px' }}>

@@ -1,4 +1,4 @@
-import { formatProductDisplayName, normalizePhone } from '../utils/productUtils';
+import { formatProductDisplayName, normalizePhone, cleanVariantName } from '../utils/productUtils';
 import { supabase } from '../utils/supabase';
 import { getLocalDateString } from '../utils/dateUtils';
 import React, { createContext, useState, useEffect, useRef, useCallback } from 'react';
@@ -4274,8 +4274,7 @@ export const AppProvider = ({ children }) => {
                                 sku = `SKU-${Math.random().toString(36).substring(2,8).toUpperCase()}`;
                             }
                             
-                            let variantName = sv.title;
-                            if (variantName === 'Default Title') variantName = 'Standard Option';
+                            let variantName = cleanVariantName(sp.title, sv.title) || 'Standard Option';
 
                             variantsToInsert.push({
                                 product_id: newProductId,

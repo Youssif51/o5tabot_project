@@ -5,6 +5,9 @@
 export const deduplicateProductName = (name) => {
     if (!name) return '';
     let cleanName = name.trim();
+
+    // Strip out (أساسي) or (اساسي) or (أساسى) or (اساسيه) or (Default Title) or (Standard Option) from name
+    cleanName = cleanName.replace(/\s*\((أساسي|اساسي|أساسى|اساسيه|Default Title|Standard Option)\)\s*/gi, '').trim();
     
     // Check if it's split by hyphen "Product - Product"
     const parts = cleanName.split(/\s+-\s+/);
@@ -26,22 +29,24 @@ export const deduplicateProductName = (name) => {
     return cleanName;
 };
 
-export const formatProductDisplayName = (productName, variantName) => {
+export const cleanVariantName = (productName, variantName) => {
     let pName = deduplicateProductName(productName || '');
     let vName = (variantName || '').trim();
 
-    if (!pName) return vName || '';
-    if (!vName) return pName;
+    if (!vName) return '';
 
-    const defaultTerms = ['default title', 'standard option', 'standard', 'default', 'أساسي', 'اساسي', 'أساسى'];
+    const defaultTerms = ['default title', 'standard option', 'standard', 'default', 'أساسي', 'اساسي', 'أساسى', 'أساسيه', 'اساسيه'];
 
-    // Strip out (أساسي) or (Default Title) from pName if present
-    pName = pName.replace(/\s*\((أساسي|اساسي|Default Title|Standard Option)\)\s*/gi, '').trim();
+    // Strip default terms completely
+    if (defaultTerms.includes(vName.toLowerCase())) {
+        return '';
+    }
 
-    // Base product name without trailing digits/spaces for flexible matching
+    // Strip out default terms or product name if present
+    pName = pName.replace(/\s*\((أساسي|اساسي|أساسى|اساسيه|Default Title|Standard Option)\)\s*/gi, '').trim();
+
     const basePName = pName.replace(/\s*\d+$/, '').trim();
 
-    // Recursively strip pName and basePName and parentheses from vName
     let prevVName = '';
     while (vName && vName !== prevVName) {
         prevVName = vName;
@@ -51,18 +56,28 @@ export const formatProductDisplayName = (productName, variantName) => {
         } else if (basePName && vName.toLowerCase().startsWith(basePName.toLowerCase())) {
             vName = vName.slice(basePName.length).trim();
         }
-        vName = vName.replace(/^[\s\(\)\-]+|[\s\(\)\-]+$/g, '').trim();
+        
+        // Clean leading/trailing spaces, hyphens, slashes, or other separators
+        vName = vName.replace(/^[-\s/|\\#@#_]+|[-\s/|\\#@#_]+$/g, '').trim();
+        
+        // Safe parenthesis stripping
+        if (vName.startsWith('(') && vName.endsWith(')')) {
+            vName = vName.slice(1, -1).trim();
+        }
     }
 
     if (!vName || defaultTerms.includes(vName.toLowerCase()) || vName.toLowerCase() === pName.toLowerCase() || vName.toLowerCase() === basePName.toLowerCase()) {
-        return pName;
+        return '';
     }
 
-    // If the product name ALREADY contains the variant name completely, don't append it again
-    if (pName.toLowerCase().includes(vName.toLowerCase())) {
-        return pName;
-    }
+    return vName;
+};
 
+export const formatProductDisplayName = (productName, variantName) => {
+    let pName = deduplicateProductName(productName || '');
+    let vName = cleanVariantName(pName, variantName);
+
+    if (!vName) return pName;
     return `${pName} - ${vName}`;
 };
 

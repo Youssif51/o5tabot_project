@@ -2,6 +2,7 @@ import React, { useState, useContext, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { supabase } from '../../utils/supabase';
 import Modal from '../common/Modal';
+import { cleanVariantName } from '../../utils/productUtils';
 
 export default function InitialStockSetupModal({ isOpen, onClose }) {
   const { state, setState, syncVariantStockToShopify, showToast, logActivity } = useContext(AppContext);
@@ -245,7 +246,9 @@ export default function InitialStockSetupModal({ isOpen, onClose }) {
                   <tr key={item.variantSku} style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.05)' }}>
                     <td style={{ padding: '10px 14px' }}>
                       <div style={{ fontWeight: 600, color: '#f8fafc' }}>{item.productName}</div>
-                      <div style={{ fontSize: '12px', color: '#64748b' }}>{item.variantName}</div>
+                      {cleanVariantName(item.productName, item.variantName) && (
+                        <div style={{ fontSize: '12px', color: '#64748b' }}>{cleanVariantName(item.productName, item.variantName)}</div>
+                      )}
                     </td>
                     <td style={{ padding: '10px 14px', direction: 'ltr', textAlign: 'right' }}>
                       <span style={{ background: 'rgba(255, 255, 255, 0.06)', color: '#cbd5e1', padding: '3px 8px', borderRadius: '4px', fontFamily: 'monospace', fontSize: '12px' }}>
