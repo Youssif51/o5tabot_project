@@ -467,8 +467,8 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
             
             const itemsList = (ord.items || []).map(item => {
                 const name = getProductNameBySku(item.variantSku);
-                return `• ${name} – ${item.price} جنيه (الكمية: ${item.quantity})`;
-            }).join('\n');
+                return `• ${name}\n  الكمية: ${item.quantity} | السعر: ${item.price} جنيه`;
+            }).join('\n\n');
 
             const total = parseFloat(ord.totalValue || ord.total_value) || 0;
             const status = ord.status || '';
@@ -476,38 +476,48 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
             let statusAr = 'قيد المراجعة';
             let followUpReason = '';
 
+            const emojiFlower = "\u{1F338}";
+            const emojiBox = "\u{1F4E6}";
+            const emojiMoney = "\u{1F4B0}";
+            const emojiTruck = "\u{1F69A}";
+            const emojiSparkles = "\u{2728}";
+            const emojiPray = "\u{1F64F}";
+            const emojiSmile = "\u{1F60A}";
+            const emojiWind = "\u{1F4A8}";
+            const emojiHeartFace = "\u{1F970}";
+
             if (status === 'Pending') {
                 statusAr = 'معلق بانتظار التأكيد';
-                followUpReason = `عشان نأكد مع حضرتك الطلب ونبدأ نجهزه للشحن في أقرب وقت. 📦✨`;
+                followUpReason = `عشان نأكد مع حضرتك الطلب ونبدأ نجهزه للشحن في أقرب وقت. ${emojiBox}${emojiSparkles}`;
             } else if (status === 'Confirmed' || status === 'Processing') {
                 statusAr = 'مؤكد وجاري التجهيز';
-                followUpReason = `حبينا نطمن حضرتك إن الطلب مؤكد وجاري تجهيزه حالياً للتحضير للشحن. لو حابب تعدل أي حاجة أو تضيف منتج تاني إحنا في الخدمة! 😊🚚`;
+                followUpReason = `حبينا نطمن حضرتك إن الطلب مؤكد وجاري تجهيزه حالياً للتحضير للشحن. لو حابب تعدل أي حاجة أو تضيف منتج تاني إحنا في الخدمة! ${emojiSmile}${emojiTruck}`;
             } else if (status === 'Shipped') {
                 statusAr = 'تم الشحن';
-                followUpReason = `الطلب خرج مع شركة الشحن وحالياً في طريقه إليك. حابين نطمن لو واجهت أي مشكلة أو للتنسيق مع مندوب التوصيل. 🚚💨`;
+                followUpReason = `الطلب خرج مع شركة الشحن وحالياً في طريقه إليك. حابين نطمن لو واجهت أي مشكلة أو للتنسيق مع مندوب التوصيل. ${emojiTruck}${emojiWind}`;
             } else if (status === 'Completed' || status === 'Delivered') {
                 statusAr = 'تم التوصيل بنجاح';
-                followUpReason = `الطلب وصل لحضرتك، وحابين نتطمن لو كل حاجة تمام وعجبتك المنتجات! رأيك يهمنا جداً. 🥰🌸`;
+                followUpReason = `الطلب وصل لحضرتك، وحابين نتطمن لو كل حاجة تمام وعجبتك المنتجات! رأيك يهمنا جداً. ${emojiHeartFace}${emojiFlower}`;
             } else if (status === 'Draft') {
                 statusAr = 'مسودة';
-                followUpReason = `بخصوص المسودة المسجلة عندنا. حابين نعرف لو تحب نأكد الطلب ونكمله لحضرتك؟ 😊`;
+                followUpReason = `بخصوص المسودة المسجلة عندنا. حابين نعرف لو تحب نأكد الطلب ونكمله لحضرتك؟ ${emojiSmile}`;
             } else {
                 statusAr = status;
                 followUpReason = `حابين نتابع مع حضرتك بخصوص حالة الطلب.`;
             }
 
-            const messageText = `السلام عليكم يا فندم، مع حضرتك من متجر أخطبوط 🌸
+            const messageText = `السلام عليكم يا فندم، مع حضرتك من متجر أخطبوط ${emojiFlower}
 يُسعدنا التواصل مع حضرتك لمتابعة طلبك رقم ${systemId}${shopifyId}
 
-📦 تفاصيل المنتجات:
+${emojiBox} تفاصيل المنتجات:
 ${itemsList}
 
-💰 إجمالي المطلوب: ${total} جنيه
+${emojiMoney} إجمالي المطلوب: ${total} جنيه
 حالة الطلب الحالية: ${statusAr}
 
 ${followUpReason}
 
-ولو عندك أي استفسار، إحنا دايماً في الخدمة 🙏✨`;
+ولو عندك أي استفسار، إحنا دايماً في الخدمة ${emojiPray}${emojiSparkles}`;
 
             textParam = `?text=${encodeURIComponent(messageText)}`;
         }

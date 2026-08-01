@@ -257,33 +257,43 @@ export default function ShopifyPendingList() {
         if (ord) {
             const itemsList = (ord.items || []).map(item => {
                 const name = getProductNameBySku(item.variantSku);
-                return `	•	${name} – ${item.price} جنيه`;
-            }).join('\n');
+                return `• ${name}\n  الكمية: ${item.quantity} | السعر: ${item.price} جنيه`;
+            }).join('\n\n');
 
             const total = parseFloat(ord.totalValue || ord.total_value) || 0;
             const systemId = ord.id;
             const shopifyId = ord.shopifyOrderId || 'غير متوفر';
 
+            const emojiBox = "\u{1F4E6}";
+            const emojiMoney = "\u{1F4B0}";
+            const emojiGift = "\u{1F381}";
+            const emojiCard = "\u{1F4B3}";
+            const emojiTruck = "\u{1F69A}";
+            const emojiSparkles = "\u{2728}";
+            const emojiPray = "\u{1F64F}";
+            const emojiKeycap1 = "1\u{FE0F}\u{20E3}";
+            const emojiKeycap2 = "2\u{FE0F}\u{20E3}";
+
             const messageText = `بتواصل معاك بخصوص طلبك رقم ${systemId} (رقمه على شوبيفاي: ${shopifyId})
 
-📦 تفاصيل الطلب:
+${emojiBox} تفاصيل الطلب:
 
 ${itemsList}
 
-💰 إجمالي الطلب: ${total} جنيه
+${emojiMoney} إجمالي الطلب: ${total} جنيه
 
 عشان نأكد الطلب ونبدأ نجهزه للشحن، محتاجين نحصل على عربون لتأكيد الحجز، وليك اختيار من اتنين:
 
-1️⃣ عربون 50 جنيه فقط، والباقي بيتحصل عند الاستلام
-2️⃣ أو تحويل قيمة الطلب كاملة، وفي الحالة دي هيتم شحن الطلب مجانًا وتستلمه من غير أي مبلغ إضافي 🎁
+${emojiKeycap1} عربون 50 جنيه فقط، والباقي بيتحصل عند الاستلام
+${emojiKeycap2} أو تحويل قيمة الطلب كاملة، وفي الحالة دي هيتم شحن الطلب مجانًا وتستلمه من غير أي مبلغ إضافي ${emojiGift}
 
-💳 وسائل الدفع المتاحة:
+${emojiCard} وسائل الدفع المتاحة:
 
 	•	إنستاباي (InstaPay)
 	•	فودافون كاش
 
-في انتظار تأكيدك عشان نبدأ فورًا في تجهيز وشحن طلبك 🚚✨
-ولو عندك أي استفسار، إحنا في الخدمة 🙏`;
+في انتظار تأكيدك عشان نبدأ فورًا في تجهيز وشحن طلبك ${emojiTruck}${emojiSparkles}
+ولو عندك أي استفسار، إحنا في الخدمة ${emojiPray}`;
 
             textParam = `?text=${encodeURIComponent(messageText)}`;
         }
