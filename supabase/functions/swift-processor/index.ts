@@ -86,10 +86,13 @@ async function fetchImageAsBase64(url: string): Promise<string | null> {
     if (!res.ok) return null;
     const arrayBuffer = await res.arrayBuffer();
     const bytes = new Uint8Array(arrayBuffer);
+    
+    // تحويل سريع باستخدام حزم (Chunks) لتفادي استهلاك المعالج وتجاوز حدود الموارد في Deno Edge Functions
     let binary = "";
     const len = bytes.byteLength;
-    for (let i = 0; i < len; i++) {
-      binary += String.fromCharCode(bytes[i]);
+    const chunk_size = 0x8000; // 32KB chunks
+    for (let i = 0; i < len; i += chunk_size) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk_size) as any);
     }
     return btoa(binary);
   } catch (e) {
@@ -1167,6 +1170,27 @@ Deno.serve(async (req) => {
     );
 
     let shopifyData = await shopifyResponse.json();
+
+    // إذا كان التعديل لمنتج تم حذفه من شوبيفاي (Shopify ID غير موجود ويعطي 404)
+    if (shopifyResponse.status === 404 && apiMethod === "PUT") {
+      console.warn("Product not found on Shopify (might have been deleted). Recreating as new product...");
+      const fallbackUrl = `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/products.json`;
+      
+      // إزالة معرّفات البدائل لأن المنتج جديد
+      const recreatedVariants = shopifyVariants.map(v => ({ ...v, id: undefined }));
+      shopifyPayload.product.variants = recreatedVariants;
+      
+      shopifyResponse = await fetch(fallbackUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Shopify-Access-Token": accessToken
+        },
+        body: JSON.stringify(shopifyPayload)
+      });
+      shopifyData = await shopifyResponse.json();
+      console.log("Recreation fallback finished. Status:", shopifyResponse.status);
+    }
 
     // إذا فشل الطلب في شوبيفاي، نقوم بمحاولة تصحيح معرّفات البدائل التالفة وإعادة المحاولة
     if (!shopifyResponse.ok) {
