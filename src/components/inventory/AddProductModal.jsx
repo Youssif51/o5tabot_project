@@ -264,7 +264,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 const generatedBarcode = v.barcode || `${Math.floor(100000000000 + Math.random() * 900000000000)}`;
                 return {
                     sku: generatedSku,
-                    name: v.name || 'Standard Option',
+                    name: idx === 0 ? name : (v.name || 'Standard Option'),
                     barcode: generatedBarcode,
                     wholesalePrice: parseFloat(v.wholesalePrice) || 0,
                     retailPrice: parseFloat(v.retailPrice) || 0,
@@ -645,7 +645,25 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                                             </label>
                                         </td>
                                         <td style={{ padding: '6px' }}>
-                                            <input type="text" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.name} onChange={(e) => handleVariantChange(idx, 'name', e.target.value)} required />
+                                            {idx === 0 ? (
+                                                <input 
+                                                    type="text" 
+                                                    className="form-input" 
+                                                    style={{ padding: '4px', fontSize: '11px', background: 'rgba(255,255,255,0.05)', color: '#aaa', cursor: 'not-allowed' }} 
+                                                    value={name || 'Standard Option'} 
+                                                    disabled 
+                                                    required 
+                                                />
+                                            ) : (
+                                                <input 
+                                                    type="text" 
+                                                    className="form-input" 
+                                                    style={{ padding: '4px', fontSize: '11px' }} 
+                                                    value={v.name} 
+                                                    onChange={(e) => handleVariantChange(idx, 'name', e.target.value)} 
+                                                    required 
+                                                />
+                                            )}
                                         </td>
                                         <td style={{ padding: '6px', width: '120px' }}>
                                             <input type="number" step="0.01" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.wholesalePrice} onChange={(e) => handleVariantChange(idx, 'wholesalePrice', parseFloat(e.target.value) || 0)} required />
