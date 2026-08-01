@@ -300,8 +300,8 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 description: description,
                 status: status,
                 shopifyCollectionIds: shopifyCollectionIds,
-                variants: mappedVariants,
-                batches: mappedBatches,
+                variants: hasVariants ? mappedVariants : mappedVariants.slice(0, 1),
+                batches: hasVariants ? mappedBatches : mappedBatches.slice(0, 1),
                 suppliers: originalProduct ? (originalProduct.suppliers || []) : [],
                 shopify_id: originalProduct ? originalProduct.shopify_id : undefined
             };

@@ -1550,6 +1550,17 @@ export const AppProvider = ({ children }) => {
                     }).eq('id', updatedProduct.id);
 
                     if (updatedProduct.variants) {
+                        // Clean up deleted variants from Supabase database
+                        const newVariantSkus = updatedProduct.variants.map(v => v.sku);
+                        const { data: dbVars } = await supabase.from('product_variants').select('sku').eq('product_id', updatedProduct.id);
+                        if (dbVars) {
+                            const dbSkus = dbVars.map(v => v.sku);
+                            const skusToDelete = dbSkus.filter(sku => !newVariantSkus.includes(sku));
+                            if (skusToDelete.length > 0) {
+                                await supabase.from('product_variants').delete().eq('product_id', updatedProduct.id).in('sku', skusToDelete);
+                            }
+                        }
+
                         for (const v of updatedProduct.variants) {
                             await supabase.from('product_variants').upsert({
                                 sku: v.sku,

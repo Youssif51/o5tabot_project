@@ -1099,6 +1099,56 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Delete orphaned variants in Shopify if it's an update action
+    if (action === 'update' && shopify_id) {
+      try {
+        console.log("Fetching existing variants from Shopify to check for orphans...");
+        const getProdRes = await fetch(
+          `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/products/${shopify_id}.json`,
+          {
+            method: "GET",
+            headers: { "X-Shopify-Access-Token": accessToken }
+          }
+        );
+        
+        if (getProdRes.ok) {
+          const prodData = await getProdRes.json();
+          const existingShopifyVariants = prodData?.product?.variants || [];
+          
+          // Map incoming variants IDs to compare
+          const incomingVariantIds = (variants || [])
+            .map((v: any) => v.shopify_id ? parseInt(v.shopify_id) : null)
+            .filter((id: number | null) => id !== null);
+
+          console.log("Existing Shopify variant IDs:", existingShopifyVariants.map((ev: any) => ev.id));
+          console.log("Incoming active variant IDs:", incomingVariantIds);
+
+          // We only delete if there will be at least one variant remaining
+          if (incomingVariantIds.length > 0) {
+            for (const ev of existingShopifyVariants) {
+              if (!incomingVariantIds.includes(ev.id)) {
+                console.log(`Deleting orphaned variant ${ev.id} on Shopify...`);
+                try {
+                  const delVarRes = await fetch(
+                    `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/products/${shopify_id}/variants/${ev.id}.json`,
+                    {
+                      method: "DELETE",
+                      headers: { "X-Shopify-Access-Token": accessToken }
+                    }
+                  );
+                  console.log(`Deleted variant ${ev.id} response status:`, delVarRes.status);
+                } catch (delVarErr) {
+                  console.error(`Error deleting variant ${ev.id}:`, delVarErr);
+                }
+              }
+            }
+          }
+        }
+      } catch (errFetch) {
+        console.error("Failed to cleanup orphaned variants from Shopify:", errFetch);
+      }
+    }
+
     // 4. إرسال الطلب إلى Shopify Admin API بناءً على الإجراء
     const apiUrl = (action === 'update' && shopify_id) 
       ? `https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/products/${shopify_id}.json`
