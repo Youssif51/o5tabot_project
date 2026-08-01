@@ -467,8 +467,9 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
             
             const itemsList = (ord.items || []).map(item => {
                 const name = getProductNameBySku(item.variantSku);
-                return `• ${name}\n  الكمية: ${item.quantity} | السعر: ${item.price} جنيه`;
-            }).join('\n\n');
+                const qtyText = item.quantity > 1 ? ` (الكمية: ${item.quantity})` : '';
+                return `\u200F\t•\t${name} – ${item.price} جنيه${qtyText}`;
+            }).join('\n');
 
             const total = parseFloat(ord.totalValue || ord.total_value) || 0;
             const status = ord.status || '';
@@ -476,15 +477,15 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
             let statusAr = 'قيد المراجعة';
             let followUpReason = '';
 
-            const emojiFlower = "\u{1F338}";
-            const emojiBox = "\u{1F4E6}";
-            const emojiMoney = "\u{1F4B0}";
-            const emojiTruck = "\u{1F69A}";
-            const emojiSparkles = "\u{2728}";
-            const emojiPray = "\u{1F64F}";
-            const emojiSmile = "\u{1F60A}";
-            const emojiWind = "\u{1F4A8}";
-            const emojiHeartFace = "\u{1F970}";
+            const emojiFlower = "\uD83C\uDF38";
+            const emojiBox = "\uD83D\uDCE6";
+            const emojiMoney = "\uD83D\uDCB0";
+            const emojiTruck = "\uD83D\uDE9A";
+            const emojiSparkles = "\u2728";
+            const emojiPray = "\uD83D\uDE4F";
+            const emojiSmile = "\uD83D\uDE0A";
+            const emojiWind = "\uD83D\uDCA8";
+            const emojiHeartFace = "\uD83E\uDD70";
 
             if (status === 'Pending') {
                 statusAr = 'معلق بانتظار التأكيد';

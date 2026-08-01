@@ -257,22 +257,23 @@ export default function ShopifyPendingList() {
         if (ord) {
             const itemsList = (ord.items || []).map(item => {
                 const name = getProductNameBySku(item.variantSku);
-                return `• ${name}\n  الكمية: ${item.quantity} | السعر: ${item.price} جنيه`;
-            }).join('\n\n');
+                const qtyText = item.quantity > 1 ? ` (الكمية: ${item.quantity})` : '';
+                return `\u200F\t•\t${name} – ${item.price} جنيه${qtyText}`;
+            }).join('\n');
 
             const total = parseFloat(ord.totalValue || ord.total_value) || 0;
             const systemId = ord.id;
             const shopifyId = ord.shopifyOrderId || 'غير متوفر';
 
-            const emojiBox = "\u{1F4E6}";
-            const emojiMoney = "\u{1F4B0}";
-            const emojiGift = "\u{1F381}";
-            const emojiCard = "\u{1F4B3}";
-            const emojiTruck = "\u{1F69A}";
-            const emojiSparkles = "\u{2728}";
-            const emojiPray = "\u{1F64F}";
-            const emojiKeycap1 = "1\u{FE0F}\u{20E3}";
-            const emojiKeycap2 = "2\u{FE0F}\u{20E3}";
+            const emojiBox = "\uD83D\uDCE6";
+            const emojiMoney = "\uD83D\uDCB0";
+            const emojiGift = "\uD83C\uDF81";
+            const emojiCard = "\uD83C\uDFB3";
+            const emojiTruck = "\uD83D\uDE9A";
+            const emojiSparkles = "\u2728";
+            const emojiPray = "\uD83D\uDE4F";
+            const emojiKeycap1 = "1\uFE0F\u20E3";
+            const emojiKeycap2 = "2\uFE0F\u20E3";
 
             const messageText = `بتواصل معاك بخصوص طلبك رقم ${systemId} (رقمه على شوبيفاي: ${shopifyId})
 
