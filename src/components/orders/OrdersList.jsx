@@ -461,10 +461,55 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         
         let textParam = '';
         if (ord) {
-            const itemsText = (ord.items || []).map(item => `- ${getProductNameBySku(item.variantSku)} (الكمية: ${item.quantity})`).join('\n');
             const clientName = ord.client || '';
-            const msg = `أهلاً يا ${clientName}، يارب تكون بخير.\n\nبخصوص طلبك من متجر اخطبوط:\n${itemsText}\n\nحابب أأكد مع حضرتك الاوردر ودفع عربون بسيط عشان نبدأ نشحن لحضرتك الاوردر.`;
-            textParam = `?text=${encodeURIComponent(msg)}`;
+            const systemId = ord.id;
+            const shopifyId = ord.shopifyOrderId ? ` (شوبيفاي: #${ord.shopifyOrderId})` : '';
+            
+            const itemsList = (ord.items || []).map(item => {
+                const name = getProductNameBySku(item.variantSku);
+                return `• ${name} – ${item.price} جنيه (الكمية: ${item.quantity})`;
+            }).join('\n');
+
+            const total = parseFloat(ord.totalValue || ord.total_value) || 0;
+            const status = ord.status || '';
+
+            let statusAr = 'قيد المراجعة';
+            let followUpReason = '';
+
+            if (status === 'Pending') {
+                statusAr = 'معلق بانتظار التأكيد';
+                followUpReason = `عشان نأكد مع حضرتك الطلب ونبدأ نجهزه للشحن في أقرب وقت. 📦✨`;
+            } else if (status === 'Confirmed' || status === 'Processing') {
+                statusAr = 'مؤكد وجاري التجهيز';
+                followUpReason = `حبينا نطمن حضرتك إن الطلب مؤكد وجاري تجهيزه حالياً للتحضير للشحن. لو حابب تعدل أي حاجة أو تضيف منتج تاني إحنا في الخدمة! 😊🚚`;
+            } else if (status === 'Shipped') {
+                statusAr = 'تم الشحن';
+                followUpReason = `الطلب خرج مع شركة الشحن وحالياً في طريقه إليك. حابين نطمن لو واجهت أي مشكلة أو للتنسيق مع مندوب التوصيل. 🚚💨`;
+            } else if (status === 'Completed' || status === 'Delivered') {
+                statusAr = 'تم التوصيل بنجاح';
+                followUpReason = `الطلب وصل لحضرتك، وحابين نتطمن لو كل حاجة تمام وعجبتك المنتجات! رأيك يهمنا جداً. 🥰🌸`;
+            } else if (status === 'Draft') {
+                statusAr = 'مسودة';
+                followUpReason = `بخصوص المسودة المسجلة عندنا. حابين نعرف لو تحب نأكد الطلب ونكمله لحضرتك؟ 😊`;
+            } else {
+                statusAr = status;
+                followUpReason = `حابين نتابع مع حضرتك بخصوص حالة الطلب.`;
+            }
+
+            const messageText = `السلام عليكم يا فندم، مع حضرتك من متجر أخطبوط 🌸
+يُسعدنا التواصل مع حضرتك لمتابعة طلبك رقم ${systemId}${shopifyId}
+
+📦 تفاصيل المنتجات:
+${itemsList}
+
+💰 إجمالي المطلوب: ${total} جنيه
+حالة الطلب الحالية: ${statusAr}
+
+${followUpReason}
+
+ولو عندك أي استفسار، إحنا دايماً في الخدمة 🙏✨`;
+
+            textParam = `?text=${encodeURIComponent(messageText)}`;
         }
         return `https://wa.me/${clean}${textParam}`;
     };

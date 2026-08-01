@@ -132,16 +132,7 @@ export default function ShopifyPendingList() {
         return clean;
     };
 
-    const getWhatsAppLink = (phoneStr) => {
-        if (!phoneStr) return '';
-        let clean = phoneStr.replace(/\D/g, '');
-        if (clean.length === 11 && clean.startsWith('0')) {
-            clean = '2' + clean;
-        } else if (clean.length === 10 && (clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15'))) {
-            clean = '20' + clean;
-        }
-        return `https://wa.me/${clean}`;
-    };
+
 
     // Filter Logic: only pending Shopify orders
     const pendingOrders = (state.orders || []).filter(ord => {
@@ -251,6 +242,53 @@ export default function ShopifyPendingList() {
             if (v) name = formatProductDisplayName(p.name, v.name);
         });
         return name;
+    };
+
+    const getWhatsAppLink = (phoneStr, ord) => {
+        if (!phoneStr) return '';
+        let clean = phoneStr.replace(/\D/g, '');
+        if (clean.length === 11 && clean.startsWith('0')) {
+            clean = '2' + clean;
+        } else if (clean.length === 10 && (clean.startsWith('10') || clean.startsWith('11') || clean.startsWith('12') || clean.startsWith('15'))) {
+            clean = '20' + clean;
+        }
+        
+        let textParam = '';
+        if (ord) {
+            const itemsList = (ord.items || []).map(item => {
+                const name = getProductNameBySku(item.variantSku);
+                return `	•	${name} – ${item.price} جنيه`;
+            }).join('\n');
+
+            const total = parseFloat(ord.totalValue || ord.total_value) || 0;
+            const systemId = ord.id;
+            const shopifyId = ord.shopifyOrderId || 'غير متوفر';
+
+            const messageText = `بتواصل معاك بخصوص طلبك رقم ${systemId} (رقمه على شوبيفاي: ${shopifyId})
+
+📦 تفاصيل الطلب:
+
+${itemsList}
+
+💰 إجمالي الطلب: ${total} جنيه
+
+عشان نأكد الطلب ونبدأ نجهزه للشحن، محتاجين نحصل على عربون لتأكيد الحجز، وليك اختيار من اتنين:
+
+1️⃣ عربون 50 جنيه فقط، والباقي بيتحصل عند الاستلام
+2️⃣ أو تحويل قيمة الطلب كاملة، وفي الحالة دي هيتم شحن الطلب مجانًا وتستلمه من غير أي مبلغ إضافي 🎁
+
+💳 وسائل الدفع المتاحة:
+
+	•	إنستاباي (InstaPay)
+	•	فودافون كاش
+
+في انتظار تأكيدك عشان نبدأ فورًا في تجهيز وشحن طلبك 🚚✨
+ولو عندك أي استفسار، إحنا في الخدمة 🙏`;
+
+            textParam = `?text=${encodeURIComponent(messageText)}`;
+        }
+        
+        return `https://wa.me/${clean}${textParam}`;
     };
 
     // Approve Action
@@ -817,7 +855,7 @@ export default function ShopifyPendingList() {
                                                                             <span>{phone || 'غير مسجل'}</span>
                                                                             {phone && (
                                                                                 <a 
-                                                                                    href={getWhatsAppLink(phone)} 
+                                                                                    href={getWhatsAppLink(phone, ord)} 
                                                                                     target="_blank" 
                                                                                     rel="noopener noreferrer" 
                                                                                     style={{ marginRight: '6px', color: '#25D366', fontSize: '13px', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
@@ -1167,7 +1205,7 @@ export default function ShopifyPendingList() {
                                                         <span>{phone || 'بدون هاتف'}</span>
                                                         {phone && (
                                                             <a 
-                                                                href={getWhatsAppLink(phone)} 
+                                                                href={getWhatsAppLink(phone, ord)} 
                                                                 target="_blank" 
                                                                 rel="noopener noreferrer" 
                                                                 style={{ color: '#25D366', fontSize: '12px', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
@@ -1338,7 +1376,7 @@ export default function ShopifyPendingList() {
                                             <span>{phone || 'بدون هاتف'}</span>
                                             {phone && (
                                                 <a 
-                                                    href={getWhatsAppLink(phone)} 
+                                                    href={getWhatsAppLink(phone, ord)} 
                                                     target="_blank" 
                                                     rel="noopener noreferrer" 
                                                     style={{ color: '#25D366', fontSize: '12.5px', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
