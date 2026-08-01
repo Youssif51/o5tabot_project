@@ -1497,6 +1497,7 @@ export const AppProvider = ({ children }) => {
                     
                 } catch (e) {
                     console.error("Supabase Error:", e);
+                    showToast(language === 'ar' ? `خطأ في قاعدة البيانات: ${e.message || e}` : `Database Error: ${e.message || e}`, "error");
                 }
             })();
         }
@@ -1589,8 +1590,22 @@ export const AppProvider = ({ children }) => {
                             
                             if (shopifyError) {
                                 console.error("Failed to sync update to Shopify:", shopifyError);
+                                let errorMsg = "";
+                                if (shopifyError instanceof Error) {
+                                    errorMsg = shopifyError.message;
+                                } else if (typeof shopifyError === 'object') {
+                                    errorMsg = shopifyError.message || JSON.stringify(shopifyError);
+                                } else {
+                                    errorMsg = String(shopifyError);
+                                }
+                                showToast(language === 'ar' ? `فشل التحديث في شوبيفاي: ${errorMsg}` : `Failed to sync with Shopify: ${errorMsg}`, "error");
+                            } else if (shopifyData && shopifyData.error) {
+                                console.error("Failed to sync update to Shopify (data error):", shopifyData.error);
+                                const det = shopifyData.details ? (typeof shopifyData.details === 'object' ? JSON.stringify(shopifyData.details) : String(shopifyData.details)) : "";
+                                showToast(language === 'ar' ? `فشل التحديث في شوبيفاي: ${shopifyData.error} ${det}` : `Shopify Error: ${shopifyData.error} ${det}`, "error");
                             } else {
                                 console.log("Shopify update success:", shopifyData);
+                                showToast(language === 'ar' ? "تم تحديث المنتج بنجاح في شوبيفاي والسيستم!" : "Product updated and synced successfully with Shopify!", "success");
                                 
                                 const finalShopifyImages = shopifyData?.images || [];
                                 
@@ -1631,6 +1646,7 @@ export const AppProvider = ({ children }) => {
                             }
                         } catch (err) {
                             console.error("Shopify invoke error on update:", err);
+                            showToast(language === 'ar' ? `خطأ أثناء مزامنة شوبيفاي: ${err.message || err}` : `Error syncing with Shopify: ${err.message || err}`, "error");
                         }
                     }
                 } catch (e) {
