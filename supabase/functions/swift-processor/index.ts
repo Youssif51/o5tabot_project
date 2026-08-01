@@ -945,8 +945,8 @@ Deno.serve(async (req) => {
         vendor: vendor || "Octabot",
         product_type: category || "",
         tags: tags || "",
-        status: status || "draft",
-        published: status === "active",
+        status: (status && typeof status === 'string') ? status.toLowerCase() : "draft",
+        published: (status && typeof status === 'string' && status.toLowerCase() === "active"),
         ...(shopifyVariants.length > 0 && { variants: shopifyVariants }),
         ...(shopifyOptions.length > 0 && { options: shopifyOptions })
       }
