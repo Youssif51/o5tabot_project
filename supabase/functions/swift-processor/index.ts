@@ -1156,7 +1156,7 @@ Deno.serve(async (req) => {
       
     const apiMethod = (action === 'update' && shopify_id) ? "PUT" : "POST";
 
-    const shopifyResponse = await fetch(apiUrl, {
+    let shopifyResponse = await fetch(apiUrl, {
         method: apiMethod,
         headers: {
           "Content-Type": "application/json",
@@ -1166,9 +1166,39 @@ Deno.serve(async (req) => {
       }
     );
 
-    const shopifyData = await shopifyResponse.json();
+    let shopifyData = await shopifyResponse.json();
 
-    // إذا فشل الطلب في شوبيفاي، نرجع الخطأ
+    // إذا فشل الطلب في شوبيفاي، نقوم بمحاولة تصحيح معرّفات البدائل التالفة وإعادة المحاولة
+    if (!shopifyResponse.ok) {
+      const errorMsg = JSON.stringify(shopifyData.errors || shopifyData);
+      const idMatch = errorMsg.match(/The following IDs do not exist or do not belong to the product:\s*\[([^\]]+)\]/i);
+      if (idMatch && idMatch[1]) {
+        const invalidIds = idMatch[1].split(',').map(id => id.trim()).filter(id => id && id !== 'nil' && id !== 'null');
+        console.warn("Detected invalid/deleted variant IDs on Shopify:", invalidIds);
+        if (invalidIds.length > 0) {
+          console.log("Auto-recovering: Retrying update by removing invalid variant IDs from payload...");
+          const retriedVariants = shopifyVariants.map(v => {
+            if (v.id && invalidIds.includes(String(v.id))) {
+              return { ...v, id: undefined }; // Reset to recreate
+            }
+            return v;
+          });
+          shopifyPayload.product.variants = retriedVariants;
+          
+          shopifyResponse = await fetch(apiUrl, {
+            method: apiMethod,
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shopify-Access-Token": accessToken
+            },
+            body: JSON.stringify(shopifyPayload)
+          });
+          shopifyData = await shopifyResponse.json();
+          console.log("Retry finished. Status:", shopifyResponse.status);
+        }
+      }
+    }
+
     if (!shopifyResponse.ok) {
       return new Response(JSON.stringify({ error: "فشل إنشاء المنتج في شوبيفاي", details: shopifyData }), {
         status: 400,

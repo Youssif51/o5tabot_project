@@ -34,6 +34,27 @@ const defaultActivities = [];
         currentUser: null
     };
 
+const getFunctionsErrorMessage = async (error) => {
+    if (!error) return "";
+    try {
+        if (error.context && typeof error.context.json === 'function') {
+            const errBody = await error.context.json();
+            if (errBody && errBody.error) {
+                let detailsStr = "";
+                if (errBody.details && errBody.details.errors) {
+                    detailsStr = " (" + JSON.stringify(errBody.details.errors) + ")";
+                } else if (errBody.details) {
+                    detailsStr = " (" + JSON.stringify(errBody.details) + ")";
+                }
+                return `${errBody.error}${detailsStr}`;
+            }
+        }
+    } catch (e) {
+        console.error("Error parsing function error response body:", e);
+    }
+    return error.message || String(error);
+};
+
 export const AppProvider = ({ children }) => {
     const [state, setState] = useState(() => {
         try {
@@ -1461,7 +1482,8 @@ export const AppProvider = ({ children }) => {
                         
                         if (shopifyError) {
                             console.error("Failed to sync to Shopify:", shopifyError);
-                            showToast("تم حفظ المنتج محلياً ولكن فشل رفعه لشوبيفاي", "warning");
+                            const parsedErr = await getFunctionsErrorMessage(shopifyError);
+                            showToast(language === 'ar' ? `تم حفظ المنتج محلياً ولكن فشل رفعه لشوبيفاي: ${parsedErr}` : `Saved locally, failed to upload: ${parsedErr}`, "warning");
                         } else {
                             console.log("Shopify sync success:", shopifyData);
                             if (shopifyData.warnings && shopifyData.warnings.length > 0) {
@@ -1614,15 +1636,8 @@ export const AppProvider = ({ children }) => {
                             
                             if (shopifyError) {
                                 console.error("Failed to sync update to Shopify:", shopifyError);
-                                let errorMsg = "";
-                                if (shopifyError instanceof Error) {
-                                    errorMsg = shopifyError.message;
-                                } else if (typeof shopifyError === 'object') {
-                                    errorMsg = shopifyError.message || JSON.stringify(shopifyError);
-                                } else {
-                                    errorMsg = String(shopifyError);
-                                }
-                                showToast(language === 'ar' ? `فشل التحديث في شوبيفاي: ${errorMsg}` : `Failed to sync with Shopify: ${errorMsg}`, "error");
+                                const parsedErr = await getFunctionsErrorMessage(shopifyError);
+                                showToast(language === 'ar' ? `فشل التحديث في شوبيفاي: ${parsedErr}` : `Failed to sync with Shopify: ${parsedErr}`, "error");
                             } else if (shopifyData && shopifyData.error) {
                                 console.error("Failed to sync update to Shopify (data error):", shopifyData.error);
                                 const det = shopifyData.details ? (typeof shopifyData.details === 'object' ? JSON.stringify(shopifyData.details) : String(shopifyData.details)) : "";
