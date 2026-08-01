@@ -123,7 +123,8 @@ export const AppProvider = ({ children }) => {
                         reorderLimit: parseInt(v.reorder_limit) || 0,
                         stock: { Sulur: parseInt(v.stock_sulur) || 0 },
                         shopify_id: v.shopify_id || null,
-                        averageCost: parseFloat(v.average_cost) || parseFloat(v.wholesale_price) || 0
+                        averageCost: parseFloat(v.average_cost) || parseFloat(v.wholesale_price) || 0,
+                        is_active: v.is_active !== false
                     }));
 
                     let parsedImageStr = p.image;
@@ -1441,7 +1442,8 @@ export const AppProvider = ({ children }) => {
                             retail_price: v.retailPrice,
                             reorder_limit: v.reorderLimit,
                             stock_sulur: v.stock.Sulur || 0,
-                            average_cost: v.averageCost || v.wholesalePrice || 0
+                            average_cost: v.averageCost || v.wholesalePrice || 0,
+                            is_active: v.is_active !== false
                         }));
                         await supabase.from('product_variants').insert(vars);
                     }
@@ -1452,6 +1454,7 @@ export const AppProvider = ({ children }) => {
                         const { data: shopifyData, error: shopifyError } = await supabase.functions.invoke('swift-processor', {
                             body: {
                                 ...product,
+                                variants: (product.variants || []).filter(v => v.is_active !== false),
                                 collection_ids: product.shopifyCollectionIds || []
                             }
                         });
@@ -1571,7 +1574,8 @@ export const AppProvider = ({ children }) => {
                                 retail_price: v.retailPrice,
                                 reorder_limit: v.reorderLimit,
                                 stock_sulur: v.stock.Sulur || 0,
-                                average_cost: v.averageCost || v.wholesalePrice || 0
+                                average_cost: v.averageCost || v.wholesalePrice || 0,
+                                is_active: v.is_active !== false
                             });
                         }
                     }
@@ -1591,6 +1595,7 @@ export const AppProvider = ({ children }) => {
 
                             const shopifyUpdatePayload = {
                                 ...updatedProduct,
+                                variants: (updatedProduct.variants || []).filter(v => v.is_active !== false),
                                 images: baseImages,
                                 action: 'update',
                                 collection_ids: updatedProduct.shopifyCollectionIds || []
@@ -4280,7 +4285,8 @@ export const AppProvider = ({ children }) => {
                         reorderLimit: parseInt(v.reorder_limit) || 0,
                         stock: { Sulur: parseInt(v.stock_sulur) || 0 },
                         shopify_id: v.shopify_id || null,
-                        averageCost: parseFloat(v.average_cost) || parseFloat(v.wholesale_price) || 0
+                        averageCost: parseFloat(v.average_cost) || parseFloat(v.wholesale_price) || 0,
+                        is_active: v.is_active !== false
                     }));
 
                     let parsedImageStr = p.image;

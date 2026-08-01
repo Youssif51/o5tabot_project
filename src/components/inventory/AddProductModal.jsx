@@ -42,9 +42,9 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
     const [newCategoryName, setNewCategoryName] = useState('');
     
     // Multiple variants state (without SKU and Barcode input properties in UI)
-    const [hasVariants, setHasVariants] = useState(false);
+    const [hasVariants, setHasVariants] = useState(true);
     const [variants, setVariants] = useState([
-        { name: 'Standard Option', sku: '', barcode: '', wholesalePrice: 50.00, retailPrice: 90.00, reorderLimit: 1, stockSulur: 10 }
+        { name: 'Standard Option', sku: '', barcode: '', wholesalePrice: 50.00, retailPrice: 90.00, reorderLimit: 1, stockSulur: 10, is_active: true }
     ]);
 
     useEffect(() => {
@@ -95,7 +95,6 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 setNewCategoryName('');
                 
                 if (prod.variants && prod.variants.length > 0) {
-                    setHasVariants(prod.variants.length > 1 || prod.variants[0].name !== 'Standard Option');
                     setVariants(prod.variants.map(v => ({
                         name: v.name,
                         sku: v.sku,
@@ -104,7 +103,8 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                         retailPrice: v.retailPrice,
                         reorderLimit: v.reorderLimit,
                         stockSulur: v.stock.Sulur || 0,
-                        shopify_id: v.shopify_id
+                        shopify_id: v.shopify_id,
+                        is_active: v.is_active !== false
                     })));
                 }
             }
@@ -123,7 +123,6 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
             setShopifyCollectionIds([]);
             setShowNewCategoryInput(false);
             setNewCategoryName('');
-            setHasVariants(false);
             setVariants([
                 { 
                     name: 'Standard Option', 
@@ -132,7 +131,8 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                     wholesalePrice: 50.00, 
                     retailPrice: 90.00, 
                     reorderLimit: 1, 
-                    stockSulur: 10 
+                    stockSulur: 10,
+                    is_active: true
                 }
             ]);
         }
@@ -150,7 +150,8 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 wholesalePrice: 50.00, 
                 retailPrice: 90.00, 
                 reorderLimit: 1, 
-                stockSulur: 0 
+                stockSulur: 0,
+                is_active: true
             }
         ]);
     };
@@ -237,6 +238,12 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
             return;
         }
 
+        const activeVariantsCount = variants.filter(v => v.is_active !== false).length;
+        if (activeVariantsCount === 0) {
+            showAlert("عفواً، يجب أن يكون هناك خيار بديل واحد نشط على الأقل للمنتج ليتم عرضه في شوبيفاي.");
+            return;
+        }
+
         for (const v of variants) {
             if ((parseFloat(v.wholesalePrice) || 0) < 0 || (parseFloat(v.retailPrice) || 0) < 0) {
                 showAlert("عفواً، لا يمكن إدخال أسعار بالسالب.");
@@ -257,12 +264,13 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 const generatedBarcode = v.barcode || `${Math.floor(100000000000 + Math.random() * 900000000000)}`;
                 return {
                     sku: generatedSku,
-                    name: hasVariants ? (v.name || 'Standard Option') : 'Standard Option',
+                    name: v.name || 'Standard Option',
                     barcode: generatedBarcode,
                     wholesalePrice: parseFloat(v.wholesalePrice) || 0,
                     retailPrice: parseFloat(v.retailPrice) || 0,
                     reorderLimit: parseInt(v.reorderLimit) || 0,
                     shopify_id: v.shopify_id,
+                    is_active: v.is_active !== false,
                     stock: {
                         Sulur: Math.max(0, parseInt(v.stockSulur) || 0),
                         Singanallur: 0
@@ -300,8 +308,8 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 description: description,
                 status: status,
                 shopifyCollectionIds: shopifyCollectionIds,
-                variants: hasVariants ? mappedVariants : mappedVariants.slice(0, 1),
-                batches: hasVariants ? mappedBatches : mappedBatches.slice(0, 1),
+                variants: mappedVariants,
+                batches: mappedBatches,
                 suppliers: originalProduct ? (originalProduct.suppliers || []) : [],
                 shopify_id: originalProduct ? originalProduct.shopify_id : undefined
             };
@@ -602,121 +610,75 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                     />
                 </div>
 
-                {/* Toggle Variants */}
-                <div style={{ marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <label className="ios-toggle" style={{ margin: 0 }}>
-                        <input 
-                            type="checkbox" 
-                            checked={hasVariants}
-                            onChange={(e) => setHasVariants(e.target.checked)}
-                        />
-                        <span className="ios-toggle-slider"></span>
-                    </label>
-                    <span style={{ fontSize: '14px', cursor: 'pointer' }} onClick={() => setHasVariants(!hasVariants)}>يوجد بدائل/خيارات متعددة لهذا المنتج (Variants)</span>
-                </div>
+                <div style={{ marginBottom: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <h4 style={{ margin: 0, color: '#fff', fontSize: '14px' }}>{t('productVariants')}</h4>
+                        <button type="button" className="btn btn-secondary" onClick={handleAddVariantRow} style={{ padding: '4px 10px', fontSize: '12px' }}>
+                            <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> {t('addVariantOption')}
+                        </button>
+                    </div>
 
-                {hasVariants ? (
-                    <div style={{ marginBottom: '20px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                            <h4 style={{ margin: 0, color: '#fff', fontSize: '14px' }}>{t('productVariants')}</h4>
-                            <button type="button" className="btn btn-secondary" onClick={handleAddVariantRow} style={{ padding: '4px 10px', fontSize: '12px' }}>
-                                <i className="fa-solid fa-plus" style={{ marginRight: '6px' }}></i> {t('addVariantOption')}
-                            </button>
-                        </div>
-
-                        <div style={{ overflowX: 'auto', border: '1px solid var(--glass-border)', borderRadius: '8px' }}>
-                            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
-                                <thead>
-                                    <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--glass-border)' }}>
-                                        <th style={{ padding: '8px' }}>{t('optionName')}</th>
-                                        <th style={{ padding: '8px' }}>{t('wholesalePrice')}</th>
-                                        <th style={{ padding: '8px' }}>{t('retailPrice')}</th>
-                                        <th style={{ padding: '8px' }}>{t('limit')}</th>
-                                        <th style={{ padding: '8px' }}>{t('stock')}</th>
-                                        <th style={{ padding: '8px', textAlign: 'center' }}>{t('actions')}</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {variants.map((v, idx) => (
-                                        <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                                            <td style={{ padding: '6px' }}>
-                                                <input type="text" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.name} onChange={(e) => handleVariantChange(idx, 'name', e.target.value)} required />
-                                            </td>
-                                            <td style={{ padding: '6px', width: '120px' }}>
-                                                <input type="number" step="0.01" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.wholesalePrice} onChange={(e) => handleVariantChange(idx, 'wholesalePrice', parseFloat(e.target.value) || 0)} required />
-                                            </td>
-                                            <td style={{ padding: '6px', width: '120px' }}>
-                                                <input type="number" step="0.01" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.retailPrice} onChange={(e) => handleVariantChange(idx, 'retailPrice', parseFloat(e.target.value) || 0)} required />
-                                            </td>
-                                            <td style={{ padding: '6px', width: '100px' }}>
-                                                <input type="number" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.reorderLimit} onChange={(e) => handleVariantChange(idx, 'reorderLimit', parseInt(e.target.value) || 0)} required />
-                                            </td>
-                                            <td style={{ padding: '6px', width: '120px' }}>
-                                                <input type="number" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.stockSulur} onChange={(e) => handleVariantChange(idx, 'stockSulur', parseInt(e.target.value) || 0)} required />
-                                            </td>
-                                            <td style={{ padding: '6px', textAlign: 'center', width: '80px' }}>
+                    <div style={{ overflowX: 'auto', border: '1px solid var(--glass-border)', borderRadius: '8px' }}>
+                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '11px', textAlign: 'left' }}>
+                            <thead>
+                                <tr style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--glass-border)' }}>
+                                    <th style={{ padding: '8px', textAlign: 'center', width: '60px' }}>تفعيل</th>
+                                    <th style={{ padding: '8px' }}>{t('optionName')}</th>
+                                    <th style={{ padding: '8px' }}>{t('wholesalePrice')}</th>
+                                    <th style={{ padding: '8px' }}>{t('retailPrice')}</th>
+                                    <th style={{ padding: '8px' }}>{t('limit')}</th>
+                                    <th style={{ padding: '8px' }}>{t('stock')}</th>
+                                    <th style={{ padding: '8px', textAlign: 'center' }}>{t('actions')}</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {variants.map((v, idx) => (
+                                    <tr key={idx} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                                        <td style={{ padding: '6px', textAlign: 'center', width: '60px' }}>
+                                            <label className="ios-toggle" style={{ margin: 0, display: 'inline-block' }}>
+                                                <input 
+                                                    type="checkbox" 
+                                                    checked={v.is_active !== false}
+                                                    onChange={(e) => handleVariantChange(idx, 'is_active', e.target.checked)}
+                                                />
+                                                <span className="ios-toggle-slider"></span>
+                                            </label>
+                                        </td>
+                                        <td style={{ padding: '6px' }}>
+                                            <input type="text" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.name} onChange={(e) => handleVariantChange(idx, 'name', e.target.value)} required />
+                                        </td>
+                                        <td style={{ padding: '6px', width: '120px' }}>
+                                            <input type="number" step="0.01" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.wholesalePrice} onChange={(e) => handleVariantChange(idx, 'wholesalePrice', parseFloat(e.target.value) || 0)} required />
+                                        </td>
+                                        <td style={{ padding: '6px', width: '120px' }}>
+                                            <input type="number" step="0.01" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.retailPrice} onChange={(e) => handleVariantChange(idx, 'retailPrice', parseFloat(e.target.value) || 0)} required />
+                                        </td>
+                                        <td style={{ padding: '6px', width: '100px' }}>
+                                            <input type="number" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.reorderLimit} onChange={(e) => handleVariantChange(idx, 'reorderLimit', parseInt(e.target.value) || 0)} required />
+                                        </td>
+                                        <td style={{ padding: '6px', width: '120px' }}>
+                                            <input type="number" className="form-input" style={{ padding: '4px', fontSize: '11px' }} value={v.stockSulur} onChange={(e) => handleVariantChange(idx, 'stockSulur', parseInt(e.target.value) || 0)} required />
+                                        </td>
+                                        <td style={{ padding: '6px', textAlign: 'center', width: '80px' }}>
+                                            {idx > 0 ? (
                                                 <button 
                                                     type="button" 
                                                     className="action-btn-circle" 
                                                     onClick={() => handleRemoveVariantRow(idx)}
-                                                    disabled={variants.length <= 1}
                                                     style={{ border: 'none', background: 'rgba(255,75,75,0.1)', color: 'var(--color-danger)', width: '24px', height: '24px' }}
                                                 >
                                                     <i className="fa-solid fa-trash" style={{ fontSize: '10px' }}></i>
                                                 </button>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
+                                            ) : (
+                                                <span style={{ fontSize: '10px', color: '#666', fontWeight: 600 }}>أساسي</span>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
                     </div>
-                ) : (
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '20px' }}>
-                        <div className="form-group">
-                            <label className="form-label">{t('wholesalePrice')}</label>
-                            <input 
-                                type="number" 
-                                step="0.01" 
-                                className="form-input" 
-                                value={variants[0].wholesalePrice} 
-                                onChange={(e) => handleVariantChange(0, 'wholesalePrice', parseFloat(e.target.value) || 0)} 
-                                required 
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label className="form-label">{t('retailPrice')}</label>
-                            <input 
-                                type="number" 
-                                step="0.01" 
-                                className="form-input" 
-                                value={variants[0].retailPrice} 
-                                onChange={(e) => handleVariantChange(0, 'retailPrice', parseFloat(e.target.value) || 0)} 
-                                required 
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label className="form-label">{t('stock')}</label>
-                            <input 
-                                type="number" 
-                                className="form-input" 
-                                value={variants[0].stockSulur} 
-                                onChange={(e) => handleVariantChange(0, 'stockSulur', parseInt(e.target.value) || 0)} 
-                                required 
-                            />
-                        </div>
-                        <div className="form-group">
-                            <label className="form-label">{t('limit')}</label>
-                            <input 
-                                type="number" 
-                                className="form-input" 
-                                value={variants[0].reorderLimit} 
-                                onChange={(e) => handleVariantChange(0, 'reorderLimit', parseInt(e.target.value) || 0)} 
-                                required 
-                            />
-                        </div>
-                    </div>
-                )}
+                </div>
 
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '28px', borderTop: '1px solid var(--glass-border)', paddingTop: '20px' }}>
                     <button 
