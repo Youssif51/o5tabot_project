@@ -182,7 +182,8 @@ export const AppProvider = ({ children }) => {
                     phone: s.phone,
                     debt: parseFloat(s.debt) || 0,
                     paid: parseFloat(s.paid) || 0,
-                    createdBy: s.created_by
+                    createdBy: s.created_by,
+                    createdAt: s.created_at || null
                 }));
 
                 const mappedOrders = (orders || []).map(o => {
@@ -234,6 +235,7 @@ export const AppProvider = ({ children }) => {
                         id: po.id,
                         supplierId: po.supplier_id,
                         date: po.date,
+                        createdAt: po.created_at || null,
                         warehouse: po.warehouse,
                         totalCost: parseFloat(po.total_cost) || 0,
                         createdBy: po.created_by,
@@ -243,15 +245,18 @@ export const AppProvider = ({ children }) => {
 
                 const mappedWastes = (wastes || []).map(w => ({
                     id: `WST-${w.id}`,
+                    rawId: w.id,
                     date: w.date,
                     variantSku: w.variant_sku,
                     quantity: parseInt(w.quantity) || 0,
                     warehouse: "Sulur",
                     cost: 0,
-                    reporter: "sfsf"
+                    reporter: "sfsf",
+                    createdAt: w.created_at || null
                 }));
 
                 const mappedLedger = (ledger || []).map(l => ({
+                    id: l.id,
                     date: l.date,
                     productId: l.product_id,
                     variantSku: l.variant_sku,
@@ -269,16 +274,27 @@ export const AppProvider = ({ children }) => {
                     return (b.id || '').localeCompare(a.id || '');
                 });
 
-                // Sort orders: newest first
+                // Sort suppliers: newest first
+                mappedSuppliers.sort((a, b) => {
+                    const timeA = a.createdAt || '';
+                    const timeB = b.createdAt || '';
+                    if (timeA && timeB) return timeB.localeCompare(timeA);
+                    return (b.id || '').localeCompare(a.id || '');
+                });
+
+                // Sort orders: newest first (using created_at timestamp)
                 mappedOrders.sort((a, b) => {
-                    const dateA = a.date || '';
-                    const dateB = b.date || '';
-                    if (dateA !== dateB) return dateB.localeCompare(dateA);
+                    const timeA = a.createdAt || '';
+                    const timeB = b.createdAt || '';
+                    if (timeA && timeB) return timeB.localeCompare(timeA);
                     return (b.id || '').localeCompare(a.id || '');
                 });
 
                 // Sort purchase orders: newest first
                 mappedPurchaseOrders.sort((a, b) => {
+                    const timeA = a.createdAt || '';
+                    const timeB = b.createdAt || '';
+                    if (timeA && timeB) return timeB.localeCompare(timeA);
                     const dateA = a.date || '';
                     const dateB = b.date || '';
                     if (dateA !== dateB) return dateB.localeCompare(dateA);
@@ -286,10 +302,47 @@ export const AppProvider = ({ children }) => {
                 });
 
                 // Sort wastes: newest first
-                mappedWastes.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+                mappedWastes.sort((a, b) => {
+                    const timeA = a.createdAt || '';
+                    const timeB = b.createdAt || '';
+                    if (timeA && timeB) return timeB.localeCompare(timeA);
+                    return b.rawId - a.rawId;
+                });
 
                 // Sort stock ledger logs: newest first
-                mappedLedger.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+                mappedLedger.sort((a, b) => {
+                    const dateA = a.date || '';
+                    const dateB = b.date || '';
+                    if (dateA !== dateB) return dateB.localeCompare(dateA);
+                    return b.id - a.id;
+                });
+
+                const sortedCustomers = (customers || []).sort((a, b) => {
+                    const dateA = a.created_at || '';
+                    const dateB = b.created_at || '';
+                    if (dateA !== dateB) return dateB.localeCompare(dateA);
+                    return (b.id || '').localeCompare(a.id || '');
+                });
+
+                const sortedCoupons = (coupons || []).sort((a, b) => {
+                    const dateA = a.created_at || '';
+                    const dateB = b.created_at || '';
+                    if (dateA !== dateB) return dateB.localeCompare(dateA);
+                    return (b.id || '').localeCompare(a.id || '');
+                });
+
+                const sortedUsers = (users || []).sort((a, b) => {
+                    const dateA = a.created_at || '';
+                    const dateB = b.created_at || '';
+                    if (dateA !== dateB) return dateB.localeCompare(dateA);
+                    return (b.id || '').localeCompare(a.id || '');
+                });
+
+                const sortedCollections = (collections || []).sort((a, b) => {
+                    const dateA = a.updated_at || '';
+                    const dateB = b.updated_at || '';
+                    return dateB.localeCompare(dateA);
+                });
 
                 const loadedUserAvatars = {};
                 (users || []).forEach(u => {
@@ -305,9 +358,9 @@ export const AppProvider = ({ children }) => {
                     orders: mappedOrders,
                     purchaseOrders: mappedPurchaseOrders,
                     wastes: mappedWastes,
-                    customers: customers || [],
-                    coupons: coupons || [],
-                    influencers: (coupons || []).filter(c => !!c.name).map(c => ({
+                    customers: sortedCustomers,
+                    coupons: sortedCoupons,
+                    influencers: (sortedCoupons).filter(c => !!c.name).map(c => ({
                         id: c.id,
                         name: c.name,
                         code: c.code.toUpperCase(),
@@ -318,13 +371,13 @@ export const AppProvider = ({ children }) => {
                         minOrderValue: c.min_order_value || null,
                         createdAt: c.created_at
                     })),
-                    users: (users || []).map(u => {
+                    users: (sortedUsers).map(u => {
                         const tm = (telegramMappings || []).find(m => m.user_id === u.id);
                         return { ...u, telegram_chat_id: tm ? tm.telegram_chat_id : '' };
                     }),
                     userAvatars: { ...prev.userAvatars, ...loadedUserAvatars },
                     stockLedger: mappedLedger,
-                    collections: collections || []
+                    collections: sortedCollections
                 }));
             } catch (err) {
                 console.error("Supabase load error:", err);
@@ -545,7 +598,14 @@ export const AppProvider = ({ children }) => {
                         
                         setState(curr => {
                             const nextState = { ...curr };
-                            if (customersList) nextState.customers = customersList;
+                            if (customersList) {
+                                nextState.customers = [...customersList].sort((a, b) => {
+                                    const dateA = a.created_at || '';
+                                    const dateB = b.created_at || '';
+                                    if (dateA !== dateB) return dateB.localeCompare(dateA);
+                                    return (b.id || '').localeCompare(a.id || '');
+                                });
+                            }
                             if (freshVariants && freshVariants.length > 0) {
                                 nextState.products = (curr.products || []).map(p => ({
                                     ...p,

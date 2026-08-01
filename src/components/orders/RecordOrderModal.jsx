@@ -740,6 +740,47 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const isDiscountInfoValid = !hasDiscount || (!!discountReason && !!discountReasonDetails.trim());
 
     const isStep3Valid = shippingFee !== '' && shippingFee !== null && !isNaN(shippingFee) && parseFloat(shippingFee) > 0 && depositVal >= 0 && (depositVal === 0 || !!depositReceiverId) && isDiscountInfoValid;
+
+    // Check if the current order is a potential duplicate of another existing order
+    const isPotentialDuplicate = React.useMemo(() => {
+        if (editOrderId) return false;
+        
+        const normalizedPhone = phone.trim();
+        if (!normalizedPhone || normalizedPhone.length < 8) return false;
+
+        const validItems = items.filter(it => it.variantSku && it.quantity > 0);
+        if (validItems.length === 0) return false;
+
+        const currentItemsKey = validItems
+            .map(it => `${it.variantSku}:${it.quantity}`)
+            .sort()
+            .join('|');
+
+        return (state.orders || []).some(o => {
+            if (o.status === 'Cancelled' || o.status === 'Draft') return false;
+
+            let oPhone = '';
+            if (o.address && o.address.startsWith('{')) {
+                try {
+                    const parsed = JSON.parse(o.address);
+                    oPhone = parsed.phone || '';
+                } catch (e) {}
+            } else {
+                oPhone = o.address || '';
+            }
+            oPhone = oPhone.trim();
+
+            if (oPhone !== normalizedPhone) return false;
+
+            const oValidItems = (o.items || []).filter(it => it.variantSku && it.quantity > 0);
+            const oItemsKey = oValidItems
+                .map(it => `${it.variantSku}:${it.quantity}`)
+                .sort()
+                .join('|');
+
+            return oItemsKey === currentItemsKey;
+        });
+    }, [editOrderId, phone, items, state.orders]);
     
     const canNavigateToStep = (targetStep) => {
         if (targetStep <= step) return true;
@@ -755,13 +796,13 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const handleSaveOrder = async (isDraftSave) => {
         if (isSubmitting) return;
         setIsSubmitting(true);
+        let resetSubmitting = true;
         try {
             if (!isDraftSave && couponValid && couponCode) {
                 const checkRes = await checkLiveCouponAvailability(couponCode, totalProductsSubtotal);
                 if (!checkRes.valid) {
                     showToast(checkRes.error || "عفواً، كود الخصم غير متاح حالياً.", "error");
                     setStep(3);
-                    setIsSubmitting(false);
                     return;
                 }
             }
@@ -799,94 +840,122 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 return;
             }
 
-            const orderItems = items.map(item => ({
-                variantSku: item.variantSku,
-                quantity: item.quantity,
-                price: item.discountType === 'Percentage' ? (item.price * (1 - (item.discountPercent || 0) / 100)) : (item.price - (item.discountPercent || 0) / item.quantity)
-            }));
+            const proceedSave = async () => {
+                const orderItems = items.map(item => ({
+                    variantSku: item.variantSku,
+                    quantity: item.quantity,
+                    price: item.discountType === 'Percentage' ? (item.price * (1 - (item.discountPercent || 0) / 100)) : (item.price - (item.discountPercent || 0) / item.quantity)
+                }));
 
-            const finalStatus = isDraftSave ? 'Draft' : 'Pending';
+                const finalStatus = isDraftSave ? 'Draft' : 'Pending';
 
-            // Ensure we have a valid customer_id in DB
-            let finalCustomerId = customerId;
-            if (!finalCustomerId) {
-                finalCustomerId = await getOrCreateCustomer(phone, client, governorate);
-                setCustomerId(finalCustomerId);
-            }
+                // Ensure we have a valid customer_id in DB
+                let finalCustomerId = customerId;
+                if (!finalCustomerId) {
+                    finalCustomerId = await getOrCreateCustomer(phone, client, governorate);
+                    setCustomerId(finalCustomerId);
+                }
 
-            const newOrderObj = {
-                id: orderId,
-                client: client,
-                date: getLocalDateString(),
-                items: orderItems,
-                totalValue: finalOrderTotal,
-                customer_id: finalCustomerId,
-                discount_type: couponValid ? couponDiscountType : null,
-                discount_value: couponValid ? couponDiscountValue : 0,
-                applied_coupon_code: couponValid ? couponCode : null,
-                warehouse: 'Sulur',
-                status: finalStatus,
-                discount_reason: hasDiscount ? discountReason : null,
-                discount_reason_details: hasDiscount ? discountReasonDetails : null,
-                address: JSON.stringify({
-                    ...originalAddressObj,
-                    detailAddress: address,
-                    phone: phone,
-                    secondPhone: secondPhone,
-                    vatEnabled: vatEnabled,
-                    globalDiscountValue: globalDiscountValue,
-                    globalDiscountType: globalDiscountType,
-                    discountReason: hasDiscount ? discountReason : '',
-                    discountReasonDetails: hasDiscount ? discountReasonDetails : '',
-                    customerCode: customerCode,
-                    appliedCoupon: couponValid ? couponCode : '',
-                    syncWithBosta: syncWithBosta,
-                    bostaCityCode: citySelected?.cityCode || null,
-                    bostaCityName: citySelected?.cityName || citySelected?.cityOtherName || '',
-                    bostaDistrictId: districtSelected?.districtId || null,
-                    bostaDistrictName: districtSelected?.districtName || districtSelected?.districtOtherName || '',
-                    bostaZoneId: districtSelected?.zoneId || null
-                }),
-                governorate: governorate,
-                deposit: depositVal,
-                depositReceiverId: depositVal > 0 ? (depositReceiverId || state.currentUser?.id || null) : null,
-                depositStatus: depositVal > 0 ? (depositReceiverId === state.currentUser?.id ? 'confirmed' : (depositStatus || 'pending')) : 'confirmed',
-                shipping_fee: shippingFeeVal,
-                createdBy: state.currentUser ? state.currentUser.name : 'sfsf'
+                const newOrderObj = {
+                    id: orderId,
+                    client: client,
+                    date: getLocalDateString(),
+                    items: orderItems,
+                    totalValue: finalOrderTotal,
+                    customer_id: finalCustomerId,
+                    discount_type: couponValid ? couponDiscountType : null,
+                    discount_value: couponValid ? couponDiscountValue : 0,
+                    applied_coupon_code: couponValid ? couponCode : null,
+                    warehouse: 'Sulur',
+                    status: finalStatus,
+                    discount_reason: hasDiscount ? discountReason : null,
+                    discount_reason_details: hasDiscount ? discountReasonDetails : null,
+                    address: JSON.stringify({
+                        ...originalAddressObj,
+                        detailAddress: address,
+                        phone: phone,
+                        secondPhone: secondPhone,
+                        vatEnabled: vatEnabled,
+                        globalDiscountValue: globalDiscountValue,
+                        globalDiscountType: globalDiscountType,
+                        discountReason: hasDiscount ? discountReason : '',
+                        discountReasonDetails: hasDiscount ? discountReasonDetails : '',
+                        customerCode: customerCode,
+                        appliedCoupon: couponValid ? couponCode : '',
+                        syncWithBosta: syncWithBosta,
+                        bostaCityCode: citySelected?.cityCode || null,
+                        bostaCityName: citySelected?.cityName || citySelected?.cityOtherName || '',
+                        bostaDistrictId: districtSelected?.districtId || null,
+                        bostaDistrictName: districtSelected?.districtName || districtSelected?.districtOtherName || '',
+                        bostaZoneId: districtSelected?.zoneId || null
+                    }),
+                    governorate: governorate,
+                    deposit: depositVal,
+                    depositReceiverId: depositVal > 0 ? (depositReceiverId || state.currentUser?.id || null) : null,
+                    depositStatus: depositVal > 0 ? (depositReceiverId === state.currentUser?.id ? 'confirmed' : (depositStatus || 'pending')) : 'confirmed',
+                    shipping_fee: shippingFeeVal,
+                    createdBy: state.currentUser ? state.currentUser.name : 'sfsf'
+                };
+
+                if (editOrderId) {
+                    await editOrder(newOrderObj);
+                    showToast(isDraftSave ? "تم تعديل الطلب كمسودة بنجاح" : "تم تعديل واعتماد الطلب بنجاح", "success");
+                } else {
+                    await addOrder(newOrderObj);
+                    showToast(isDraftSave ? "تم حفظ الطلب كمسودة بنجاح" : "تم إضافة طلب العميل بنجاح", "success");
+                    
+                    if (!isDraftSave && syncWithBosta && newOrderObj.status !== 'Draft' && newOrderObj.depositStatus !== 'pending') {
+                        const bostaMetadata = {
+                            customerName: client,
+                            customerPhone: phone,
+                            customerSecondPhone: secondPhone,
+                            customerAddress: address,
+                            governorate: governorate,
+                            bostaCityCode: citySelected?.cityCode,
+                            bostaCityName: citySelected?.cityOtherName,
+                            bostaDistrictId: districtSelected?.districtId,
+                            bostaDistrictName: districtSelected?.districtOtherName,
+                            bostaZoneId: districtSelected?.zoneId,
+                            allowToOpenPackage: allowToOpenPackage
+                        };
+                        approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit);
+                    }
+                }
+
+                if (couponValid && couponCode) {
+                    applyCouponUsage(couponCode, 1);
+                }
+
+                onClose();
             };
 
-            if (editOrderId) {
-                await editOrder(newOrderObj);
-                showToast(isDraftSave ? "تم تعديل الطلب كمسودة بنجاح" : "تم تعديل واعتماد الطلب بنجاح", "success");
+            if (!isDraftSave && isPotentialDuplicate) {
+                resetSubmitting = false;
+                showConfirm(
+                    "تنبيه: تم تسجيل طلب مطابق تماماً لهذا العميل سابقاً (نفس المنتجات ورقم الهاتف). هل أنت متأكد من رغبتك في تكرار هذا الطلب وتأكيده؟",
+                    async () => {
+                        try {
+                            await proceedSave();
+                        } catch (e) {
+                            console.error("Save error:", e);
+                        } finally {
+                            setIsSubmitting(false);
+                        }
+                    },
+                    () => {
+                        setIsSubmitting(false);
+                    }
+                );
+                return;
             } else {
-                await addOrder(newOrderObj);
-                showToast(isDraftSave ? "تم حفظ الطلب كمسودة بنجاح" : "تم إضافة طلب العميل بنجاح", "success");
-                
-                if (!isDraftSave && syncWithBosta && newOrderObj.status !== 'Draft' && newOrderObj.depositStatus !== 'pending') {
-                    const bostaMetadata = {
-                        customerName: client,
-                        customerPhone: phone,
-                        customerSecondPhone: secondPhone,
-                        customerAddress: address,
-                        governorate: governorate,
-                        bostaCityCode: citySelected?.cityCode,
-                        bostaCityName: citySelected?.cityOtherName,
-                        bostaDistrictId: districtSelected?.districtId,
-                        bostaDistrictName: districtSelected?.districtOtherName,
-                        bostaZoneId: districtSelected?.zoneId,
-                        allowToOpenPackage: allowToOpenPackage
-                    };
-                    approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit);
-                }
+                await proceedSave();
             }
-
-            if (couponValid && couponCode) {
-                applyCouponUsage(couponCode, 1);
-            }
-
-            onClose();
+        } catch (e) {
+            console.error("Submit error:", e);
         } finally {
-            setIsSubmitting(false);
+            if (resetSubmitting) {
+                setIsSubmitting(false);
+            }
         }
     };
 
@@ -1004,6 +1073,27 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
                 {/* STEP PANELS CONTAINER */}
                 <div style={{ minHeight: '460px', padding: '10px 0' }}>
+                    
+                    {isPotentialDuplicate && (
+                        <div style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '12px',
+                            background: 'rgba(241, 196, 15, 0.15)',
+                            border: '1px solid #F1C40F',
+                            borderRadius: '8px',
+                            padding: '12px 16px',
+                            marginBottom: '20px',
+                            color: '#F1C40F',
+                            fontWeight: '600',
+                            fontSize: '14px'
+                        }}>
+                            <i className="fa-solid fa-triangle-exclamation" style={{ fontSize: '20px' }}></i>
+                            <div>
+                                تنبيه: تم تسجيل طلب آخر مطابق تماماً (نفس رقم الهاتف ونفس المنتجات) لهذا العميل سابقاً! يرجى التأكد لتجنب التكرار.
+                            </div>
+                        </div>
+                    )}
                     
                     {/* STEP 1: CUSTOMER SECTION */}
                     {step === 1 && (
