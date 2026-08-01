@@ -185,10 +185,48 @@ export default function DepositConfirmList() {
         
         let textParam = '';
         if (ord) {
-            const itemsText = (ord.items || []).map(item => `- ${getProductNameBySku(item.variantSku)} (الكمية: ${item.quantity})`).join('\n');
-            const clientName = ord.client || '';
-            const msg = `أهلاً يا ${clientName}، يارب تكون بخير.\n\nبخصوص طلبك من متجر اخطبوط:\n${itemsText}\n\nحابب أأكد مع حضرتك الاوردر ودفع عربون بسيط عشان نبدأ نشحن لحضرتك الاوردر.`;
-            textParam = `?text=${encodeURIComponent(msg)}`;
+            const itemsList = (ord.items || []).map(item => {
+                const name = getProductNameBySku(item.variantSku);
+                const qtyText = item.quantity > 1 ? ` (الكمية: ${item.quantity})` : '';
+                return `\u200F\t•\t${name} – ${item.price} جنيه${qtyText}`;
+            }).join('\n');
+
+            const total = parseFloat(ord.totalValue || ord.total_value) || 0;
+            const systemId = ord.id;
+            const shopifyId = ord.shopifyOrderId || 'غير متوفر';
+
+            const emojiBox = "📦";
+            const emojiMoney = "💰";
+            const emojiGift = "🎁";
+            const emojiCard = "💳";
+            const emojiTruck = "🚚";
+            const emojiSparkles = "✨";
+            const emojiPray = "🙏";
+            const emojiKeycap1 = "1️⃣";
+            const emojiKeycap2 = "2️⃣";
+
+            const messageText = `بتواصل معاك بخصوص عربون طلبك رقم ${systemId} (رقمه على شوبيفاي: ${shopifyId})
+
+${emojiBox} تفاصيل الطلب:
+
+${itemsList}
+
+${emojiMoney} إجمالي الطلب: ${total} جنيه
+
+عشان نأكد الطلب ونبدأ نجهزه للشحن، محتاجين نحصل على عربون لتأكيد الحجز، وليك اختيار من اتنين:
+
+${emojiKeycap1} عربون 50 جنيه فقط، والباقي بيتحصل عند الاستلام
+${emojiKeycap2} أو تحويل قيمة الطلب كاملة، وفي الحالة دي هيتم شحن الطلب مجانًا وتستلمه من غير أي مبلغ إضافي ${emojiGift}
+
+${emojiCard} وسائل الدفع المتاحة:
+
+	•	إنستاباي (InstaPay)
+	•	فودافون كاش
+
+في انتظار تأكيدك عشان نبدأ فورًا في تجهيز وشحن طلبك ${emojiTruck}${emojiSparkles}
+ولو عندك أي استفسار، إحنا في الخدمة ${emojiPray}`;
+
+            textParam = `?text=${encodeURIComponent(messageText)}`;
         }
         return `https://wa.me/${clean}${textParam}`;
     };
