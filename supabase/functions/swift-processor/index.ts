@@ -895,7 +895,7 @@ Deno.serve(async (req) => {
 
     // تجهيز البدائل (Variants)
     const shopifyVariants = (variants || []).map(v => ({
-      id: v.shopify_id ? parseInt(v.shopify_id) : undefined,
+      id: (v.shopify_id && String(v.shopify_id).trim() !== "" && String(v.shopify_id) !== "null" && String(v.shopify_id) !== "undefined") ? parseInt(v.shopify_id) : undefined,
       price: v.price || v.retailPrice || v.wholesalePrice || 0,
       sku: v.sku || "",
       option1: (variants.length === 1) ? "Default Title" : (v.name || "Default Title"),

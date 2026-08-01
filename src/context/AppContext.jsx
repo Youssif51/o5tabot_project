@@ -1477,6 +1477,9 @@ export const AppProvider = ({ children }) => {
                                     const updatedProducts = prevState.products.map(p => {
                                         if (p.id === product.id) {
                                             const updatedVariants = p.variants.map(v => {
+                                                if (v.is_active === false) {
+                                                    return { ...v, shopify_id: null };
+                                                }
                                                 const vMap = shopifyData.variants_map?.find(m => m.sku === v.sku);
                                                 return vMap ? { ...v, shopify_id: String(vMap.id) } : v;
                                             });
@@ -1491,6 +1494,10 @@ export const AppProvider = ({ children }) => {
                                     for (const vMap of shopifyData.variants_map) {
                                         await supabase.from('product_variants').update({ shopify_id: String(vMap.id) }).eq('product_id', product.id).eq('sku', vMap.sku);
                                     }
+                                }
+                                const inactiveSkus = (product.variants || []).filter(v => v.is_active === false).map(v => v.sku);
+                                if (inactiveSkus.length > 0) {
+                                    await supabase.from('product_variants').update({ shopify_id: null }).eq('product_id', product.id).in('sku', inactiveSkus);
                                 }
                             }
                         }
@@ -1575,7 +1582,8 @@ export const AppProvider = ({ children }) => {
                                 reorder_limit: v.reorderLimit,
                                 stock_sulur: v.stock.Sulur || 0,
                                 average_cost: v.averageCost || v.wholesalePrice || 0,
-                                is_active: v.is_active !== false
+                                is_active: v.is_active !== false,
+                                shopify_id: v.is_active === false ? null : v.shopify_id
                             });
                         }
                     }
@@ -1629,6 +1637,9 @@ export const AppProvider = ({ children }) => {
                                     const updatedProducts = prevState.products.map(p => {
                                         if (p.id === updatedProduct.id) {
                                             const updatedVariants = p.variants.map(v => {
+                                                if (v.is_active === false) {
+                                                    return { ...v, shopify_id: null };
+                                                }
                                                 const vMap = shopifyData.variants_map?.find(m => m.sku === v.sku);
                                                 return vMap ? { ...v, shopify_id: String(vMap.id) } : v;
                                             });
@@ -1648,6 +1659,11 @@ export const AppProvider = ({ children }) => {
                                     for (const vMap of shopifyData.variants_map) {
                                         await supabase.from('product_variants').update({ shopify_id: String(vMap.id) }).eq('product_id', updatedProduct.id).eq('sku', vMap.sku);
                                     }
+                                }
+
+                                const inactiveSkus = (updatedProduct.variants || []).filter(v => v.is_active === false).map(v => v.sku);
+                                if (inactiveSkus.length > 0) {
+                                    await supabase.from('product_variants').update({ shopify_id: null }).eq('product_id', updatedProduct.id).in('sku', inactiveSkus);
                                 }
 
                                 if (finalShopifyImages.length > 0) {
