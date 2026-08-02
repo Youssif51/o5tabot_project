@@ -409,9 +409,12 @@ export default function InventoryList({
                                             else if (qty <= limit) hasLowStock = true;
                                         });
 
-                                        if (hasOutOfStock) {
+                                        if (totalQty === 0) {
                                             statusText = t('outOfStock');
                                             badgeClass = "badge-danger";
+                                        } else if (hasOutOfStock) {
+                                            statusText = t('partialOutOfStock');
+                                            badgeClass = "badge-warning";
                                         } else if (hasLowStock) {
                                             statusText = t('lowStock');
                                             badgeClass = "badge-warning";
@@ -541,9 +544,12 @@ export default function InventoryList({
                                     else if (qty <= limit) hasLowStock = true;
                                 });
 
-                                if (hasOutOfStock) {
+                                if (totalQty === 0) {
                                     statusText = t('outOfStock');
                                     badgeClass = "badge-danger";
+                                } else if (hasOutOfStock) {
+                                    statusText = t('partialOutOfStock');
+                                    badgeClass = "badge-warning";
                                 } else if (hasLowStock) {
                                     statusText = t('lowStock');
                                     badgeClass = "badge-warning";
