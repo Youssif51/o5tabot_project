@@ -1720,7 +1720,22 @@ export const AppProvider = ({ children }) => {
             showToast(`تم أرشفة المنتج '${prod.name}' للحفاظ على سجل الطلبات التاريخية.`, "info");
             
             if (supabase) {
-                supabase.from('products').update({ status: 'Archived' }).eq('id', productId).then(({ error }) => {
+                let parsedImage = { images: [], vendor: '', tags: '', status: 'Archived' };
+                try {
+                    if (prod.image) {
+                        const parsed = typeof prod.image === 'string' ? JSON.parse(prod.image) : prod.image;
+                        parsedImage = {
+                            images: parsed.images || [],
+                            vendor: parsed.vendor || '',
+                            tags: parsed.tags || '',
+                            status: 'Archived'
+                        };
+                    }
+                } catch (e) {
+                    console.error("Failed parsing image JSON for archiving:", e);
+                }
+
+                supabase.from('products').update({ image: JSON.stringify(parsedImage) }).eq('id', productId).then(({ error }) => {
                     if (error) console.error("Error archiving product:", error);
                 });
             }

@@ -386,9 +386,30 @@ Deno.serve(async (req) => {
 
       if (topic.includes("delete")) {
         console.log(`Deleting/archiving product via webhook: ${shopifyProductId}`);
+        const { data: existingProd } = await supabase
+          .from("products")
+          .select("image")
+          .eq("shopify_id", shopifyProductId)
+          .maybeSingle();
+
+        let imageObj = { images: [], vendor: '', tags: '', status: 'Archived' };
+        if (existingProd && existingProd.image) {
+          try {
+            const parsed = JSON.parse(existingProd.image);
+            imageObj = {
+              images: parsed.images || [],
+              vendor: parsed.vendor || '',
+              tags: parsed.tags || '',
+              status: 'Archived'
+            };
+          } catch (e) {
+            console.error("Failed to parse existing product image:", e);
+          }
+        }
+
         const { error } = await supabase
           .from("products")
-          .update({ status: "Archived" })
+          .update({ image: JSON.stringify(imageObj) })
           .eq("shopify_id", shopifyProductId);
 
         if (error) {
@@ -448,8 +469,7 @@ Deno.serve(async (req) => {
             tags: tagsArray.join(', '),
             status: payload.status === 'active' ? 'Active' : 'Draft'
           }),
-          description: finalDescription,
-          status: payload.status === 'active' ? 'Active' : 'Draft'
+          description: finalDescription
         };
 
         const { error: prodErr } = await supabase.from("products").upsert([productData]);

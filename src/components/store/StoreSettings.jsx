@@ -13,13 +13,55 @@ export default function StoreSettings() {
     const currentUserAvatar = state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || state.storeSettings.adminAvatar || '';
     const [userAvatar, setUserAvatar] = useState(currentUserAvatar);
     const [selectedAdminImage, setSelectedAdminImage] = useState(null);
+    const [isDirty, setIsDirty] = useState(false);
+
+    const compressImage = (file, maxWidth = 400, maxHeight = 400, quality = 0.7) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > maxWidth) {
+                            height = Math.round((height * maxWidth) / width);
+                            width = maxWidth;
+                        }
+                    } else {
+                        if (height > maxHeight) {
+                            width = Math.round((width * maxHeight) / height);
+                            height = maxHeight;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+                    resolve(compressedBase64);
+                };
+                img.onerror = (err) => reject(err);
+            };
+            reader.onerror = (err) => reject(err);
+        });
+    };
 
     useEffect(() => {
-        const avatar = state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || state.storeSettings.adminAvatar || '';
-        if (avatar) {
-            setUserAvatar(avatar);
+        if (!isDirty) {
+            const avatar = state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || state.storeSettings.adminAvatar || '';
+            if (avatar) {
+                setUserAvatar(avatar);
+            }
         }
-    }, [state.userAvatars, state.currentUser?.id, state.currentUser?.avatar, state.storeSettings.adminAvatar]);
+    }, [state.userAvatars, state.currentUser?.id, state.currentUser?.avatar, state.storeSettings.adminAvatar, isDirty]);
 
     const admins = (state.users || []).filter(u => u.role === 'SuperAdmin' || u.role === 'Admin');
 
@@ -33,14 +75,21 @@ export default function StoreSettings() {
         'manage_settings': 'إعدادات المتجر'
     };
 
-    const handleAvatarUpload = (e) => {
+    const handleAvatarUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            setUserAvatar(event.target.result);
-        };
-        reader.readAsDataURL(file);
+        if (file.size > 8 * 1024 * 1024) {
+            showToast("حجم الصورة كبير جداً. يرجى اختيار صورة أقل من 8 ميجابايت.", "error");
+            return;
+        }
+        try {
+            const compressed = await compressImage(file, 400, 400, 0.7);
+            setUserAvatar(compressed);
+            setIsDirty(true);
+        } catch (err) {
+            console.error("Failed to compress avatar image:", err);
+            showToast("فشل تحميل الصورة، يرجى المحاولة بصورة أخرى.", "error");
+        }
     };
 
     const handleSaveAvatar = (e) => {
@@ -49,6 +98,7 @@ export default function StoreSettings() {
         if (state.currentUser?.role === 'SuperAdmin') {
             saveStoreConfig(storeName, storeAddress, currency, userAvatar);
         }
+        setIsDirty(false);
         showToast("Profile image saved successfully!");
     };
 
