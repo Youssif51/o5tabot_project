@@ -33,7 +33,12 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
 
     const handleAddImageLink = () => {
         if (imageUrlInput.trim()) {
-            setImages(prev => [...prev, imageUrlInput.trim()]);
+            const url = imageUrlInput.trim();
+            if (url.startsWith('data:image')) {
+                showAlert("عفواً، لا يمكن إضافة صور Base64 كرابط مباشر. يرجى تحميلها كملف محلي ليتم ضغطها وتأمينها تلقائياً.");
+                return;
+            }
+            setImages(prev => [...prev, url]);
             setImageUrlInput('');
         }
     };
@@ -174,20 +179,67 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
         }));
     };
 
-    const handleFileChange = (e) => {
+    const compressImage = (file, maxWidth = 800, maxHeight = 800, quality = 0.7) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > height) {
+                        if (width > maxWidth) {
+                            height = Math.round((height * maxWidth) / width);
+                            width = maxWidth;
+                        }
+                    } else {
+                        if (height > maxHeight) {
+                            width = Math.round((width * maxHeight) / height);
+                            height = maxHeight;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+                    resolve(compressedBase64);
+                };
+                img.onerror = (err) => reject(err);
+            };
+            reader.onerror = (err) => reject(err);
+        });
+    };
+
+    const handleFileChange = async (e) => {
         const files = Array.from(e.target.files);
         if (files.length > 0) {
-            files.forEach(file => {
-                const reader = new FileReader();
-                reader.onload = (event) => {
-                    setImages(prev => [...prev, event.target.result]);
-                };
-                reader.readAsDataURL(file);
-            });
+            for (const file of files) {
+                if (file.size > 8 * 1024 * 1024) {
+                    showAlert("حجم الصورة كبير جداً. يرجى اختيار صورة أقل من 8 ميجابايت.");
+                    continue;
+                }
+                try {
+                    const compressedDataUrl = await compressImage(file);
+                    setImages(prev => [...prev, compressedDataUrl]);
+                } catch (err) {
+                    console.error("Failed to compress image:", err);
+                    showAlert("فشل تحميل الصورة، يرجى المحاولة بصورة أخرى.");
+                }
+            }
         }
+        e.target.value = '';
     };
 
     const [draggedIdx, setDraggedIdx] = useState(null);
+    const [isImageDragOver, setIsImageDragOver] = useState(false);
 
     const handleRemoveImage = (indexToRemove) => {
         setImages(images.filter((_, idx) => idx !== indexToRemove));
@@ -204,8 +256,31 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
         e.dataTransfer.dropEffect = 'move';
     };
 
-    const handleDrop = (e, targetIndex) => {
+    const handleDrop = async (e, targetIndex) => {
         e.preventDefault();
+        const files = Array.from(e.dataTransfer.files);
+        if (files.length > 0) {
+            for (const file of files) {
+                if (!file.type.startsWith('image/')) {
+                    showAlert("عفواً، يمكنك فقط إسقاط ملفات الصور.");
+                    continue;
+                }
+                if (file.size > 8 * 1024 * 1024) {
+                    showAlert("حجم الصورة كبير جداً. يرجى اختيار صورة أقل من 8 ميجابايت.");
+                    continue;
+                }
+                try {
+                    const compressedDataUrl = await compressImage(file);
+                    setImages(prev => [...prev, compressedDataUrl]);
+                } catch (err) {
+                    console.error("Failed to compress dropped image:", err);
+                    showAlert("فشل تحميل الصورة، يرجى المحاولة بصورة أخرى.");
+                }
+            }
+            setDraggedIdx(null);
+            return;
+        }
+
         const sourceIndex = parseInt(e.dataTransfer.getData('text/plain'), 10);
         if (isNaN(sourceIndex) || sourceIndex === targetIndex) {
             setDraggedIdx(null);
@@ -351,7 +426,54 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                         style={{ display: 'none' }} 
                     />
                     
-                    <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center', marginBottom: '10px' }}>
+                    <div 
+                        onDragOver={(e) => {
+                            e.preventDefault();
+                            if (e.dataTransfer.types.includes('Files')) {
+                                setIsImageDragOver(true);
+                            }
+                        }}
+                        onDragLeave={() => setIsImageDragOver(false)}
+                        onDrop={async (e) => {
+                            e.preventDefault();
+                            setIsImageDragOver(false);
+                            const files = Array.from(e.dataTransfer.files);
+                            if (files.length > 0) {
+                                for (const file of files) {
+                                    if (!file.type.startsWith('image/')) {
+                                        showAlert("عفواً، يمكنك فقط إسقاط ملفات الصور.");
+                                        continue;
+                                    }
+                                    if (file.size > 8 * 1024 * 1024) {
+                                        showAlert("حجم الصورة كبير جداً. يرجى اختيار صورة أقل من 8 ميجابايت.");
+                                        continue;
+                                    }
+                                    try {
+                                        const compressedDataUrl = await compressImage(file);
+                                        setImages(prev => [...prev, compressedDataUrl]);
+                                    } catch (err) {
+                                        console.error("Failed to compress dropped image:", err);
+                                        showAlert("فشل تحميل الصورة، يرجى المحاولة بصورة أخرى.");
+                                    }
+                                }
+                            }
+                        }}
+                        style={{ 
+                            display: 'flex', 
+                            gap: '12px', 
+                            flexWrap: 'wrap', 
+                            justifyContent: 'center', 
+                            marginBottom: '10px',
+                            padding: '12px',
+                            borderRadius: '8px',
+                            border: isImageDragOver ? '2px dashed var(--gold-primary, #d4af37)' : '2px dashed transparent',
+                            background: isImageDragOver ? 'rgba(212, 175, 55, 0.05)' : 'transparent',
+                            transition: 'all 0.2s ease',
+                            width: '100%',
+                            minHeight: '110px',
+                            alignItems: 'center'
+                        }}
+                    >
                         {images.map((imgSrc, idx) => (
                             <div 
                                 key={idx} 
