@@ -4,7 +4,7 @@ import { AppContext } from '../../context/AppContext';
 import UserManagement from './UserManagement';
 
 export default function StoreSettings() {
-    const { state, saveStoreConfig, saveUserAvatar, restoreStoreData, showToast, t } = useContext(AppContext);
+    const { state, saveStoreConfig, saveUserAvatar, restoreStoreData, showToast, t, theme } = useContext(AppContext);
     
     const [storeName, setStoreName] = useState(state.storeSettings.name || 'Octabot Retail Ltd');
     const [storeAddress, setStoreAddress] = useState(state.storeSettings.address || '');
@@ -185,16 +185,16 @@ export default function StoreSettings() {
                                         borderRadius: '50%', 
                                         backgroundColor: 'var(--surface-color)', 
                                         border: '1px solid var(--glass-border)',
-                                        backgroundImage: userAvatar ? `url(${userAvatar})` : 'none',
+                                        backgroundImage: `url(${userAvatar || '/default-avatar.png'})`,
                                         backgroundSize: 'cover',
                                         backgroundPosition: 'center',
+                                        filter: !userAvatar ? (theme === 'dark' ? 'invert(1)' : 'none') : 'none',
                                         display: 'flex',
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         overflow: 'hidden'
                                     }}
                                 >
-                                    {!userAvatar && <i className="fa-solid fa-user" style={{ fontSize: '24px', color: 'var(--text-secondary)' }}></i>}
                                 </div>
                                 <input 
                                     type="file" 
@@ -238,10 +238,11 @@ export default function StoreSettings() {
                                             height: '60px', 
                                             borderRadius: '50%', 
                                             backgroundColor: 'var(--surface-color)', 
-                                            backgroundImage: adminAvatar ? `url(${adminAvatar})` : 'none',
+                                            backgroundImage: `url(${adminAvatar || '/default-avatar.png'})`,
                                             backgroundSize: 'cover',
                                             backgroundPosition: 'center',
                                             cursor: adminAvatar ? 'pointer' : 'default',
+                                            filter: !adminAvatar ? (theme === 'dark' ? 'invert(1)' : 'none') : 'none',
                                             display: 'flex',
                                             alignItems: 'center',
                                             justifyContent: 'center',
@@ -250,7 +251,6 @@ export default function StoreSettings() {
                                         }}
                                         onClick={() => adminAvatar && setSelectedAdminImage(adminAvatar)}
                                     >
-                                        {!adminAvatar && <i className="fa-solid fa-user-shield" style={{ fontSize: '24px', color: 'var(--primary-color)' }}></i>}
                                     </div>
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: 1 }}>
                                         <div>

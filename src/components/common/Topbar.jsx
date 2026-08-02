@@ -381,15 +381,12 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
                         id="top-avatar-lbl"
                         onClick={() => setShowProfileDropdown(prev => !prev)}
                         style={{
-                            backgroundImage: (state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) ? `url(${state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || state.storeSettings?.adminAvatar})` : 'none',
+                            backgroundImage: `url(${(state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) || '/default-avatar.png'})`,
                             backgroundSize: 'cover',
                             backgroundPosition: 'center',
-                            color: (state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) ? 'transparent' : 'inherit'
+                            filter: !(state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) ? (theme === 'dark' ? 'invert(1)' : 'none') : 'none'
                         }}
                     >
-                        {!(state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || (state.currentUser.role === 'SuperAdmin' && state.storeSettings?.adminAvatar)) && 
-                            (state.currentUser.name?.charAt(0)?.toUpperCase() || 'A')
-                        }
                     </div>
 
                     {showProfileDropdown && (
