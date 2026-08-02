@@ -3,8 +3,8 @@
  */
 
 export const deduplicateProductName = (name) => {
-    if (!name) return '';
-    let cleanName = name.trim();
+    if (name === null || name === undefined) return '';
+    let cleanName = String(name).trim();
 
     // Strip out (أساسي) or (اساسي) or (أساسى) or (اساسيه) or (Default Title) or (Standard Option) from name
     cleanName = cleanName.replace(/\s*\((أساسي|اساسي|أساسى|اساسيه|Default Title|Standard Option)\)\s*/gi, '').trim();
@@ -30,8 +30,8 @@ export const deduplicateProductName = (name) => {
 };
 
 export const cleanVariantName = (productName, variantName) => {
-    let pName = deduplicateProductName(productName || '');
-    let vName = (variantName || '').trim();
+    let pName = deduplicateProductName(productName);
+    let vName = String(variantName || '').trim();
 
     if (!vName) return '';
 

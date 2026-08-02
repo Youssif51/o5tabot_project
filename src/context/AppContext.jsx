@@ -4176,8 +4176,64 @@ export const AppProvider = ({ children }) => {
                     if (isDigitalProduct) continue;
 
                     // Check if already linked
-                    const alreadyLinked = localProducts.some(p => p.shopify_id === shopifyProductId);
-                    if (alreadyLinked) continue;
+                    const alreadyLinkedProduct = localProducts.find(p => p.shopify_id === shopifyProductId);
+                    if (alreadyLinkedProduct) {
+                        let imagesArray = [];
+                        if (sp.images && sp.images.length > 0) {
+                            imagesArray = sp.images.map(img => (img.src || '').split('?')[0]);
+                        }
+                        const tagsStr = sp.tags || '';
+                        const tagsArray = tagsStr.split(',').map(t => t.trim()).filter(Boolean);
+                        let finalDescription = sp.body_html || '';
+
+                        // Update product in DB
+                        await supabase.from('products').update({
+                            name: deduplicateProductName(sp.title || alreadyLinkedProduct.name),
+                            category: sp.product_type || 'Uncategorized',
+                            image: JSON.stringify({
+                                images: imagesArray,
+                                vendor: sp.vendor || '',
+                                tags: tagsArray.join(', '),
+                                status: sp.status === 'active' ? 'Active' : 'Draft'
+                            }),
+                            description: finalDescription,
+                            shopify_collection_ids: productToCollections[shopifyProductId] || []
+                        }).eq('id', alreadyLinkedProduct.id);
+
+                        // Update variants
+                        const localProdVars = localVariants.filter(v => v.product_id === alreadyLinkedProduct.id);
+                        for (const sv of (sp.variants || [])) {
+                            let variantName = cleanVariantName(sp.title, sv.title) || 'Standard Option';
+                            let sku = sv.sku;
+
+                            const matchedVar = localProdVars.find(lv => String(lv.shopify_id) === String(sv.id) || (sku && lv.sku.toLowerCase() === sku.trim().toLowerCase()));
+                            if (matchedVar) {
+                                await supabase.from('product_variants').update({
+                                    name: variantName,
+                                    barcode: sv.barcode || '',
+                                    retail_price: parseFloat(sv.price) || 0,
+                                    shopify_id: String(sv.id)
+                                }).eq('sku', matchedVar.sku);
+                            } else {
+                                if (!sku) {
+                                    sku = `SKU-${Math.random().toString(36).substring(2,8).toUpperCase()}`;
+                                }
+                                await supabase.from('product_variants').insert([{
+                                    product_id: alreadyLinkedProduct.id,
+                                    name: variantName,
+                                    sku: sku,
+                                    barcode: sv.barcode || '',
+                                    retail_price: parseFloat(sv.price) || 0,
+                                    wholesale_price: 0,
+                                    stock_sulur: 0,
+                                    shopify_id: String(sv.id)
+                                }]);
+                                addedVariantsCount++;
+                            }
+                        }
+                        linkedProductsCount++;
+                        continue;
+                    }
 
                     // Match logic
                     let matchedProduct = null;

@@ -205,6 +205,77 @@ async function generateUniqueOrderId(supabase: any): Promise<string> {
   return orderId;
 }
 
+function deduplicateProductName(name: any): string {
+  if (name === null || name === undefined) return '';
+  let cleanName = String(name).trim();
+
+  // Strip out (أساسي) or (اساسي) or (أساسى) or (اساسيه) or (Default Title) or (Standard Option) from name
+  cleanName = cleanName.replace(/\s*\((أساسي|اساسي|أساسى|اساسيه|Default Title|Standard Option)\)\s*/gi, '').trim();
+  
+  // Check if it's split by hyphen "Product - Product"
+  const parts = cleanName.split(/\s+-\s+/);
+  if (parts.length === 2 && parts[0].trim().toLowerCase() === parts[1].trim().toLowerCase()) {
+    return parts[0].trim();
+  }
+  
+  // Check if it's exactly duplicated "Product A Product A"
+  const words = cleanName.split(/\s+/);
+  if (words.length > 1 && words.length % 2 === 0) {
+    const halfLen = words.length / 2;
+    const firstHalf = words.slice(0, halfLen).join(' ');
+    const secondHalf = words.slice(halfLen).join(' ');
+    if (firstHalf.toLowerCase() === secondHalf.toLowerCase()) {
+      return firstHalf;
+    }
+  }
+  
+  return cleanName;
+}
+
+function cleanVariantName(productName: any, variantName: any): string {
+  let pName = deduplicateProductName(productName);
+  let vName = String(variantName || '').trim();
+
+  if (!vName) return '';
+
+  const defaultTerms = ['default title', 'standard option', 'standard', 'default', 'أساسي', 'اساسي', 'أساسى', 'أساسيه', 'اساسيه'];
+
+  // Strip default terms completely
+  if (defaultTerms.includes(vName.toLowerCase())) {
+    return '';
+  }
+
+  // Strip out default terms or product name if present
+  pName = pName.replace(/\s*\((أساسي|اساسي|أساسى|اساسيه|Default Title|Standard Option)\)\s*/gi, '').trim();
+
+  const basePName = pName.replace(/\s*\d+$/, '').trim();
+
+  let prevVName = '';
+  while (vName && vName !== prevVName) {
+    prevVName = vName;
+    vName = vName.trim();
+    if (pName && vName.toLowerCase().startsWith(pName.toLowerCase())) {
+      vName = vName.slice(pName.length).trim();
+    } else if (basePName && vName.toLowerCase().startsWith(basePName.toLowerCase())) {
+      vName = vName.slice(basePName.length).trim();
+    }
+    
+    // Clean leading/trailing spaces, hyphens, slashes, or other separators
+    vName = vName.replace(/^[-\s/|\\#@#_]+|[-\s/|\\#@#_]+$/g, '').trim();
+    
+    // Safe parenthesis stripping
+    if (vName.startsWith('(') && vName.endsWith(')')) {
+      vName = vName.slice(1, -1).trim();
+    }
+  }
+
+  if (!vName || defaultTerms.includes(vName.toLowerCase()) || vName.toLowerCase() === pName.toLowerCase() || vName.toLowerCase() === basePName.toLowerCase()) {
+    return '';
+  }
+
+  return vName;
+}
+
 // @ts-ignore - Deno is global in Supabase Edge Functions runtime
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -304,6 +375,130 @@ Deno.serve(async (req) => {
           });
         }
         return new Response(JSON.stringify({ success: true, message: "Collection upserted successfully" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+    // Handle Product Webhooks (create, update, delete)
+    if (topic.includes("product")) {
+      const shopifyProductId = String(payload.id);
+
+      if (topic.includes("delete")) {
+        console.log(`Deleting/archiving product via webhook: ${shopifyProductId}`);
+        const { error } = await supabase
+          .from("products")
+          .update({ status: "Archived" })
+          .eq("shopify_id", shopifyProductId);
+
+        if (error) {
+          console.error("Error archiving product via webhook:", error);
+          return new Response(JSON.stringify({ error: "Failed to archive product" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json", ...corsHeaders }
+          });
+        }
+        return new Response(JSON.stringify({ success: true, message: "Product archived successfully" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      } else {
+        // Create or Update Product
+        console.log(`Processing product webhook (${topic}): ${shopifyProductId} - ${payload.title}`);
+
+        // Parse images
+        let imageUrl = '';
+        let imagesArray = [];
+        if (payload.images && payload.images.length > 0) {
+          imageUrl = (payload.images[0].src || '').split('?')[0];
+          imagesArray = payload.images.map((img: any) => (img.src || '').split('?')[0]);
+        }
+        const tagsStr = payload.tags || '';
+        const tagsArray = tagsStr.split(',').map((t: string) => t.trim()).filter(Boolean);
+        let finalDescription = payload.body_html || '';
+
+        // Check if product already exists locally by shopify_id or name
+        const { data: existingProdByShopify } = await supabase
+          .from("products")
+          .select("id, name")
+          .eq("shopify_id", shopifyProductId)
+          .maybeSingle();
+
+        let matchedProduct = existingProdByShopify;
+        if (!matchedProduct && payload.title) {
+          const { data: existingProdByName } = await supabase
+            .from("products")
+            .select("id, name")
+            .ilike("name", payload.title.trim())
+            .maybeSingle();
+          matchedProduct = existingProdByName;
+        }
+
+        let localProductId = matchedProduct?.id || crypto.randomUUID();
+
+        // 1. Upsert product
+        const productData = {
+          id: localProductId,
+          name: deduplicateProductName(payload.title || 'بدون اسم'),
+          category: payload.product_type || 'Uncategorized',
+          shopify_id: shopifyProductId,
+          image: JSON.stringify({
+            images: imagesArray,
+            vendor: payload.vendor || '',
+            tags: tagsArray.join(', '),
+            status: payload.status === 'active' ? 'Active' : 'Draft'
+          }),
+          description: finalDescription,
+          status: payload.status === 'active' ? 'Active' : 'Draft'
+        };
+
+        const { error: prodErr } = await supabase.from("products").upsert([productData]);
+        if (prodErr) {
+          console.error("Error upserting product via webhook:", prodErr);
+          return new Response(JSON.stringify({ error: "Failed to upsert product" }), {
+            status: 500,
+            headers: { "Content-Type": "application/json", ...corsHeaders }
+          });
+        }
+
+        // 2. Process variants
+        const shopifyVariants = payload.variants || [];
+        const { data: localVariants } = await supabase
+          .from("product_variants")
+          .select("*")
+          .eq("product_id", localProductId);
+
+        const localVarsList = localVariants || [];
+
+        for (const sv of shopifyVariants) {
+          let sku = sv.sku;
+          if (!sku) {
+            sku = `SKU-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
+          }
+
+          let variantName = cleanVariantName(payload.title, sv.title) || 'Standard Option';
+
+          // Try to match variant by shopify_id or sku
+          const matchedVar = localVarsList.find(lv => String(lv.shopify_id) === String(sv.id) || (sv.sku && lv.sku.toLowerCase() === sv.sku.trim().toLowerCase()));
+
+          const variantData = {
+            product_id: localProductId,
+            name: variantName,
+            sku: matchedVar?.sku || sku,
+            barcode: sv.barcode || '',
+            retail_price: parseFloat(sv.price) || 0,
+            shopify_id: String(sv.id),
+            // Keep existing stock & wholesale price if matched, otherwise defaults
+            wholesale_price: matchedVar?.wholesale_price || 0,
+            stock_sulur: matchedVar?.stock_sulur || 0
+          };
+
+          const { error: varErr } = await supabase.from("product_variants").upsert([variantData]);
+          if (varErr) {
+            console.error(`Error upserting variant ${sku} via webhook:`, varErr);
+          }
+        }
+
+        return new Response(JSON.stringify({ success: true, message: "Product processed successfully via webhook" }), {
           status: 200,
           headers: { "Content-Type": "application/json", ...corsHeaders }
         });

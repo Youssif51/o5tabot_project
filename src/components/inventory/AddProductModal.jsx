@@ -103,7 +103,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                         wholesalePrice: v.wholesalePrice,
                         retailPrice: v.retailPrice,
                         reorderLimit: v.reorderLimit,
-                        stockSulur: v.stock.Sulur || 0,
+                        stockSulur: v.stock?.Sulur || 0,
                         shopify_id: v.shopify_id,
                         is_active: v.is_active !== false
                     })));
