@@ -379,6 +379,7 @@ Deno.serve(async (req) => {
           headers: { "Content-Type": "application/json", ...corsHeaders }
         });
       }
+    }
     // Handle Product Webhooks (create, update, delete)
     if (topic.includes("product")) {
       const shopifyProductId = String(payload.id);
