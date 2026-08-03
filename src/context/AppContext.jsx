@@ -414,28 +414,7 @@ export const AppProvider = ({ children }) => {
         loadSupabaseData();
     }, [loadSupabaseData]);
 
-    // Auto-refresh when tab is focused or became visible (handles tab hibernation)
-    useEffect(() => {
-        const handleRefresh = () => {
-            if (document.visibilityState === 'visible') {
-                console.log("App visibility changed: tab became active. Fetching updates...");
-                loadSupabaseData();
-            }
-        };
-
-        const handleFocus = () => {
-            console.log("App window focused. Fetching updates...");
-            loadSupabaseData();
-        };
-
-        window.addEventListener('visibilitychange', handleRefresh);
-        window.addEventListener('focus', handleFocus);
-
-        return () => {
-            window.removeEventListener('visibilitychange', handleRefresh);
-            window.removeEventListener('focus', handleFocus);
-        };
-    }, [loadSupabaseData]);
+     // Auto-refresh on visibility/focus was removed to prevent excessive PostgREST egress network traffic in production.
 
 
     const navigate = useNavigate();
@@ -2789,8 +2768,23 @@ export const AppProvider = ({ children }) => {
                 
                 const totalQty = enrichedOrder.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
                 const itemsDescription = enrichedOrder.items.map(item => {
-                    const prodName = item.productName || item.variantSku;
-                    const optName = item.variantName || '';
+                    let prodName = item.productName;
+                    let optName = item.variantName || '';
+                    
+                    if (!prodName && state.products) {
+                        state.products.forEach(p => {
+                            const v = p.variants.find(vr => vr.sku === item.variantSku);
+                            if (v) {
+                                prodName = p.name;
+                                optName = v.name;
+                            }
+                        });
+                    }
+                    
+                    if (!prodName) {
+                        prodName = item.variantSku;
+                    }
+                    
                     const displayName = formatProductDisplayName(prodName, optName);
                     return `${item.quantity}x ${displayName}`;
                 }).join(", ").substring(0, 120);
@@ -4061,6 +4055,7 @@ export const AppProvider = ({ children }) => {
                 return null;
             }
 
+            let statusChanged = false;
             // Update local state with the new address and status
             setState(prev => {
                 const order = prev.orders.find(o => o.id === orderId);
@@ -4069,6 +4064,9 @@ export const AppProvider = ({ children }) => {
                 let products = [...prev.products];
                 const oldStatus = order.status;
                 const newStatus = data.newStatus;
+                if (oldStatus !== newStatus) {
+                    statusChanged = true;
+                }
                 const orderTotal = order.totalValue;
                 const customerId = order.customer_id;
                 
@@ -4211,7 +4209,10 @@ export const AppProvider = ({ children }) => {
             if (data.deleted) {
                 showToast(`تم حذف الشحنة من بوسطة - الأوردر أصبح ملغي`, "warning");
             } else {
-                showToast(`تم تحديث الحالة: ${data.newStateName}`, "success");
+                // Only show toast if not silent, or if the status actually changed
+                if (!silent || statusChanged) {
+                    showToast(`تم تحديث الحالة: ${data.newStateName}`, "success");
+                }
             }
 
             return data;

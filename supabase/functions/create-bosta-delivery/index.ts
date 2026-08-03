@@ -227,8 +227,9 @@ Deno.serve(async (req) => {
       .in('id', productIds);
 
     const totalQty = orderItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
-    const itemsDescription = orderItems.map(item => {
-      const variant = (variantsData || []).find(v => v.sku === item.variant_sku);
+     const itemsDescription = orderItems.map(item => {
+      const itemSkuClean = (item.variant_sku || "").trim().toLowerCase();
+      const variant = (variantsData || []).find(v => (v.sku || "").trim().toLowerCase() === itemSkuClean);
       const product = variant ? (productsData || []).find(p => p.id === variant.product_id) : null;
       const prodName = product ? product.name : item.variant_sku;
       const optName = variant ? variant.name : '';

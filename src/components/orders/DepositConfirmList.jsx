@@ -82,7 +82,7 @@ const getRemainingToCollect = (ord) => {
 };
 
 export default function DepositConfirmList() {
-    const { state, updateDepositStatus, settleAdminsCustody, confirmDepositRefund, confirmDepositAndRefund, showToast } = useContext(AppContext);
+    const { state, updateDepositStatus, settleAdminsCustody, confirmDepositRefund, confirmDepositAndRefund, showToast, showConfirm } = useContext(AppContext);
     const [expandedAdminId, setExpandedAdminId] = useState(null);
     const location = useLocation();
 
@@ -131,6 +131,16 @@ export default function DepositConfirmList() {
         setRefundConfirm(prev => ({ ...prev, [orderId]: { ...prev[orderId], uploading: true } }));
         await confirmDepositAndRefund(orderId, file);
         setRefundConfirm(prev => { const n = { ...prev }; delete n[orderId]; return n; });
+    };
+
+    // Handler: SuperAdmin settle deposit for cancelled/returned orders directly without file proof
+    const handleSettleDeposit = (orderId, depositAmount) => {
+        showConfirm(
+            `هل أنت متأكد من أنه تم تسوية وإعادة عربون هذا الطلب بقيمة ${depositAmount} ج.م؟ سيتم تمييز العربون كـ "تم التعامل" وإخفاء الطلب من قائمة المتابعة.`,
+            async () => {
+                await confirmDepositRefund(orderId, null, depositAmount, 'SuperAdmin Manual Settle');
+            }
+        );
     };
 
     // Orders that were cancelled but this admin still needs to return the deposit
@@ -1129,7 +1139,8 @@ export default function DepositConfirmList() {
             {state.currentUser?.role === 'SuperAdmin' && (() => {
                 const cancelledOrReturnedDeposits = (state.orders || []).filter(o => 
                     o.status === 'Cancelled' && 
-                    (parseFloat(o.deposit) || 0) > 0
+                    (parseFloat(o.deposit) || 0) > 0 &&
+                    o.depositRefundStatus !== 'returned'
                 );
 
                 const getOrderClass = (ord) => {
@@ -1313,6 +1324,35 @@ export default function DepositConfirmList() {
                                                                         </a>
                                                                     </>
                                                                 )}
+                                                                <button
+                                                                    onClick={() => handleSettleDeposit(ord.id, ord.deposit)}
+                                                                    title="خالص / تم التعامل"
+                                                                    style={{
+                                                                        background: 'linear-gradient(135deg, #3498db, #2980b9)',
+                                                                        border: '1px solid rgba(52, 152, 219, 0.3)',
+                                                                        boxShadow: '0 4px 10px rgba(52, 152, 219, 0.2)',
+                                                                        color: '#fff',
+                                                                        width: '32px',
+                                                                        height: '32px',
+                                                                        borderRadius: '50%',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        cursor: 'pointer',
+                                                                        transition: 'all 0.2s ease',
+                                                                        padding: 0
+                                                                    }}
+                                                                    onMouseEnter={(e) => {
+                                                                        e.currentTarget.style.transform = 'translateY(-2px)';
+                                                                        e.currentTarget.style.boxShadow = '0 6px 15px rgba(52, 152, 219, 0.4)';
+                                                                    }}
+                                                                    onMouseLeave={(e) => {
+                                                                        e.currentTarget.style.transform = 'translateY(0)';
+                                                                        e.currentTarget.style.boxShadow = '0 4px 10px rgba(52, 152, 219, 0.2)';
+                                                                    }}
+                                                                >
+                                                                    <i className="fa-solid fa-check"></i>
+                                                                </button>
                                                             </div>
                                                         </td>
                                                     </tr>
@@ -1360,7 +1400,7 @@ export default function DepositConfirmList() {
                                                 </div>
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px', borderTop: '1px dashed var(--glass-border)', paddingTop: '10px' }}>
                                                     <span style={{ fontSize: '12px', color: 'var(--text-muted)', direction: 'ltr' }}>{phone || 'غير مسجل'}</span>
-                                                    <div style={{ display: 'flex', gap: '10px' }}>
+                                                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
                                                         {phone && (
                                                             <>
                                                                 <a 
@@ -1381,6 +1421,35 @@ export default function DepositConfirmList() {
                                                                 </a>
                                                             </>
                                                         )}
+                                                        <button
+                                                            onClick={() => handleSettleDeposit(ord.id, ord.deposit)}
+                                                            title="خالص / تم التعامل"
+                                                            style={{
+                                                                background: 'linear-gradient(135deg, #3498db, #2980b9)',
+                                                                border: '1px solid rgba(52, 152, 219, 0.3)',
+                                                                boxShadow: '0 4px 10px rgba(52, 152, 219, 0.2)',
+                                                                color: '#fff',
+                                                                width: '32px',
+                                                                height: '32px',
+                                                                borderRadius: '50%',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'center',
+                                                                cursor: 'pointer',
+                                                                transition: 'all 0.2s ease',
+                                                                padding: 0
+                                                            }}
+                                                            onMouseEnter={(e) => {
+                                                                e.currentTarget.style.transform = 'translateY(-2px)';
+                                                                e.currentTarget.style.boxShadow = '0 6px 15px rgba(52, 152, 219, 0.4)';
+                                                            }}
+                                                            onMouseLeave={(e) => {
+                                                                e.currentTarget.style.transform = 'translateY(0)';
+                                                                e.currentTarget.style.boxShadow = '0 4px 10px rgba(52, 152, 219, 0.2)';
+                                                            }}
+                                                        >
+                                                            <i className="fa-solid fa-check"></i>
+                                                        </button>
                                                     </div>
                                                 </div>
                                             </div>
