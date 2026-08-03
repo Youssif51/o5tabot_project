@@ -285,7 +285,11 @@ export const AppProvider = ({ children }) => {
                     warehouse: l.warehouse,
                     type: l.type,
                     quantity: parseInt(l.quantity) || 0,
-                    balanceAfter: parseInt(l.balance_after) || 0
+                    balanceAfter: parseInt(l.balance_after) || 0,
+                    orderId: l.order_id || null,
+                    unitCost: parseFloat(l.unit_cost) || 0,
+                    totalCost: parseFloat(l.total_cost) || 0,
+                    notes: l.notes || null
                 }));
 
                 // Sort products: newest first
@@ -1987,8 +1991,60 @@ export const AppProvider = ({ children }) => {
 
         if (supabase) {
             (async () => {
+                const rollbackLocalState = () => {
+                    setState(prev => {
+                        let products = [...prev.products];
+                        if (isDeductedStatus(enrichedOrder.status, enrichedOrder)) {
+                            enrichedOrder.items.forEach(item => {
+                                products = products.map(p => {
+                                    const hasVar = p.variants.some(v => v.sku === item.variantSku);
+                                    if (hasVar) {
+                                        return {
+                                            ...p,
+                                            variants: p.variants.map(v => {
+                                                if (v.sku === item.variantSku) {
+                                                    const stock = { ...v.stock };
+                                                    if (stock[enrichedOrder.warehouse] !== undefined) {
+                                                        stock[enrichedOrder.warehouse] = stock[enrichedOrder.warehouse] + item.quantity;
+                                                    } else {
+                                                        const keys = Object.keys(stock);
+                                                        if (keys.length > 0) {
+                                                            stock[keys[0]] = stock[keys[0]] + item.quantity;
+                                                        }
+                                                    }
+                                                    return { ...v, stock };
+                                                }
+                                                return v;
+                                            })
+                                        };
+                                    }
+                                    return p;
+                                });
+                            });
+                        }
+
+                        const newLedger = (prev.stockLedger || []).filter(entry => {
+                            const oId = entry.orderId || entry.order_id;
+                            return !oId || String(oId) !== String(enrichedOrder.id);
+                        });
+
+                        const newOrders = (prev.orders || []).filter(o => o.id !== enrichedOrder.id);
+
+                        return {
+                            ...prev,
+                            products,
+                            stockLedger: newLedger,
+                            orders: newOrders
+                        };
+                    });
+
+                    if (enrichedOrder.status === "Completed" && enrichedOrder.customer_id) {
+                        updateCustomerStats(enrichedOrder.customer_id, -enrichedOrder.totalValue, -1);
+                    }
+                };
+
                 try {
-                    await supabase.from('orders').insert([{
+                    const { error: orderError } = await supabase.from('orders').insert([{
                         id: enrichedOrder.id,
                         client: enrichedOrder.client,
                         customer_id: enrichedOrder.customer_id || null,
@@ -2013,6 +2069,13 @@ export const AppProvider = ({ children }) => {
                         payment_method: enrichedOrder.paymentMethod || null
                     }]);
 
+                    if (orderError) {
+                        console.error("Supabase Error inserting order:", orderError);
+                        showToast(`فشل تسجيل الطلب في قاعدة البيانات: ${orderError.message}`, "error");
+                        rollbackLocalState();
+                        return;
+                    }
+
                     if (enrichedOrder.items && enrichedOrder.items.length > 0) {
                         const itemsSubtotal = enrichedOrder.items.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)), 0);
                         const discountVal = parseFloat(enrichedOrder.discount_value) || 0;
@@ -2036,7 +2099,16 @@ export const AppProvider = ({ children }) => {
                                 cost_at_time_of_sale: item.costAtTimeOfSale || item.cost_at_time_of_sale || 0
                             };
                         });
-                        await supabase.from('order_items').insert(items);
+                        
+                        const { error: itemsError } = await supabase.from('order_items').insert(items);
+                        if (itemsError) {
+                            console.error("Supabase Error inserting order items:", itemsError);
+                            showToast(`فشل إدخال أصناف الطلب: ${itemsError.message}`, "error");
+                            // Clean up the order that was inserted
+                            await supabase.from('orders').delete().eq('id', enrichedOrder.id);
+                            rollbackLocalState();
+                            return;
+                        }
                     }
 
                     // Trigger deposit assignment email if deposit is pending and receiver is another admin
@@ -2067,7 +2139,7 @@ export const AppProvider = ({ children }) => {
 
                                 await supabase.from('stock_ledger').insert([{
                                     order_id: enrichedOrder.id,
-                                    date: order.date || new Date().toISOString(),
+                                    date: new Date().toISOString(),
                                     product_id: vData.product_id,
                                     variant_sku: itemSku,
                                     warehouse: order.warehouse || 'Sulur',
@@ -2082,6 +2154,8 @@ export const AppProvider = ({ children }) => {
                     }
                 } catch (e) {
                     console.error("Supabase Error:", e);
+                    showToast(`حدث خطأ أثناء الاتصال بالخادم: ${e.message}`, "error");
+                    rollbackLocalState();
                 }
             })();
         }
@@ -2781,7 +2855,7 @@ export const AppProvider = ({ children }) => {
         if (supabase) {
             (async () => {
                 try {
-                    await supabase.from('orders').update({
+                    const { error: orderError } = await supabase.from('orders').update({
                         client: enrichedOrder.client,
                         customer_id: enrichedOrder.customer_id || null,
                         date: enrichedOrder.date,
@@ -2805,7 +2879,21 @@ export const AppProvider = ({ children }) => {
                         payment_method: enrichedOrder.paymentMethod || null
                     }).eq('id', enrichedOrder.id);
 
-                    await supabase.from('order_items').delete().eq('order_id', enrichedOrder.id);
+                    if (orderError) {
+                        console.error("Supabase Error updating order:", orderError);
+                        showToast(`فشل تعديل الطلب في قاعدة البيانات: ${orderError.message}`, "error");
+                        await loadSupabaseData();
+                        return;
+                    }
+
+                    const { error: deleteItemsError } = await supabase.from('order_items').delete().eq('order_id', enrichedOrder.id);
+                    if (deleteItemsError) {
+                        console.error("Supabase Error deleting old order items:", deleteItemsError);
+                        showToast(`فشل تحديث أصناف الطلب: ${deleteItemsError.message}`, "error");
+                        await loadSupabaseData();
+                        return;
+                    }
+
                     if (enrichedOrder.items && enrichedOrder.items.length > 0) {
                         const itemsSubtotal = enrichedOrder.items.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)), 0);
                         const discountVal = parseFloat(enrichedOrder.discount_value) || 0;
@@ -2829,7 +2917,13 @@ export const AppProvider = ({ children }) => {
                                 cost_at_time_of_sale: item.costAtTimeOfSale || item.cost_at_time_of_sale || 0
                             };
                         });
-                        await supabase.from('order_items').insert(items);
+                        const { error: insertItemsError } = await supabase.from('order_items').insert(items);
+                        if (insertItemsError) {
+                            console.error("Supabase Error inserting new order items:", insertItemsError);
+                            showToast(`فشل إدخال الأصناف الجديدة للطلب: ${insertItemsError.message}`, "error");
+                            await loadSupabaseData();
+                            return;
+                        }
                     }
 
                     // Trigger deposit assignment email if deposit is pending, receiver is another admin, and it's a new assignment

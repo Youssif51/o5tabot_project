@@ -13,6 +13,20 @@ export default function InventoryList({
     onOpenScanner 
 }) {
     const { state, showToast, t, deleteProduct, showConfirm } = useContext(AppContext);
+
+    const formatLedgerDate = (dateStr) => {
+        if (!dateStr) return '—';
+        try {
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return dateStr;
+            return d.toLocaleString('en-GB', { 
+                day: '2-digit', month: '2-digit', year: 'numeric', 
+                hour: '2-digit', minute: '2-digit', hour12: true 
+            });
+        } catch (e) {
+            return dateStr;
+        }
+    };
     
     // Initial Stock & Price Setup modal control
     const [isInitialStockOpen, setIsInitialStockOpen] = useState(false);
@@ -703,6 +717,7 @@ export default function InventoryList({
                                 <tr>
                                     <th>{t('date')}</th>
                                     <th>{t('products')}</th>
+                                    <th>{t('orderId')}</th>
                                     <th>{t('stockLocations')}</th>
                                     <th>{t('status')}</th>
                                     <th>{t('quantity')}</th>
@@ -712,7 +727,7 @@ export default function InventoryList({
                             <tbody>
                                 {!state.stockLedger || state.stockLedger.length === 0 ? (
                                     <tr>
-                                        <td colSpan="6" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                                        <td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
                                             {t('noRecords')}
                                         </td>
                                     </tr>
@@ -733,13 +748,40 @@ export default function InventoryList({
                                         } else {
                                             typeBadge = <span className="badge badge-info" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-rotate-left"></i> {t('return')}</span>;
                                         }
-
                                         return (
                                             <tr key={idx}>
-                                                <td>{entry.date}</td>
+                                                <td>{formatLedgerDate(entry.date)}</td>
                                                 <td>
                                                     <div style={{ fontWeight: 600 }}>{prodName}</div>
                                                     <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{entry.variantSku}</div>
+                                                </td>
+                                                <td>
+                                                    {entry.orderId || entry.order_id ? (
+                                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                                            <span style={{ fontFamily: 'monospace', color: 'var(--gold-primary)', fontWeight: 600 }}>
+                                                                #{entry.orderId || entry.order_id}
+                                                            </span>
+                                                            {!state.orders.some(o => o.id === (entry.orderId || entry.order_id)) && (
+                                                                <span style={{ fontSize: '10px', color: '#ff4d4d', background: 'rgba(255, 77, 77, 0.1)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(255, 77, 77, 0.2)' }}>
+                                                                    تم حذفه
+                                                                </span>
+                                                            )}
+                                                            <i 
+                                                                className="fa-regular fa-copy" 
+                                                                style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)' }} 
+                                                                onClick={(e) => { 
+                                                                    e.stopPropagation(); 
+                                                                    navigator.clipboard.writeText(entry.orderId || entry.order_id); 
+                                                                    showToast('تم نسخ رقم الطلب', 'success'); 
+                                                                }} 
+                                                                title="نسخ رقم الطلب"
+                                                            ></i>
+                                                        </div>
+                                                    ) : (
+                                                        <span className="badge" style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-muted)', fontSize: '11px' }}>
+                                                            {entry.type === 'Restock' ? 'مشتريات' : entry.type === 'Correction' ? 'تعديل يدوي' : entry.type === 'Waste' ? 'هالك' : 'تعديل يدوي'}
+                                                        </span>
+                                                    )}
                                                 </td>
                                                 <td><span className="badge badge-info">{entry.warehouse === 'Sulur' ? t('inSulur') : t('inSinganallur')}</span></td>
                                                 <td>{typeBadge}</td>
@@ -801,9 +843,9 @@ export default function InventoryList({
                                                     {entry.variantSku}
                                                 </div>
                                             </div>
-                                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{entry.date}</span>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{formatLedgerDate(entry.date)}</span>
                                         </div>
-
+ 
                                         {/* Body: Location, Type, Qty */}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
                                             <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
@@ -818,6 +860,37 @@ export default function InventoryList({
                                             </div>
                                         </div>
 
+                                        {/* Mobile Order ID Field */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', background: 'rgba(255,255,255,0.01)', padding: '6px 8px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.03)' }}>
+                                            <span style={{ color: 'var(--text-muted)' }}>رقم الطلب / المصدر:</span>
+                                            {entry.orderId || entry.order_id ? (
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                    <strong style={{ fontFamily: 'monospace', color: 'var(--gold-primary)' }}>
+                                                        #{entry.orderId || entry.order_id}
+                                                    </strong>
+                                                    {!state.orders.some(o => o.id === (entry.orderId || entry.order_id)) && (
+                                                        <span style={{ fontSize: '9px', color: '#ff4d4d', background: 'rgba(255, 77, 77, 0.1)', padding: '1px 5px', borderRadius: '3px', border: '1px solid rgba(255, 77, 77, 0.2)' }}>
+                                                            تم حذفه
+                                                        </span>
+                                                    )}
+                                                    <i 
+                                                        className="fa-regular fa-copy" 
+                                                        style={{ cursor: 'pointer', opacity: 0.8, fontSize: '11px', color: 'var(--text-secondary)' }} 
+                                                        onClick={(e) => { 
+                                                            e.stopPropagation(); 
+                                                            navigator.clipboard.writeText(entry.orderId || entry.order_id); 
+                                                            showToast('تم نسخ رقم الطلب', 'success'); 
+                                                        }} 
+                                                        title="نسخ رقم الطلب"
+                                                    ></i>
+                                                </div>
+                                            ) : (
+                                                <span className="badge" style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-muted)', fontSize: '10px' }}>
+                                                    {entry.type === 'Restock' ? 'مشتريات' : entry.type === 'Correction' ? 'تعديل يدوي' : entry.type === 'Waste' ? 'هالك' : 'تعديل يدوي'}
+                                                </span>
+                                            )}
+                                        </div>
+ 
                                         {/* Footer: Balance after */}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px dashed var(--glass-border)', paddingTop: '10px', marginTop: '4px', fontSize: '12px' }}>
                                             <span style={{ color: 'var(--text-muted)' }}>الرصيد بعد الحركة:</span>

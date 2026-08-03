@@ -778,6 +778,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                 <tr>
                                                     <th>التاريخ</th>
                                                     <th>النوع</th>
+                                                    <th>رقم الطلب / المصدر</th>
                                                     <th>النوع (VARIANT)</th>
                                                     <th>التغير</th>
                                                     <th>تكلفة القطعة (UNIT COST)</th>
@@ -789,7 +790,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                             <tbody>
                                                 {processedLogs.length === 0 ? (
                                                     <tr>
-                                                        <td colSpan="8" style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '20px' }}>
+                                                        <td colSpan="11" style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '20px' }}>
                                                             لا توجد حركات مخزنية مسجلة.
                                                         </td>
                                                     </tr>
@@ -819,6 +820,34 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                                     })}
                                                                 </td>
                                                                 <td><span className={`badge ${isIncrease ? 'badge-success' : 'badge-danger'}`}>{typeLabel}</span></td>
+                                                                <td>
+                                                                    {log.orderId || log.order_id ? (
+                                                                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                                                            <span style={{ fontFamily: 'monospace', color: 'var(--gold-primary)', fontWeight: 600 }}>
+                                                                                #{log.orderId || log.order_id}
+                                                                            </span>
+                                                                            {!state.orders.some(o => o.id === (log.orderId || log.order_id)) && (
+                                                                                <span style={{ fontSize: '10px', color: '#ff4d4d', background: 'rgba(255, 77, 77, 0.1)', padding: '2px 6px', borderRadius: '4px', border: '1px solid rgba(255, 77, 77, 0.2)' }}>
+                                                                                    تم حذفه
+                                                                                </span>
+                                                                            )}
+                                                                            <i 
+                                                                                className="fa-regular fa-copy" 
+                                                                                style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)' }} 
+                                                                                onClick={(e) => { 
+                                                                                    e.stopPropagation(); 
+                                                                                    navigator.clipboard.writeText(log.orderId || log.order_id); 
+                                                                                    showToast('تم نسخ رقم الطلب', 'success'); 
+                                                                                }} 
+                                                                                title="نسخ رقم الطلب"
+                                                                            ></i>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span className="badge" style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-muted)', fontSize: '11px' }}>
+                                                                            {log.type === 'Restock' ? 'مشتريات' : log.type === 'Correction' ? 'تعديل يدوي' : log.type === 'Waste' ? 'هالك' : 'تعديل يدوي'}
+                                                                        </span>
+                                                                    )}
+                                                                </td>
                                                                 <td>{variantLabel}</td>
                                                                 <td style={{ color: isIncrease ? '#4ae290' : '#ff4d4d', fontWeight: 'bold' }}>
                                                                     {isIncrease ? '+' : ''}{qty}
@@ -868,6 +897,35 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                             <span className={`badge ${isIncrease ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '10px' }}>
                                                                 {typeLabel}
                                                             </span>
+                                                        </div>
+                                                        <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr', gap: '4px' }}>
+                                                            <span style={{ color: 'var(--text-secondary)' }}>رقم الطلب / المصدر:</span>
+                                                            {log.orderId || log.order_id ? (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                    <strong style={{ fontFamily: 'monospace', color: 'var(--gold-primary)' }}>
+                                                                        #{log.orderId || log.order_id}
+                                                                    </strong>
+                                                                    {!state.orders.some(o => o.id === (log.orderId || log.order_id)) && (
+                                                                        <span style={{ fontSize: '9px', color: '#ff4d4d', background: 'rgba(255, 77, 77, 0.1)', padding: '1px 5px', borderRadius: '3px', border: '1px solid rgba(255, 77, 77, 0.2)' }}>
+                                                                            تم حذفه
+                                                                        </span>
+                                                                    )}
+                                                                    <i 
+                                                                        className="fa-regular fa-copy" 
+                                                                        style={{ cursor: 'pointer', opacity: 0.8, fontSize: '11px', color: 'var(--text-secondary)' }} 
+                                                                        onClick={(e) => { 
+                                                                            e.stopPropagation(); 
+                                                                            navigator.clipboard.writeText(log.orderId || log.order_id); 
+                                                                            showToast('تم نسخ رقم الطلب', 'success'); 
+                                                                        }} 
+                                                                        title="نسخ رقم الطلب"
+                                                                    ></i>
+                                                                </div>
+                                                            ) : (
+                                                                <span className="badge" style={{ background: 'rgba(255, 255, 255, 0.05)', color: 'var(--text-muted)', fontSize: '10px', width: 'fit-content' }}>
+                                                                    {log.type === 'Restock' ? 'مشتريات' : log.type === 'Correction' ? 'تعديل يدوي' : log.type === 'Waste' ? 'هالك' : 'تعديل يدوي'}
+                                                                </span>
+                                                            )}
                                                         </div>
                                                         <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr', gap: '4px' }}>
                                                             <span style={{ color: 'var(--text-secondary)' }}>الخيار:</span>
