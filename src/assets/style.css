@@ -2953,6 +2953,65 @@ input[type=number] {
     }
 }
 
+/* Scoped styles for content inside RichTextEditor & Description views */
+.rich-text-editor-content p,
+.product-description-render p {
+    margin-top: 0;
+    margin-bottom: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+}
+.rich-text-editor-content h1, .product-description-render h1,
+.rich-text-editor-content h2, .product-description-render h2,
+.rich-text-editor-content h3, .product-description-render h3,
+.rich-text-editor-content h4, .product-description-render h4,
+.rich-text-editor-content h5, .product-description-render h5,
+.rich-text-editor-content h6, .product-description-render h6 {
+    margin-top: 14px;
+    margin-bottom: 6px;
+    font-weight: 700;
+    color: #ffffff;
+    line-height: 1.4;
+}
+.rich-text-editor-content h1, .product-description-render h1 { font-size: 1.5rem; }
+.rich-text-editor-content h2, .product-description-render h2 { font-size: 1.3rem; }
+.rich-text-editor-content h3, .product-description-render h3 { font-size: 1.15rem; }
+.rich-text-editor-content h4, .product-description-render h4 { font-size: 1.05rem; }
+.rich-text-editor-content h5, .product-description-render h5 { font-size: 0.95rem; }
+.rich-text-editor-content h6, .product-description-render h6 { font-size: 0.9rem; }
+
+.rich-text-editor-content blockquote,
+.product-description-render blockquote {
+    border-left: 3px solid var(--gold-primary);
+    padding-left: 10px;
+    margin: 8px 0;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.rich-text-editor-content ul, .product-description-render ul,
+.rich-text-editor-content ol, .product-description-render ol {
+    margin-top: 0;
+    margin-bottom: 8px;
+    padding-left: 20px;
+    padding-right: 20px;
+}
+
+.rich-text-editor-content li,
+.product-description-render li {
+    margin-bottom: 4px;
+    line-height: 1.5;
+}
+
+/* Empty placeholder display for contentEditable */
+.rich-text-editor-content:empty::before {
+    content: attr(placeholder);
+    color: var(--text-muted);
+    opacity: 0.6;
+    pointer-events: none;
+    display: block;
+}
+
 
 
 
