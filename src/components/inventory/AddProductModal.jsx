@@ -386,7 +386,14 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                 image: JSON.stringify(images), 
                 createdDate: originalProduct ? (originalProduct.createdDate || getLocalDateString()) : getLocalDateString(),
                 createdBy: originalProduct ? (originalProduct.createdBy || 'sfsf') : (state.currentUser ? state.currentUser.name : 'sfsf'),
-                description: description,
+                description: (() => {
+                    if (!description) return '';
+                    return description
+                        .replace(/<p>\s*(?:<br\s*\/?>|&nbsp;|\s)*<\/p>/gi, '<br>')
+                        .replace(/<div>\s*(?:<br\s*\/?>|&nbsp;|\s)*<\/div>/gi, '<br>')
+                        .replace(/(<br\s*\/?>\s*){3,}/gi, '<br><br>')
+                        .trim();
+                })(),
                 status: status,
                 shopifyCollectionIds: shopifyCollectionIds,
                 variants: mappedVariants,
