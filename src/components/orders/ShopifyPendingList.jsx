@@ -1174,7 +1174,7 @@ ${itemsList}
                                             >
                                                 <td style={{ fontFamily: 'monospace', fontWeight: 600, padding: '14px 16px', color: 'var(--gold-primary)' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        {ord.id}
+                                                        <span>{ord.id}</span><i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '6px' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ord.id); showToast('تم نسخ رقم الطلب', 'success'); }} title="نسخ رقم الطلب"></i>
                                                         <span style={{
                                                             background: 'rgba(150,191,72,0.15)',
                                                             color: '#96bf48',
@@ -1183,7 +1183,7 @@ ${itemsList}
                                                             fontSize: '0.65rem',
                                                             fontWeight: 'bold'
                                                         }}>
-                                                            #{ord.shopifyOrderId || 'Shopify'}
+                                                            <span>#{ord.shopifyOrderId || 'Shopify'}</span><i className="fa-regular fa-copy" style={{ cursor: 'pointer', marginLeft: '4px', opacity: 0.8 }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ord.shopifyOrderId || ''); showToast('تم نسخ رقم طلب شوبيفاي', 'success'); }} title="نسخ رقم طلب شوبيفاي"></i>
                                                         </span>
                                                     </div>
                                                 </td>
@@ -1337,16 +1337,31 @@ ${itemsList}
                                 >
                                     {/* Row 1: ERP ID + Shopify Badge */}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <strong style={{ color: 'var(--gold-primary)', fontSize: '14.5px', fontFamily: 'monospace' }}>{ord.id}</strong>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                            <strong style={{ color: 'var(--gold-primary)', fontSize: '14.5px', fontFamily: 'monospace' }}>{ord.id}</strong>
+                                            <i 
+                                                className="fa-regular fa-copy" 
+                                                style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)' }}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    navigator.clipboard.writeText(ord.id);
+                                                    showToast('تم نسخ رقم الطلب', 'success');
+                                                }}
+                                                title="نسخ رقم الطلب"
+                                            ></i>
+                                        </div>
                                         <span style={{
                                             background: 'rgba(150,191,72,0.15)',
                                             color: '#96bf48',
                                             padding: '2px 8px',
                                             borderRadius: '4px',
                                             fontSize: '0.7rem',
-                                            fontWeight: 'bold'
+                                            fontWeight: 'bold',
+                                            display: 'inline-flex',
+                                            alignItems: 'center',
+                                            gap: '4px'
                                         }}>
-                                            #{ord.shopifyOrderId || 'Shopify'}
+                                             <span>#{ord.shopifyOrderId || 'Shopify'}</span><i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.8, marginLeft: '4px' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ord.shopifyOrderId || ''); showToast('تم نسخ رقم طلب شوبيفاي', 'success'); }} title="نسخ رقم طلب شوبيفاي"></i>
                                         </span>
                                     </div>
                                     {/* Row 2: Date & Chevron */}

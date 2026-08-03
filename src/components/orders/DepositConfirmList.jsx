@@ -82,7 +82,7 @@ const getRemainingToCollect = (ord) => {
 };
 
 export default function DepositConfirmList() {
-    const { state, updateDepositStatus, settleAdminsCustody, confirmDepositRefund, confirmDepositAndRefund } = useContext(AppContext);
+    const { state, updateDepositStatus, settleAdminsCustody, confirmDepositRefund, confirmDepositAndRefund, showToast } = useContext(AppContext);
     const [expandedAdminId, setExpandedAdminId] = useState(null);
     const location = useLocation();
 
@@ -321,7 +321,7 @@ export default function DepositConfirmList() {
                             <tbody>
                                 {myPendingDeposits.map(ord => (
                                     <tr key={ord.id} id={`pending-deposit-row-${ord.id}`} style={{ borderBottom: '1px solid var(--glass-bg)', textAlign: 'center', transition: 'all 0.5s ease' }}>
-                                        <td style={{ padding: '12px 8px', fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--gold-primary)' }}>#{ord.id}</td>
+                                        <td style={{ padding: '12px 8px', fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--gold-primary)' }}>#{ord.id}<i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '6px' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ord.id); showToast('تم نسخ رقم الطلب', 'success'); }} title="نسخ رقم الطلب"></i></td>
                                         <td style={{ padding: '12px 8px' }}>{ord.client}</td>
                                         <td style={{ padding: '12px 8px', fontWeight: 'bold', color: '#2ecc71' }}>{ord.deposit} {currency}</td>
                                         <td style={{ padding: '12px 8px' }}>
@@ -419,7 +419,7 @@ export default function DepositConfirmList() {
                                 }}
                             >
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}>
-                                    <strong style={{ color: 'var(--gold-primary)', fontSize: '15px', fontFamily: 'monospace' }}>#{ord.id}</strong>
+                                    <strong style={{ color: 'var(--gold-primary)', fontSize: '15px', fontFamily: 'monospace' }}>#{ord.id}</strong><i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '6px' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ord.id); showToast('تم نسخ رقم الطلب', 'success'); }} title="نسخ رقم الطلب"></i>
                                     <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{formatOrderDateWithTime(ord)}</span>
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
@@ -624,7 +624,10 @@ export default function DepositConfirmList() {
                                                     }}
                                                 >
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                        <strong style={{ color: 'var(--gold-primary)', fontFamily: 'monospace' }}>#{ord.id}</strong>
+                                                         <div style={{ display: 'flex', alignItems: 'center' }}>
+                                                             <strong style={{ color: 'var(--gold-primary)', fontFamily: 'monospace' }}>#{ord.id}</strong>
+                                                             <i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '6px' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ord.id); showToast('تم نسخ رقم الطلب', 'success'); }} title="نسخ رقم الطلب"></i>
+                                                         </div>
                                                         <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{formatOrderDateWithTime(ord)}</span>
                                                     </div>
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
@@ -940,7 +943,7 @@ export default function DepositConfirmList() {
                                                     onClick={() => toggleHistoryOrder(ord.id)}
                                                     style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}
                                                 >
-                                                    <strong style={{ color: 'var(--gold-primary)', fontSize: '15px', fontFamily: 'monospace' }}>#{ord.id}</strong>
+                                                    <strong style={{ color: 'var(--gold-primary)', fontSize: '15px', fontFamily: 'monospace' }}>#{ord.id}</strong><i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '6px' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ord.id); showToast('تم نسخ رقم الطلب', 'success'); }} title="نسخ رقم الطلب"></i>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                                         <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{formatOrderDateWithTime(ord)}</span>
                                                         <i className={`fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} style={{ fontSize: '11px', color: 'var(--text-muted)' }}></i>

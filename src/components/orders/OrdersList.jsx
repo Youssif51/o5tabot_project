@@ -877,7 +877,17 @@ ${followUpReason}
                                             >
                                                 <td style={{ fontFamily: 'monospace', fontWeight: 600, padding: '14px 16px', color: 'var(--gold-primary)', textAlign: 'center', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                                                        {ord.id}
+                                                        <span>{ord.id}</span>
+                                                         <i 
+                                                             className="fa-regular fa-copy" 
+                                                             style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)' }}
+                                                             onClick={(e) => {
+                                                                 e.stopPropagation();
+                                                                 navigator.clipboard.writeText(ord.id);
+                                                                 showToast('تم نسخ رقم الطلب', 'success');
+                                                             }}
+                                                             title="نسخ رقم الطلب"
+                                                         ></i>
                                                         {ord.source === 'shopify' && (
                                                             <span style={{
                                                                 background: 'linear-gradient(135deg, #96bf48, #5a8a1e)',
@@ -1379,7 +1389,7 @@ ${followUpReason}
                                     {/* Header: ID, Date, Source */}
                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}>
                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                            <strong style={{ color: 'var(--gold-primary)', fontSize: '15px', fontFamily: 'monospace' }}>#{ord.id}</strong>
+                                            <strong style={{ color: 'var(--gold-primary)', fontSize: '15px', fontFamily: 'monospace' }}>#{ord.id}</strong><i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '6px' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ord.id); showToast('تم نسخ رقم الطلب', 'success'); }} title="نسخ رقم الطلب"></i>
                                             {ord.source === 'shopify' && (
                                                 <span style={{
                                                     background: 'linear-gradient(135deg, #96bf48, #5a8a1e)',

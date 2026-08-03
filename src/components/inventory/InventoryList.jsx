@@ -414,7 +414,7 @@ export default function InventoryList({
                                             badgeClass = "badge-danger";
                                         } else if (hasOutOfStock) {
                                             statusText = t('partialOutOfStock');
-                                            badgeClass = "badge-warning";
+                                            badgeClass = "badge-partial-out";
                                         } else if (hasLowStock) {
                                             statusText = t('lowStock');
                                             badgeClass = "badge-warning";
@@ -424,10 +424,10 @@ export default function InventoryList({
                                             <tr key={prod.id}>
                                                 <td>
                                                     <div 
-                                                        style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--gold-primary)' }}
+                                                        style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--gold-primary)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                                                         onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
                                                     >
-                                                        {deduplicateProductName(prod.name)}
+                                                        {deduplicateProductName(prod.name)}<i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(deduplicateProductName(prod.name)); showToast('تم نسخ اسم المنتج', 'success'); }} title="نسخ اسم المنتج"></i>
                                                     </div>
                                                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
                                                         {(() => {
@@ -466,7 +466,7 @@ export default function InventoryList({
                                                             title="Inspect Catalog"
                                                             onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
                                                         >
-                                                            <i className="fa-solid fa-magnifying-glass"></i>
+                                                            <i className="fa-solid fa-eye"></i>
                                                         </button>
                                                         <button 
                                                             className="action-btn-circle" 
@@ -549,7 +549,7 @@ export default function InventoryList({
                                     badgeClass = "badge-danger";
                                 } else if (hasOutOfStock) {
                                     statusText = t('partialOutOfStock');
-                                    badgeClass = "badge-warning";
+                                    badgeClass = "badge-partial-out";
                                 } else if (hasLowStock) {
                                     statusText = t('lowStock');
                                     badgeClass = "badge-warning";
@@ -573,10 +573,10 @@ export default function InventoryList({
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}>
                                             <div>
                                                 <strong 
-                                                    style={{ color: 'var(--gold-primary)', fontSize: '14px', cursor: 'pointer' }}
+                                                    style={{ color: 'var(--gold-primary)', fontSize: '14px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                                                     onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
                                                 >
-                                                    {deduplicateProductName(prod.name)}
+                                                    {deduplicateProductName(prod.name)}<i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(deduplicateProductName(prod.name)); showToast('تم نسخ اسم المنتج', 'success'); }} title="نسخ اسم المنتج"></i>
                                                 </strong>
                                                 <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
                                                     {(() => {
@@ -637,7 +637,7 @@ export default function InventoryList({
                                                     onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
                                                     style={{ width: '30px', height: '30px', fontSize: '11px' }}
                                                 >
-                                                    <i className="fa-solid fa-magnifying-glass"></i>
+                                                     <i className="fa-solid fa-eye"></i>
                                                 </button>
                                                 <button 
                                                     className="action-btn-circle" 

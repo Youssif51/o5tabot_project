@@ -626,7 +626,7 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                             {allCategories.map(cat => (
                                 <option key={cat} value={cat}>{cat}</option>
                             ))}
-                            <option value="NEW_CATEGORY" style={{ color: 'var(--gold-primary)', fontWeight: 600 }}>+ إضافة قسم جديد...</option>
+                            <option value="NEW_CATEGORY" style={{ color: 'var(--gold-primary)', fontWeight: 600 }}>+ إضافة نوع جديد...</option>
                         </select>
                         
                         {showNewCategoryInput && (
