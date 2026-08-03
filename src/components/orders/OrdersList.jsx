@@ -2,9 +2,11 @@ import { formatProductDisplayName } from '../../utils/productUtils';
 import React, { useContext, useState, useEffect } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
+import { useNavigate } from 'react-router-dom';
 
 export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrder, onOpenEditOrder }) {
     const { state, updateOrderStatus, deleteOrder, showToast, logActivity, setCurrentView, t, showConfirm, addCustomer, setCustomerSpam, syncBostaStatus, updateDepositStatus, updateOrderProperties, settleAdminsCustody, fetchMissingOrderItems } = useContext(AppContext);
+    const navigate = useNavigate();
     
     // Expanded rows state (keeps track of order IDs that are expanded)
     const [expandedOrderIds, setExpandedOrderIds] = useState({});
@@ -1177,7 +1179,7 @@ ${followUpReason}
                                                                         </>
                                                                     )}
                                                                     <div><strong>المحافظة:</strong> {ord.governorate || 'غير مسجل'}</div>
-                                                                    <div><strong>العنوان بالتفصيل:</strong> {detailAddress || 'غير مسجل'}</div>
+                                                                    <div style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><strong>العنوان بالتفصيل:</strong> {detailAddress || 'غير مسجل'}</div>
                                                                     <div><strong>سجل الطلب بواسطة:</strong> <span style={{ color: 'var(--gold-primary)' }}>{ord.createdBy || 'sfsf'}</span></div>
                                                                     {ord.discount_reason && (
                                                                         <div style={{ marginTop: '4px', borderTop: '1px dashed var(--glass-border)', paddingTop: '4px' }}>
@@ -1276,7 +1278,7 @@ ${followUpReason}
                                                                 <button
                                                                     onClick={(e) => {
                                                                         e.stopPropagation();
-                                                                        setCurrentView('shopify_pending');
+                                                                        navigate('/shopifyPending', { state: { highlightOrderId: ord.id } });
                                                                     }}
                                                                     className="btn btn-gold"
                                                                     style={{
@@ -1507,7 +1509,7 @@ ${followUpReason}
                                                         </>
                                                     )}
                                                     <div><strong>المحافظة:</strong> {ord.governorate || 'غير مسجل'}</div>
-                                                    <div><strong>العنوان بالتفصيل:</strong> {detailAddress || 'غير مسجل'}</div>
+                                                    <div style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><strong>العنوان بالتفصيل:</strong> {detailAddress || 'غير مسجل'}</div>
                                                     {ord.discount_reason && (
                                                         <div style={{ marginTop: '4px', borderTop: '1px dashed var(--glass-border)', paddingTop: '4px' }}>
                                                             <strong>سبب الخصم:</strong> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{ord.discount_reason}</span>

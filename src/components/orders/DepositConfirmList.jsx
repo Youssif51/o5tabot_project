@@ -827,7 +827,7 @@ export default function DepositConfirmList() {
                                                                                     )}
                                                                                 </div>
                                                                                 <div><strong>المحافظة:</strong> {ord.governorate || 'غير مسجل'}</div>
-                                                                                <div><strong>العنوان بالتفصيل:</strong> {detailAddress || 'غير مسجل'}</div>
+                                                                                <div style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><strong>العنوان بالتفصيل:</strong> {detailAddress || 'غير مسجل'}</div>
                                                                                 <div><strong>سجل الطلب بواسطة:</strong> <span style={{ color: 'var(--gold-primary)' }}>{ord.createdBy || 'غير معروف'}</span></div>
                                                                                 {ord.discount_reason && (
                                                                                     <div style={{ marginTop: '4px', borderTop: '1px dashed var(--glass-border)', paddingTop: '4px' }}>
@@ -1015,7 +1015,7 @@ export default function DepositConfirmList() {
                                                                     )}
                                                                 </div>
                                                                 <div><strong>المحافظة:</strong> {ord.governorate || 'غير مسجل'}</div>
-                                                                <div><strong>العنوان:</strong> {detailAddress || 'غير مسجل'}</div>
+                                                                <div style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><strong>العنوان:</strong> {detailAddress || 'غير مسجل'}</div>
                                                                 <div><strong>سجل بواسطة:</strong> {ord.createdBy || 'غير معروف'}</div>
                                                                 {ord.discount_reason && (
                                                                     <div style={{ marginTop: '4px', borderTop: '1px dashed var(--glass-border)', paddingTop: '4px' }}>

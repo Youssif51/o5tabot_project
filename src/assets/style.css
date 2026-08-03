@@ -2673,7 +2673,7 @@ input[type=number] {
 }
 .grid-responsive-1-1_3-1 {
     display: grid;
-    grid-template-columns: 1fr 1.3fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) minmax(0, 1fr);
     gap: 16px;
 }
 .grid-responsive-1_2-1-1 {

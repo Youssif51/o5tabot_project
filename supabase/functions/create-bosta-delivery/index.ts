@@ -94,9 +94,9 @@ Deno.serve(async (req) => {
       } catch (e) {}
     }
 
-    if (isReviewed || hasBostaDelivery || order.status === 'Completed' || order.status === 'Cancelled' || order.status === 'Shipped') {
+    if (hasBostaDelivery || order.status === 'Completed' || order.status === 'Cancelled' || order.status === 'Shipped') {
       return new Response(JSON.stringify({ 
-        error: "هذا الطلب تم تأكيده ومراجعته بالفعل من قبل أدمن آخر!" 
+        error: "هذا الطلب تم شحنه أو إتمامه أو إلغاؤه بالفعل!" 
       }), {
         status: 400,
         headers: { "Content-Type": "application/json", ...corsHeaders }
