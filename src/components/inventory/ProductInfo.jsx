@@ -7,6 +7,29 @@ import RestockModal from './RestockModal';
 export default function ProductInfo({ productId, onBack, onEditProduct }) {
     const { state, recordStockAdjustment, showToast, language, t } = useContext(AppContext);
     const [activeTab, setActiveTab] = useState('Overview');
+
+    const formatLedgerDateTime = (dateVal) => {
+        if (!dateVal) return { dateStr: '-', timeStr: '' };
+        try {
+            const d = new Date(dateVal);
+            if (isNaN(d.getTime())) return { dateStr: '-', timeStr: '' };
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const dateStr = `${year}-${month}-${day}`;
+
+            let hours = d.getHours();
+            const minutes = String(d.getMinutes()).padStart(2, '0');
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12;
+            const timeStr = `${ampm} ${hours}:${minutes}`;
+
+            return { dateStr, timeStr };
+        } catch (e) {
+            return { dateStr: '-', timeStr: '' };
+        }
+    };
     const [restockVariantObj, setRestockVariantObj] = useState(null);
 
     // Barcode Printing State
@@ -744,20 +767,8 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                     return (a.id || 0) - (b.id || 0);
                                 });
 
-                                let runningBalance = 0;
-                                if (variantLogs.length > 0) {
-                                    const first = variantLogs[0];
-                                    const firstBal = first.balance_after ?? first.balanceAfter;
-                                    const firstQty = first.quantity || 0;
-                                    if (firstBal !== undefined && firstBal !== null && !isNaN(firstBal)) {
-                                        runningBalance = Math.max(0, Number(firstBal) - firstQty);
-                                    }
-                                }
-
                                 variantLogs.forEach(log => {
-                                    const qty = log.quantity || 0;
-                                    runningBalance += qty;
-                                    log.calculated_balance_after = runningBalance;
+                                    log.calculated_balance_after = log.balanceAfter ?? log.balance_after ?? 0;
                                     processedLogs.push(log);
                                 });
                             });
@@ -814,11 +825,18 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                         return (
                                                             <tr key={idx}>
                                                                 <td style={{ whiteSpace: 'nowrap' }}>
-                                                                    {new Date(log.date || log.created_at).toLocaleString('en-GB', { 
-                                                                        day: '2-digit', month: '2-digit', year: 'numeric', 
-                                                                        hour: '2-digit', minute: '2-digit', hour12: true 
-                                                                    })}
-                                                                </td>
+                                                                     {(() => {
+                                                                         const { dateStr, timeStr } = formatLedgerDateTime(log.date || log.created_at);
+                                                                         return (
+                                                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
+                                                                                 <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{dateStr}</span>
+                                                                                 <span style={{ color: 'var(--text-muted)', fontSize: '11px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                                                     {timeStr} <i className="fa-regular fa-clock" style={{ fontSize: '10px' }}></i>
+                                                                                 </span>
+                                                                             </div>
+                                                                         );
+                                                                     })()}
+                                                                 </td>
                                                                 <td><span className={`badge ${isIncrease ? 'badge-success' : 'badge-danger'}`}>{typeLabel}</span></td>
                                                                 <td>
                                                                     {log.orderId || log.order_id ? (
@@ -888,11 +906,18 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                 return (
                                                     <div key={idx} className="sa-mobile-card" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
                                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                            <span style={{ color: 'var(--text-secondary)', fontSize: '11px' }}>
-                                                                {new Date(log.date || log.created_at).toLocaleString('en-GB', { 
-                                                                    day: '2-digit', month: '2-digit', year: 'numeric', 
-                                                                    hour: '2-digit', minute: '2-digit', hour12: true 
-                                                                })}
+                                                            <span style={{ color: 'var(--text-secondary)', fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                                                 {(() => {
+                                                                     const { dateStr, timeStr } = formatLedgerDateTime(log.date || log.created_at);
+                                                                     return (
+                                                                         <>
+                                                                             <strong style={{ color: 'var(--text-primary)' }}>{dateStr}</strong>
+                                                                             <span style={{ fontSize: '10px', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                                                                                 {timeStr} <i className="fa-regular fa-clock" style={{ fontSize: '9px' }}></i>
+                                                                             </span>
+                                                                         </>
+                                                                     );
+                                                                 })()}
                                                             </span>
                                                             <span className={`badge ${isIncrease ? 'badge-success' : 'badge-danger'}`} style={{ fontSize: '10px' }}>
                                                                 {typeLabel}

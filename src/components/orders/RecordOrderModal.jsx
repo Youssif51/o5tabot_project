@@ -50,6 +50,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const { state, addOrder, editOrder, showToast, showConfirm, t, validateCoupon, applyCouponUsage, checkLiveCouponAvailability, getOrCreateCustomer, approveOrderWithBosta } = useContext(AppContext);
     
     const isEditMode = !!editOrderId;
+    const originalOrder = editOrderId ? state.orders.find(o => o.id === editOrderId) : null;
     
     // Submission Lock State
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -894,7 +895,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     depositReceiverId: depositVal > 0 ? (depositReceiverId || state.currentUser?.id || null) : null,
                     depositStatus: depositVal > 0 ? (depositReceiverId === state.currentUser?.id ? 'confirmed' : (depositStatus || 'pending')) : 'confirmed',
                     shipping_fee: shippingFeeVal,
-                    createdBy: state.currentUser ? state.currentUser.name : 'sfsf'
+                    createdBy: editOrderId ? (originalOrder?.createdBy || originalOrder?.created_by || 'sfsf') : (state.currentUser ? state.currentUser.name : 'sfsf')
                 };
 
                 if (editOrderId) {

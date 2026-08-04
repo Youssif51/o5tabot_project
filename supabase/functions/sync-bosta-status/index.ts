@@ -158,6 +158,22 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (order.status === 'Cancelled' || order.status === 'Rejected') {
+      console.log(`Order ${orderId} is already Cancelled or Rejected. Skipping Bosta sync.`);
+      return new Response(JSON.stringify({ 
+        success: true, 
+        message: `Order is already in a terminal state: ${order.status}`,
+        newStateCode: bostaStateCode,
+        newStateName: stateName,
+        newStatus: order.status,
+        previousStatus: order.status,
+        updatedAddress: order.address
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
     // Parse existing address
     let addressObj: Record<string, any> = {};
     if (order.address && order.address.startsWith('{')) {

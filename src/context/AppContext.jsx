@@ -2125,7 +2125,7 @@ export const AppProvider = ({ children }) => {
                                     date: new Date().toISOString(),
                                     product_id: vData.product_id,
                                     variant_sku: itemSku,
-                                    warehouse: order.warehouse || 'Sulur',
+                                    warehouse: enrichedOrder.warehouse || 'Sulur',
                                     type: 'Sale',
                                     quantity: -item.quantity,
                                     unit_cost: uCost,
@@ -2196,14 +2196,14 @@ export const AppProvider = ({ children }) => {
             
             let products = [...prev.products];
             oldStatus = currentOrder.status;
-            orderTotal = order.totalValue;
-            customerId = order.customer_id;
+            orderTotal = currentOrder.totalValue;
+            customerId = currentOrder.customer_id;
             
             const wasDeducted = isDeductedStatus(oldStatus, { ...currentOrder, status: oldStatus });
             const isDeducted = isDeductedStatus(newStatus, { ...currentOrder, status: newStatus });
             
             if (!wasDeducted && isDeducted) {
-                order.items.forEach(item => {
+                currentOrder.items.forEach(item => {
                     products = products.map(p => {
                         const hasVar = p.variants.some(v => v.sku === item.variantSku);
                         if (hasVar) {
@@ -2212,7 +2212,7 @@ export const AppProvider = ({ children }) => {
                                 variants: p.variants.map(v => {
                                     if (v.sku === item.variantSku) {
                                         const stock = { ...v.stock };
-                                        const wh = order.warehouse || "Sulur";
+                                        const wh = currentOrder.warehouse || "Sulur";
                                         stock[wh] = Math.max(0, (stock[wh] || 0) - item.quantity);
                                         return { ...v, stock };
                                     }
@@ -2224,7 +2224,7 @@ export const AppProvider = ({ children }) => {
                     });
                 });
             } else if (wasDeducted && !isDeducted) {
-                order.items.forEach(item => {
+                currentOrder.items.forEach(item => {
                     products = products.map(p => {
                         const hasVar = p.variants.some(v => v.sku === item.variantSku);
                         if (hasVar) {
@@ -2233,7 +2233,7 @@ export const AppProvider = ({ children }) => {
                                 variants: p.variants.map(v => {
                                     if (v.sku === item.variantSku) {
                                         const stock = { ...v.stock };
-                                        const wh = order.warehouse || "Sulur";
+                                        const wh = currentOrder.warehouse || "Sulur";
                                         stock[wh] = (stock[wh] || 0) + item.quantity;
                                         return { ...v, stock };
                                     }
@@ -2248,16 +2248,16 @@ export const AppProvider = ({ children }) => {
 
             let newLedger = prev.stockLedger || [];
             if (!wasDeducted && isDeducted) {
-                order.items.forEach(item => {
+                currentOrder.items.forEach(item => {
                     const prod = products.find(p => p.variants.some(v => v.sku === item.variantSku));
                     if (prod) {
                         const vr = prod.variants.find(v => v.sku === item.variantSku);
-                        const currentBal = vr ? (vr.stock[order.warehouse || "Sulur"] || 0) : 0;
+                        const currentBal = vr ? (vr.stock[currentOrder.warehouse || "Sulur"] || 0) : 0;
                         newLedger = [{
                             date: new Date().toISOString(),
                             productId: prod.id,
                             variantSku: item.variantSku,
-                            warehouse: order.warehouse || "Sulur",
+                            warehouse: currentOrder.warehouse || "Sulur",
                             type: "Sale",
                             quantity: -item.quantity,
                             balanceAfter: currentBal
@@ -2265,16 +2265,16 @@ export const AppProvider = ({ children }) => {
                     }
                 });
             } else if (wasDeducted && !isDeducted) {
-                order.items.forEach(item => {
+                currentOrder.items.forEach(item => {
                     const prod = products.find(p => p.variants.some(v => v.sku === item.variantSku));
                     if (prod) {
                         const vr = prod.variants.find(v => v.sku === item.variantSku);
-                        const currentBal = vr ? (vr.stock[order.warehouse || "Sulur"] || 0) : 0;
+                        const currentBal = vr ? (vr.stock[currentOrder.warehouse || "Sulur"] || 0) : 0;
                         newLedger = [{
                             date: new Date().toISOString(),
                             productId: prod.id,
                             variantSku: item.variantSku,
-                            warehouse: order.warehouse || "Sulur",
+                            warehouse: currentOrder.warehouse || "Sulur",
                             type: "Return",
                             quantity: item.quantity,
                             balanceAfter: currentBal
@@ -2322,176 +2322,176 @@ export const AppProvider = ({ children }) => {
         showToast(`Order status updated to ${newStatus}.`);
 
         if (supabase) {
-            (async () => {
-                try {
-                    const curOrder = (state.orders || []).find(o => o.id === orderId);
-                    const dbUpdate = { 
-                        status: newStatus,
-                        address: updatedAddressStr
-                    };
-                    // Flag deposit refund needed if order was cancelled with a collected deposit
-                    if (
-                        newStatus === 'Cancelled' &&
-                        curOrder &&
-                        (parseFloat(curOrder.deposit) || 0) > 0 &&
-                        curOrder.depositReceiverId
-                    ) {
-                        dbUpdate.deposit_refund_status = 'awaiting_return';
-                        showToast(`⚠️ تنبيه عربون: تم إلغاء الطلب ${orderId}. العربون (${curOrder.deposit} ج.م) بعهدة الأدمن وبانتظار الإعادة للعميل.`, "warning");
-                    }
-                    await supabase.from('orders').update(dbUpdate).eq('id', orderId);
-                    
-                    const { data: order } = await supabase.from('orders').select('*').eq('id', orderId).single();
-                    const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId);
-                    
-                    if (order && items && items.length > 0) {
-                        const wasDeducted = isDeductedStatus(oldStatus, { ...order, status: oldStatus });
-                        const isDeducted = isDeductedStatus(newStatus, { ...order, status: newStatus });
-                        
-                        if (!wasDeducted && isDeducted) {
-                            for (const item of items) {
-                                const itemSku = item.variant_sku || item.variantSku || item.sku;
-                                if (!itemSku) continue;
-                                const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id, average_cost').eq('sku', itemSku).single();
-                                if (vData) {
-                                    const newStock = Math.max(0, vData.stock_sulur - item.quantity);
-                                    await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', itemSku);
-                                    
-                                    setState(prev => ({
-                                        ...prev,
-                                        products: (prev.products || []).map(p => ({
-                                            ...p,
-                                            variants: (p.variants || []).map(v => v.sku === itemSku ? {
-                                                ...v,
-                                                stock: { ...(v.stock || {}), Sulur: newStock }
-                                            } : v)
-                                        }))
-                                    }));
-                                    
-                                    syncVariantStockToShopify(itemSku);
-                                    
-                                    const uCost = item.cost_at_time_of_sale || item.costAtTimeOfSale || vData.average_cost || 0;
-                                    const tCost = uCost * Math.abs(item.quantity);
-
-                                    await supabase.from('stock_ledger').insert([{
-                                        order_id: orderId,
-                                        date: new Date().toISOString(),
-                                        product_id: vData.product_id,
-                                        variant_sku: itemSku,
-                                        warehouse: order.warehouse || 'Sulur',
-                                        type: 'Sale',
-                                        quantity: -item.quantity,
-                                        unit_cost: uCost,
-                                        total_cost: tCost,
-                                        balance_after: newStock
-                                    }]);
-                                }
-                            }
-                        } else if (wasDeducted && !isDeducted) {
-                            // Restore stock locally and push correct stock levels to Shopify for all cancellations
-                            for (const item of items) {
-                                const itemSku = item.variant_sku || item.variantSku || item.sku;
-                                if (!itemSku) continue;
-                                const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id, average_cost').eq('sku', itemSku).single();
-                                if (vData) {
-                                    const newStock = vData.stock_sulur + item.quantity;
-                                    await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', itemSku);
-                                    
-                                    setState(prev => ({
-                                        ...prev,
-                                        products: (prev.products || []).map(p => ({
-                                            ...p,
-                                            variants: (p.variants || []).map(v => v.sku === itemSku ? {
-                                                ...v,
-                                                stock: { ...(v.stock || {}), Sulur: newStock }
-                                            } : v)
-                                        }))
-                                    }));
-                                    
-                                    syncVariantStockToShopify(itemSku);
-                                    
-                                    const uCost = item.cost_at_time_of_sale || item.costAtTimeOfSale || vData.average_cost || 0;
-                                    const tCost = uCost * Math.abs(item.quantity);
-
-                                    await supabase.from('stock_ledger').insert([{
-                                        order_id: orderId,
-                                        date: new Date().toISOString(),
-                                        product_id: vData.product_id,
-                                        variant_sku: itemSku,
-                                        warehouse: order.warehouse || 'Sulur',
-                                        type: 'Return',
-                                        quantity: item.quantity,
-                                        unit_cost: uCost,
-                                        total_cost: tCost,
-                                        balance_after: newStock
-                                    }]);
-                                }
-                            }
-                        }
-
-                        if (newStatus === 'Completed') {
-                            const curOrderInState = (state.orders || []).find(o => o.id === orderId);
-                            const sOrderId = order?.shopify_order_id || order?.shopifyOrderId || curOrderInState?.shopify_order_id || curOrderInState?.shopifyOrderId;
-                            if (sOrderId) {
-                                try {
-                                    console.log(`Sending fulfill_order to Shopify for completed order ${sOrderId}...`);
-                                    await supabase.functions.invoke('swift-processor', {
-                                        body: { action: 'fulfill_order', shopify_order_id: sOrderId }
-                                    });
-
-                                    console.log(`Sending mark_order_paid to Shopify for completed order ${sOrderId}...`);
-                                    await supabase.functions.invoke('swift-processor', {
-                                        body: {
-                                            action: 'mark_order_paid',
-                                            shopify_order_id: sOrderId,
-                                            amount: order.totalValue || order.total_value
-                                        }
-                                    });
-                                } catch (fErr) {
-                                    console.error("Error fulfilling/marking paid order on Shopify:", fErr);
-                                }
-                            }
-                        }
-
-                        if (newStatus === 'Cancelled') {
-                            const curOrderInState = (state.orders || []).find(o => o.id === orderId);
-                            const sOrderId = order?.shopify_order_id || order?.shopifyOrderId || curOrderInState?.shopify_order_id || curOrderInState?.shopifyOrderId;
-                            const isShopifyOrder = (order?.source === 'shopify' || curOrderInState?.source === 'shopify');
-
-                            if (sOrderId) {
-                                try {
-                                    console.log(`Triggering Shopify cancellation API for order ${sOrderId}...`);
-                                    const cancelRes = await supabase.functions.invoke('swift-processor', {
-                                        body: { action: 'cancel_order', shopify_order_id: sOrderId }
-                                    });
-                                    console.log("Shopify cancel API response:", cancelRes);
-                                } catch (err) {
-                                    console.error("Failed to cancel order in Shopify:", err);
-                                }
-                            }
-
-                            // Sync variant stock to Shopify for all cancelled orders (Shopify and manual)
-                            if (items && items.length > 0) {
-                                for (const item of items) {
-                                    const itemSku = item.variant_sku || item.variantSku || item.sku;
-                                    if (itemSku) {
-                                        console.log(`Syncing variant stock to Shopify for cancelled order SKU ${itemSku}...`);
-                                        syncVariantStockToShopify(itemSku);
-                                    }
-                                }
-                            }
-                        }
-
-                        // Re-evaluate customer stats on cancellation or refund
-                        if ((newStatus === 'Cancelled' || newStatus === 'Refunded' || newStatus === 'Returned') && order.customer_id) {
-                            const orderTotal = parseFloat(order.total_amount) || 0;
-                            updateCustomerStats(order.customer_id, -orderTotal, -1);
-                        }
-                    }
-                } catch (e) {
-                    console.error("Supabase Error:", e);
+            try {
+                const dbUpdate = { 
+                    status: newStatus,
+                    address: updatedAddressStr
+                };
+                
+                // Flag deposit refund needed if order was cancelled with a collected deposit
+                const curOrder = (state.orders || []).find(o => o.id === orderId);
+                if (
+                    newStatus === 'Cancelled' &&
+                    curOrder &&
+                    (parseFloat(curOrder.deposit) || 0) > 0 &&
+                    curOrder.depositReceiverId
+                ) {
+                    dbUpdate.deposit_refund_status = 'awaiting_return';
+                    showToast(`⚠️ تنبيه عربون: تم إلغاء الطلب ${orderId}. العربون (${curOrder.deposit} ج.م) بعهدة الأدمن وبانتظار الإعادة للعميل.`, "warning");
                 }
-            })();
+                
+                await supabase.from('orders').update(dbUpdate).eq('id', orderId);
+                
+                const { data: orderData } = await supabase.from('orders').select('*').eq('id', orderId).single();
+                const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId);
+                
+                if (orderData && items && items.length > 0) {
+                    const wasDeducted = isDeductedStatus(oldStatus, { ...orderData, status: oldStatus });
+                    const isDeducted = isDeductedStatus(newStatus, { ...orderData, status: newStatus });
+                    
+                    if (!wasDeducted && isDeducted) {
+                        for (const item of items) {
+                            const itemSku = item.variant_sku || item.variantSku || item.sku;
+                            if (!itemSku) continue;
+                            const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id, average_cost').eq('sku', itemSku).single();
+                            if (vData) {
+                                const newStock = Math.max(0, vData.stock_sulur - item.quantity);
+                                await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', itemSku);
+                                
+                                setState(prev => ({
+                                    ...prev,
+                                    products: (prev.products || []).map(p => ({
+                                        ...p,
+                                        variants: (p.variants || []).map(v => v.sku === itemSku ? {
+                                            ...v,
+                                            stock: { ...(v.stock || {}), Sulur: newStock }
+                                        } : v)
+                                    }))
+                                }));
+                                
+                                syncVariantStockToShopify(itemSku);
+                                
+                                const uCost = item.cost_at_time_of_sale || item.costAtTimeOfSale || vData.average_cost || 0;
+                                const tCost = uCost * Math.abs(item.quantity);
+
+                                await supabase.from('stock_ledger').insert([{
+                                    order_id: orderId,
+                                    date: new Date().toISOString(),
+                                    product_id: vData.product_id,
+                                    variant_sku: itemSku,
+                                    warehouse: orderData.warehouse || 'Sulur',
+                                    type: 'Sale',
+                                    quantity: -item.quantity,
+                                    unit_cost: uCost,
+                                    total_cost: tCost,
+                                    balance_after: newStock
+                                }]);
+                            }
+                        }
+                    } else if (wasDeducted && !isDeducted) {
+                        // Restore stock locally and push correct stock levels to Shopify for all cancellations
+                        for (const item of items) {
+                            const itemSku = item.variant_sku || item.variantSku || item.sku;
+                            if (!itemSku) continue;
+                            const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id, average_cost').eq('sku', itemSku).single();
+                            if (vData) {
+                                const newStock = vData.stock_sulur + item.quantity;
+                                await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', itemSku);
+                                
+                                setState(prev => ({
+                                    ...prev,
+                                    products: (prev.products || []).map(p => ({
+                                        ...p,
+                                        variants: (p.variants || []).map(v => v.sku === itemSku ? {
+                                            ...v,
+                                            stock: { ...(v.stock || {}), Sulur: newStock }
+                                        } : v)
+                                    }))
+                                }));
+                                
+                                syncVariantStockToShopify(itemSku);
+                                
+                                const uCost = item.cost_at_time_of_sale || item.costAtTimeOfSale || vData.average_cost || 0;
+                                const tCost = uCost * Math.abs(item.quantity);
+
+                                await supabase.from('stock_ledger').insert([{
+                                    order_id: orderId,
+                                    date: new Date().toISOString(),
+                                    product_id: vData.product_id,
+                                    variant_sku: itemSku,
+                                    warehouse: orderData.warehouse || 'Sulur',
+                                    type: 'Return',
+                                    quantity: item.quantity,
+                                    unit_cost: uCost,
+                                    total_cost: tCost,
+                                    balance_after: newStock
+                                }]);
+                            }
+                        }
+                    }
+
+                    if (newStatus === 'Completed') {
+                        const curOrderInState = (state.orders || []).find(o => o.id === orderId);
+                        const sOrderId = orderData?.shopify_order_id || orderData?.shopifyOrderId || curOrderInState?.shopify_order_id || curOrderInState?.shopifyOrderId;
+                        if (sOrderId) {
+                            try {
+                                console.log(`Sending fulfill_order to Shopify for completed order ${sOrderId}...`);
+                                await supabase.functions.invoke('swift-processor', {
+                                    body: { action: 'fulfill_order', shopify_order_id: sOrderId }
+                                });
+
+                                console.log(`Sending mark_order_paid to Shopify for completed order ${sOrderId}...`);
+                                await supabase.functions.invoke('swift-processor', {
+                                    body: {
+                                        action: 'mark_order_paid',
+                                        shopify_order_id: sOrderId,
+                                        amount: orderData.total_value || orderData.total_value
+                                    }
+                                });
+                            } catch (fErr) {
+                                console.error("Error fulfilling/marking paid order on Shopify:", fErr);
+                            }
+                        }
+                    }
+
+                    if (newStatus === 'Cancelled') {
+                        const curOrderInState = (state.orders || []).find(o => o.id === orderId);
+                        const sOrderId = orderData?.shopify_order_id || orderData?.shopifyOrderId || curOrderInState?.shopify_order_id || curOrderInState?.shopifyOrderId;
+                        const isShopifyOrder = (orderData?.source === 'shopify' || curOrderInState?.source === 'shopify');
+
+                        if (sOrderId) {
+                            try {
+                                console.log(`Triggering Shopify cancellation API for order ${sOrderId}...`);
+                                const cancelRes = await supabase.functions.invoke('swift-processor', {
+                                    body: { action: 'cancel_order', shopify_order_id: sOrderId }
+                                });
+                                console.log("Shopify cancel API response:", cancelRes);
+                            } catch (err) {
+                                console.error("Failed to cancel order in Shopify:", err);
+                            }
+                        }
+
+                        // Sync variant stock to Shopify for all cancelled orders (Shopify and manual)
+                        if (items && items.length > 0) {
+                            for (const item of items) {
+                                const itemSku = item.variant_sku || item.variantSku || item.sku;
+                                if (itemSku) {
+                                    console.log(`Syncing variant stock to Shopify for cancelled order SKU ${itemSku}...`);
+                                    syncVariantStockToShopify(itemSku);
+                                }
+                            }
+                        }
+                    }
+
+                    // Re-evaluate customer stats on cancellation or refund
+                    if ((newStatus === 'Cancelled' || newStatus === 'Refunded' || newStatus === 'Returned') && orderData.customer_id) {
+                        const orderTotalVal = parseFloat(orderData.total_value) || 0;
+                        updateCustomerStats(orderData.customer_id, -orderTotalVal, -1);
+                    }
+                }
+            } catch (e) {
+                console.error("Supabase Error:", e);
+            }
         }
     };
 
@@ -2584,10 +2584,10 @@ export const AppProvider = ({ children }) => {
                                     'Content-Type': 'application/json',
                                     'Authorization': `Bearer ${session?.access_token}`
                                 },
-                                body: JSON.stringify({ action: 'terminate', bostaDeliveryId: addressObj.bostaDeliveryId })
+                                body: JSON.stringify({ action: 'cancel', bostaDeliveryId: addressObj.bostaDeliveryId })
                             });
                         } catch (bErr) {
-                            console.error("Error terminating Bosta delivery during deletion:", bErr);
+                            console.error("Error cancelling Bosta delivery during deletion:", bErr);
                         }
                     }
 
@@ -4073,6 +4073,12 @@ export const AppProvider = ({ children }) => {
         }
 
         try {
+            const currentOrder = (state.orders || []).find(o => o.id === orderId);
+            if (currentOrder && (currentOrder.status === 'Cancelled' || currentOrder.status === 'Rejected')) {
+                console.log(`Order ${orderId} is already Cancelled or Rejected. Skipping Bosta sync.`);
+                return null;
+            }
+
             if (!silent) showToast(language === 'ar' ? "جاري تحديث حالة التوصيل من بوسطة..." : "Syncing delivery status from Bosta...", "info");
             
             const { data, error } = await supabase.functions.invoke('sync-bosta-status', {

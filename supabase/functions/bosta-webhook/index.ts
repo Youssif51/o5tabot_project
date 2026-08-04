@@ -91,6 +91,14 @@ Deno.serve(async (req) => {
       });
     }
 
+    if (order.status === 'Cancelled' || order.status === 'Rejected') {
+      console.log(`Order ${orderId} is already Cancelled or Rejected. Skipping Bosta webhook update.`);
+      return new Response(JSON.stringify({ success: true, message: `Order is already in terminal state: ${order.status}` }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
     // Parse address JSON and merge state changes
     let addressObj: Record<string, any> = {};
     if (order.address && order.address.startsWith('{')) {
