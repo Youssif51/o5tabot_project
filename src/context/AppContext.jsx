@@ -2186,18 +2186,15 @@ export const AppProvider = ({ children }) => {
             }
         }
 
-        let oldStatus = "";
-        let orderTotal = 0;
-        let customerId = null;
+        const oldStatus = order.status;
+        const orderTotal = parseFloat(order.totalValue || order.total_value || order.total_amount) || 0;
+        const customerId = order.customer_id;
         
         setState(prev => {
             const currentOrder = prev.orders.find(o => o.id === orderId);
             if (!currentOrder) return prev;
             
             let products = [...prev.products];
-            oldStatus = currentOrder.status;
-            orderTotal = currentOrder.totalValue;
-            customerId = currentOrder.customer_id;
             
             const wasDeducted = isDeductedStatus(oldStatus, { ...currentOrder, status: oldStatus });
             const isDeducted = isDeductedStatus(newStatus, { ...currentOrder, status: newStatus });
@@ -3736,6 +3733,7 @@ export const AppProvider = ({ children }) => {
 
         const targetOrder = (state.orders || []).find(o => o.id === orderId);
         const wasAlreadyReviewed = targetOrder ? (targetOrder.is_reviewed || targetOrder.isReviewed) : false;
+        const isShopifyOrder = targetOrder ? (targetOrder.source === 'shopify') : false;
 
         try {
             showToast(language === 'ar' ? "جاري إنشاء الشحنة وتوليد البوليصة في بوسطة..." : "Creating shipment and air waybill in Bosta...", "info");
