@@ -838,7 +838,13 @@ export default function DepositConfirmList() {
                                                                                 </div>
                                                                                 <div><strong>المحافظة:</strong> {ord.governorate || 'غير مسجل'}</div>
                                                                                 <div style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><strong>العنوان بالتفصيل:</strong> {detailAddress || 'غير مسجل'}</div>
-                                                                                <div><strong>سجل الطلب بواسطة:</strong> <span style={{ color: 'var(--gold-primary)' }}>{ord.createdBy || 'غير معروف'}</span></div>
+                                                                                {ord.source === 'shopify' && ord.createdBy && ord.createdBy !== 'Shopify Webhook' && (
+                                                                                    <div><strong>تمت الموافقة بواسطة:</strong> <span style={{ color: 'var(--gold-primary)' }}>{ord.createdBy}</span></div>
+                                                                                )}
+                                                                                <div><strong>سجل الطلب بواسطة:</strong> <span style={{ color: ord.source === 'shopify' ? 'var(--text-secondary)' : 'var(--gold-primary)' }}>{ord.source === 'shopify' ? 'Shopify Webhook' : (ord.createdBy || 'الآدمن')}</span></div>
+                                                                                {ord.updatedBy && ord.updatedBy !== ord.createdBy && (ord.source !== 'shopify' || ord.updatedBy !== 'Shopify Webhook') && (
+                                                                                    <div><strong>تم التعديل بواسطة:</strong> <span style={{ color: 'var(--gold-primary)' }}>{ord.updatedBy}</span></div>
+                                                                                )}
                                                                                 {ord.discount_reason && (
                                                                                     <div style={{ marginTop: '4px', borderTop: '1px dashed var(--glass-border)', paddingTop: '4px' }}>
                                                                                         <strong>سبب الخصم:</strong> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{ord.discount_reason}</span>

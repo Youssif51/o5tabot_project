@@ -3624,7 +3624,7 @@ export const AppProvider = ({ children }) => {
                     const uCost = item.costAtTimeOfSale || item.cost_at_time_of_sale || (vr ? vr.averageCost || vr.wholesalePrice : 0) || 0;
                     const tCost = uCost * Math.abs(item.quantity);
                     newLedger = [{
-                        date: targetOrder.date || new Date().toISOString(),
+                        date: new Date().toISOString(),
                         productId: prod.id,
                         variantSku: itemSku,
                         orderId: targetOrder.id,
@@ -3661,7 +3661,7 @@ export const AppProvider = ({ children }) => {
 
                         await supabase.from('stock_ledger').insert([{
                             order_id: targetOrder.id,
-                            date: targetOrder.date || new Date().toISOString(),
+                            date: new Date().toISOString(),
                             product_id: vData.product_id,
                             variant_sku: itemSku,
                             warehouse: targetOrder.warehouse || 'Sulur',
