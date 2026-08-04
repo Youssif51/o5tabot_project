@@ -69,8 +69,10 @@ export default function ReportsView() {
             cogs += qty * itemCost;
         });
 
-        const discount = parseFloat(ord.discount_value) || 0;
-        const netRevenue = Math.max(0, ord.totalValue || (grossValue - discount));
+        const hasTotalValue = ord.totalValue !== undefined && ord.totalValue !== null;
+        const netRevenue = hasTotalValue ? ord.totalValue : Math.max(0, grossValue - (parseFloat(ord.discount_value) || 0));
+        const originalTotal = grossValue + (parseFloat(ord.shipping_fee) || 0);
+        const discount = hasTotalValue ? Math.max(0, originalTotal - ord.totalValue) : (parseFloat(ord.discount_value) || 0);
         const netProfit = netRevenue - cogs;
 
         return { grossValue, discount, cogs, netRevenue, netProfit };

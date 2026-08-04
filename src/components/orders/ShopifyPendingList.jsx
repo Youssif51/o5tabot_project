@@ -384,7 +384,9 @@ ${itemsList}
                                 deposit_receiver_id: receiverId,
                                 deposit_status: depositStatus,
                                 status: 'Pending',
-                                address: addressStr
+                                address: addressStr,
+                                created_by: state.currentUser?.name || 'الآدمن',
+                                updated_by: state.currentUser?.name || null
                             }).eq('id', ordId);
                         } catch (err) {
                             console.error('Error saving shopify order without Bosta:', err);
@@ -398,7 +400,9 @@ ${itemsList}
                         status: 'Pending',
                         is_reviewed: true,
                         isReviewed: true,
-                        address: addressStr
+                        address: addressStr,
+                        createdBy: state.currentUser?.name || 'الآدمن',
+                        updatedBy: state.currentUser?.name || null
                     });
 
                     showToast(depositStatus === 'pending' 
@@ -418,7 +422,9 @@ ${itemsList}
                                     deposit_receiver_id: receiverId,
                                     deposit_status: 'pending',
                                     status: 'Pending',
-                                    address: addressStr
+                                    address: addressStr,
+                                    created_by: state.currentUser?.name || 'الآدمن',
+                                    updated_by: state.currentUser?.name || null
                                 }).eq('id', ordId);
 
                                 updateOrderProperties(ordId, {
@@ -428,7 +434,9 @@ ${itemsList}
                                     status: 'Pending',
                                     is_reviewed: true,
                                     isReviewed: true,
-                                    address: addressStr
+                                    address: addressStr,
+                                    createdBy: state.currentUser?.name || 'الآدمن',
+                                    updatedBy: state.currentUser?.name || null
                                 });
 
                                 showToast('تم حفظ الطلب وخصم الكميات بنجاح وهو بانتظار تأكيد استلام العربون من الأدمن المختار قبل الشحن.', 'success');

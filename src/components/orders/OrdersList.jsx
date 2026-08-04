@@ -974,7 +974,16 @@ ${followUpReason}
                                                         )
                                                     )}
                                                 </td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', color: 'var(--text-primary)', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>{ord.createdBy || 'الآدمن'}</td>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', color: 'var(--text-primary)', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
+                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
+                                                         <span>{ord.createdBy || 'الآدمن'}</span>
+                                                         {ord.updatedBy && ord.updatedBy !== ord.createdBy && (
+                                                             <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                                                 (مُعدل: {ord.updatedBy})
+                                                             </span>
+                                                         )}
+                                                     </div>
+                                                 </td>
                                                 
                                                 {/* Delivery Status Badge */}
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
@@ -1178,7 +1187,7 @@ ${followUpReason}
                                                                     )}
                                                                     <div><strong>المحافظة:</strong> {ord.governorate || 'غير مسجل'}</div>
                                                                     <div style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><strong>العنوان بالتفصيل:</strong> {detailAddress || 'غير مسجل'}</div>
-                                                                    <div><strong>سجل الطلب بواسطة:</strong> <span style={{ color: 'var(--gold-primary)' }}>{ord.createdBy || 'sfsf'}</span></div>
+                                                                    <div><strong>سجل الطلب بواسطة:</strong> <span style={{ color: 'var(--gold-primary)' }}>{ord.createdBy || 'sfsf'}</span>{ord.updatedBy && ord.updatedBy !== ord.createdBy && <span style={{ color: 'var(--text-muted)', marginRight: '8px', fontSize: '12px' }}>(آخر تعديل بواسطة: {ord.updatedBy})</span>}</div>
                                                                     {ord.discount_reason && (
                                                                         <div style={{ marginTop: '4px', borderTop: '1px dashed var(--glass-border)', paddingTop: '4px' }}>
                                                                             <strong>سبب الخصم:</strong> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{ord.discount_reason}</span>
@@ -1460,6 +1469,11 @@ ${followUpReason}
                                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                                             <span>بواسطة: </span>
                                             <strong style={{ color: 'var(--gold-primary)' }}>{ord.createdBy || 'الآدمن'}</strong>
+                                            {ord.updatedBy && ord.updatedBy !== ord.createdBy && (
+                                                <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginRight: '4px' }}>
+                                                    (مُعدل: {ord.updatedBy})
+                                                </span>
+                                            )}
                                         </div>
                                         <div style={{ display: 'flex', gap: '8px' }} onClick={(e) => e.stopPropagation()}>
                                             {phone && (

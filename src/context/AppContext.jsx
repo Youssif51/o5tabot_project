@@ -234,6 +234,7 @@ export const AppProvider = ({ children }) => {
                         depositRefundType: o.deposit_refund_type || null,
                         shipping_fee: parseFloat(o.shipping_fee) || 0,
                         createdBy: o.created_by,
+                        updatedBy: o.updated_by || null,
                         shopifyOrderId: o.shopify_order_id || null,
                         source: o.source || 'manual',
                         paymentMethod: o.payment_method || null,
@@ -560,6 +561,7 @@ export const AppProvider = ({ children }) => {
                             depositRefundScreenshot: newOrder.deposit_refund_screenshot || null,
                             shipping_fee: parseFloat(newOrder.shipping_fee) || 0,
                             createdBy: newOrder.created_by,
+                            updatedBy: newOrder.updated_by || null,
                             shopifyOrderId: newOrder.shopify_order_id || null,
                             source: newOrder.source || 'manual',
                             paymentMethod: newOrder.payment_method || null,
@@ -700,7 +702,9 @@ export const AppProvider = ({ children }) => {
                                 discount_value: parseFloat(updatedOrder.discount_value) || o.discount_value,
                                 applied_coupon_code: updatedOrder.applied_coupon_code || o.applied_coupon_code,
                                 discount_reason: updatedOrder.discount_reason || o.discount_reason,
-                                discount_reason_details: updatedOrder.discount_reason_details || o.discount_reason_details
+                                discount_reason_details: updatedOrder.discount_reason_details || o.discount_reason_details,
+                                createdBy: updatedOrder.created_by || o.createdBy,
+                                updatedBy: updatedOrder.updated_by || o.updatedBy
                             } : o)
                         };
                     });
@@ -2631,7 +2635,11 @@ export const AppProvider = ({ children }) => {
             }
             return { ...item, costAtTimeOfSale: avgCost };
         });
-        const enrichedOrder = { ...updatedOrder, items: enrichedItems };
+        const enrichedOrder = { 
+            ...updatedOrder, 
+            items: enrichedItems,
+            updatedBy: state.currentUser?.name || null
+        };
         
         setState(prev => {
             oldOrder = prev.orders.find(o => o.id === enrichedOrder.id);
@@ -2868,6 +2876,7 @@ export const AppProvider = ({ children }) => {
                         deposit_status: enrichedOrder.depositStatus || 'confirmed',
                         shipping_fee: enrichedOrder.shipping_fee || 0,
                         created_by: enrichedOrder.createdBy || null,
+                        updated_by: enrichedOrder.updatedBy || null,
                         shopify_order_id: enrichedOrder.shopifyOrderId || null,
                         source: enrichedOrder.source || 'manual',
                         payment_method: enrichedOrder.paymentMethod || null
@@ -3768,15 +3777,20 @@ export const AppProvider = ({ children }) => {
                 finalAddressStr = JSON.stringify(parsed);
             } catch(e) {}
 
-            // Update deposit details and is_reviewed in local database
-            await supabase.from('orders').update({
+            const updatePayload = {
                 deposit: depositAmount,
                 deposit_receiver_id: depositReceiverId,
                 deposit_status: depositStatus,
                 status: 'Pending',
                 is_reviewed: true,
                 address: finalAddressStr
-            }).eq('id', orderId);
+            };
+
+            if (isShopifyOrder || targetOrder?.createdBy === 'Shopify Webhook') {
+                updatePayload.created_by = state.currentUser?.name || 'الآدمن';
+            }
+
+            await supabase.from('orders').update(updatePayload).eq('id', orderId);
 
             // Update local state first (deposit + address + status) immediately
             setState(prev => ({
@@ -3789,7 +3803,8 @@ export const AppProvider = ({ children }) => {
                     address: finalAddressStr,
                     deposit: depositAmount,
                     depositReceiverId: depositReceiverId,
-                    depositStatus: depositStatus
+                    depositStatus: depositStatus,
+                    ...((isShopifyOrder || o.createdBy === 'Shopify Webhook') && { createdBy: state.currentUser?.name || 'الآدمن' })
                 } : o)
             }));
 
