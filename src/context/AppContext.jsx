@@ -2162,27 +2162,21 @@ export const AppProvider = ({ children }) => {
             }
             try {
                 showToast("جاري إلغاء الشحنة في بوسطة...", "info");
-                const { data: { session } } = await supabase.auth.getSession();
-                const res = await fetch('https://skvwhgcclmvejmpsgkes.supabase.co/functions/v1/manage-bosta-delivery', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${session?.access_token}`
-                    },
-                    body: JSON.stringify({ action: 'cancel', bostaDeliveryId: addressObj.bostaDeliveryId })
+                const { data: bostaData, error: bostaErr } = await supabase.functions.invoke('manage-bosta-delivery', {
+                    body: { action: 'cancel', bostaDeliveryId: addressObj.bostaDeliveryId }
                 });
-                if (!res.ok) {
-                    const resData = await res.json().catch(() => ({}));
-                    showAlert(`فشل إلغاء الشحنة في بوسطة: ${resData.error || res.statusText}`, "error");
-                    return;
+                if (bostaErr || !bostaData || !bostaData.success) {
+                    console.error("Bosta cancellation failed:", bostaErr || bostaData);
+                    showToast("فشل إلغاء الشحنة في بوسطة، سنقوم بمتابعة إلغاء الأوردر محلياً وفي شوبيفاي.", "warning");
+                } else {
+                    addressObj.bostaStateName = "Cancelled";
+                    addressObj.bostaStateCode = 49;
+                    updatedAddressStr = JSON.stringify(addressObj);
+                    showToast("تم إلغاء الشحنة في بوسطة بنجاح", "success");
                 }
-                addressObj.bostaStateName = "Cancelled";
-                addressObj.bostaStateCode = 49;
-                updatedAddressStr = JSON.stringify(addressObj);
-                showToast("تم إلغاء الشحنة في بوسطة بنجاح", "success");
             } catch (e) {
-                showAlert("حدث خطأ أثناء التواصل مع بوسطة لإلغاء الشحنة.", "error");
-                return;
+                console.error("Error communicating with Bosta cancellation:", e);
+                showToast("حدث خطأ أثناء التواصل مع بوسطة لإلغاء الشحنة، سنتابع إلغاء الأوردر محلياً وفي شوبيفاي.", "warning");
             }
         }
 
@@ -2346,6 +2340,24 @@ export const AppProvider = ({ children }) => {
                     const wasDeducted = isDeductedStatus(oldStatus, { ...orderData, status: oldStatus });
                     const isDeducted = isDeductedStatus(newStatus, { ...orderData, status: newStatus });
                     
+                    // 1. If cancelled, cancel order in Shopify first
+                    if (newStatus === 'Cancelled') {
+                        const curOrderInState = (state.orders || []).find(o => o.id === orderId);
+                        const sOrderId = orderData?.shopify_order_id || orderData?.shopifyOrderId || curOrderInState?.shopify_order_id || curOrderInState?.shopifyOrderId;
+                        if (sOrderId) {
+                            try {
+                                console.log(`Triggering Shopify cancellation API for order ${sOrderId}...`);
+                                const cancelRes = await supabase.functions.invoke('swift-processor', {
+                                    body: { action: 'cancel_order', shopify_order_id: sOrderId }
+                                });
+                                console.log("Shopify cancel API response:", cancelRes);
+                            } catch (err) {
+                                console.error("Failed to cancel order in Shopify:", err);
+                            }
+                        }
+                    }
+
+                    // 2. Adjust or restore system and Shopify stock
                     if (!wasDeducted && isDeducted) {
                         for (const item of items) {
                             const itemSku = item.variant_sku || item.variantSku || item.sku;
@@ -2366,7 +2378,7 @@ export const AppProvider = ({ children }) => {
                                     }))
                                 }));
                                 
-                                syncVariantStockToShopify(itemSku);
+                                await syncVariantStockToShopify(itemSku);
                                 
                                 const uCost = item.cost_at_time_of_sale || item.costAtTimeOfSale || vData.average_cost || 0;
                                 const tCost = uCost * Math.abs(item.quantity);
@@ -2406,7 +2418,8 @@ export const AppProvider = ({ children }) => {
                                     }))
                                 }));
                                 
-                                syncVariantStockToShopify(itemSku);
+                                // Await the Shopify stock sync so it finishes before database or ledger updates!
+                                await syncVariantStockToShopify(itemSku);
                                 
                                 const uCost = item.cost_at_time_of_sale || item.costAtTimeOfSale || vData.average_cost || 0;
                                 const tCost = uCost * Math.abs(item.quantity);
@@ -2447,35 +2460,6 @@ export const AppProvider = ({ children }) => {
                                 });
                             } catch (fErr) {
                                 console.error("Error fulfilling/marking paid order on Shopify:", fErr);
-                            }
-                        }
-                    }
-
-                    if (newStatus === 'Cancelled') {
-                        const curOrderInState = (state.orders || []).find(o => o.id === orderId);
-                        const sOrderId = orderData?.shopify_order_id || orderData?.shopifyOrderId || curOrderInState?.shopify_order_id || curOrderInState?.shopifyOrderId;
-                        const isShopifyOrder = (orderData?.source === 'shopify' || curOrderInState?.source === 'shopify');
-
-                        if (sOrderId) {
-                            try {
-                                console.log(`Triggering Shopify cancellation API for order ${sOrderId}...`);
-                                const cancelRes = await supabase.functions.invoke('swift-processor', {
-                                    body: { action: 'cancel_order', shopify_order_id: sOrderId }
-                                });
-                                console.log("Shopify cancel API response:", cancelRes);
-                            } catch (err) {
-                                console.error("Failed to cancel order in Shopify:", err);
-                            }
-                        }
-
-                        // Sync variant stock to Shopify for all cancelled orders (Shopify and manual)
-                        if (items && items.length > 0) {
-                            for (const item of items) {
-                                const itemSku = item.variant_sku || item.variantSku || item.sku;
-                                if (itemSku) {
-                                    console.log(`Syncing variant stock to Shopify for cancelled order SKU ${itemSku}...`);
-                                    syncVariantStockToShopify(itemSku);
-                                }
                             }
                         }
                     }
