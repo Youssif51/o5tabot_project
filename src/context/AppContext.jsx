@@ -3735,13 +3735,7 @@ export const AppProvider = ({ children }) => {
         }
 
         const targetOrder = (state.orders || []).find(o => o.id === orderId);
-        const isShopifyOrder = targetOrder?.source === 'shopify';
         const wasAlreadyReviewed = targetOrder ? (targetOrder.is_reviewed || targetOrder.isReviewed) : false;
-
-        // Stock for Shopify orders is already deducted automatically upon order webhook arrival
-        if (!isShopifyOrder && !wasAlreadyReviewed && targetOrder) {
-            await deductOrderStock(targetOrder);
-        }
 
         try {
             showToast(language === 'ar' ? "جاري إنشاء الشحنة وتوليد البوليصة في بوسطة..." : "Creating shipment and air waybill in Bosta...", "info");
@@ -3766,6 +3760,28 @@ export const AppProvider = ({ children }) => {
                 }
                 showToast(language === 'ar' ? `فشل ربط بوسطة: ${errMsg}` : `Bosta Sync Failed: ${errMsg}`, "error");
                 return;
+            }
+
+            // Success! Deduct stock now.
+            if (targetOrder && !wasAlreadyReviewed) {
+                // Ensure order items are loaded from database synchronously if they are missing/empty in state
+                if (!targetOrder.items || targetOrder.items.length === 0) {
+                    try {
+                        const { data: dbItems } = await supabase.from('order_items').select('*').eq('order_id', orderId);
+                        if (dbItems && dbItems.length > 0) {
+                            targetOrder.items = dbItems.map(oi => ({
+                                variantSku: oi.variant_sku,
+                                quantity: parseInt(oi.quantity) || 0,
+                                price: parseFloat(oi.price) || 0,
+                                costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0
+                            }));
+                        }
+                    } catch (e) {
+                        console.error("Error loading order items synchronously in approveOrderWithBosta:", e);
+                    }
+                }
+
+                await deductOrderStock(targetOrder);
             }
 
             // Build updated address object ensuring is_reviewed: true is persisted

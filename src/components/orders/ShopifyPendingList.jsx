@@ -331,8 +331,10 @@ ${itemsList}
             confirmMsg,
             async () => {
                 let originalOrd = pendingOrders.find(o => o.id === ordId);
+                if (!originalOrd) return;
+
                 // Guard 1: Race condition check for items during webhook sync
-                if (!originalOrd?.items || originalOrd.items.length === 0) {
+                if (!originalOrd.items || originalOrd.items.length === 0) {
                     if (fetchMissingOrderItems) {
                         showToast('جاري جلب أصناف الطلب من شوبيفاي...', 'info');
                         await fetchMissingOrderItems(ordId);
@@ -343,6 +345,13 @@ ${itemsList}
                             showToast('لم تكتمل مزامنة أصناف هذا الطلب من شوبيفاي بعد، يرجى الانتظار بضع ثوانٍ والإعادة.', 'warning');
                             return;
                         }
+                        // Assign mapped items to originalOrd synchronously so it can be passed to deductOrderStock successfully
+                        originalOrd.items = dbItems.map(oi => ({
+                            variantSku: oi.variant_sku,
+                            quantity: parseInt(oi.quantity) || 0,
+                            price: parseFloat(oi.price) || 0,
+                            costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0
+                        }));
                     }
                 }
                 let existingAddrObj = {};
@@ -372,11 +381,6 @@ ${itemsList}
                 const addressStr = JSON.stringify(updatedAddrObj);
 
                 if (!isBostaEnabled) {
-                    // Deduct stock for local approval
-                    if (originalOrd) {
-                        await deductOrderStock(originalOrd);
-                    }
-
                     if (supabase) {
                         try {
                             await supabase.from('orders').update({
@@ -388,6 +392,11 @@ ${itemsList}
                                 created_by: state.currentUser?.name || 'الآدمن',
                                 updated_by: state.currentUser?.name || null
                             }).eq('id', ordId);
+
+                            // Deduct stock for local approval only after database update succeeds
+                            if (originalOrd) {
+                                await deductOrderStock(originalOrd);
+                            }
                         } catch (err) {
                             console.error('Error saving shopify order without Bosta:', err);
                         }
@@ -411,10 +420,6 @@ ${itemsList}
                 } else {
                     // Bosta Sync is ENABLED
                     if (depositStatus === 'pending') {
-                        if (originalOrd) {
-                            await deductOrderStock(originalOrd);
-                        }
-
                         if (supabase) {
                             try {
                                 await supabase.from('orders').update({
@@ -426,6 +431,11 @@ ${itemsList}
                                     created_by: state.currentUser?.name || 'الآدمن',
                                     updated_by: state.currentUser?.name || null
                                 }).eq('id', ordId);
+
+                                // Deduct stock only after database update succeeds
+                                if (originalOrd) {
+                                    await deductOrderStock(originalOrd);
+                                }
 
                                 updateOrderProperties(ordId, {
                                     deposit: depositAmount,
