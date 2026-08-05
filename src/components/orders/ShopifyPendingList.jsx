@@ -23,7 +23,7 @@ export default function ShopifyPendingList() {
     // Auto-fetch missing items for pending orders
     useEffect(() => {
         (state.orders || []).forEach(ord => {
-            if ((!ord.items || ord.items.length === 0) && ord.id) {
+            if (ord.items === undefined && ord.id) {
                 fetchMissingOrderItems(ord.id);
             }
         });
@@ -390,7 +390,7 @@ ${itemsList}
                                 status: 'Pending',
                                 address: addressStr,
                                 created_by: state.currentUser?.name || 'الآدمن',
-                                updated_by: state.currentUser?.name || null
+                                updated_by: null
                             }).eq('id', ordId);
 
                             // Deduct stock for local approval only after database update succeeds
@@ -403,16 +403,16 @@ ${itemsList}
                     }
 
                     updateOrderProperties(ordId, {
-                        deposit: depositAmount,
-                        depositReceiverId: receiverId,
-                        depositStatus: depositStatus,
-                        status: 'Pending',
-                        is_reviewed: true,
-                        isReviewed: true,
-                        address: addressStr,
-                        createdBy: state.currentUser?.name || 'الآدمن',
-                        updatedBy: state.currentUser?.name || null
-                    });
+                         deposit: depositAmount,
+                         depositReceiverId: receiverId,
+                         depositStatus: depositStatus,
+                         status: 'Pending',
+                         is_reviewed: true,
+                         isReviewed: true,
+                         address: addressStr,
+                         createdBy: state.currentUser?.name || 'الآدمن',
+                         updatedBy: null
+                     });
 
                     showToast(depositStatus === 'pending' 
                         ? 'تم حفظ الطلب محلياً وخصم الكميات بانتظار تأكيد العربون (بدون إرسال لبوسطة).' 
@@ -429,7 +429,7 @@ ${itemsList}
                                     status: 'Pending',
                                     address: addressStr,
                                     created_by: state.currentUser?.name || 'الآدمن',
-                                    updated_by: state.currentUser?.name || null
+                                    updated_by: null
                                 }).eq('id', ordId);
 
                                 // Deduct stock only after database update succeeds
@@ -446,7 +446,7 @@ ${itemsList}
                                     isReviewed: true,
                                     address: addressStr,
                                     createdBy: state.currentUser?.name || 'الآدمن',
-                                    updatedBy: state.currentUser?.name || null
+                                    updatedBy: null
                                 });
 
                                 showToast('تم حفظ الطلب وخصم الكميات بنجاح وهو بانتظار تأكيد استلام العربون من الأدمن المختار قبل الشحن.', 'success');

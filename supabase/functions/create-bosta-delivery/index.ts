@@ -96,7 +96,7 @@ Deno.serve(async (req) => {
 
     if (hasBostaDelivery || order.status === 'Completed' || order.status === 'Cancelled' || order.status === 'Shipped') {
       return new Response(JSON.stringify({ 
-        error: "هذا الطلب تم شحنه أو إتمامه أو إلغاؤه بالفعل!" 
+        error: "هذا الطلب تم شحنه أو إتمامه أو إلغاؤه بالفعل أو تم إنشاء بوليصة له!" 
       }), {
         status: 400,
         headers: { "Content-Type": "application/json", ...corsHeaders }
@@ -227,9 +227,8 @@ Deno.serve(async (req) => {
       .in('id', productIds);
 
     const totalQty = orderItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
-     const itemsDescription = orderItems.map(item => {
-      const itemSkuClean = (item.variant_sku || "").trim().toLowerCase();
-      const variant = (variantsData || []).find(v => (v.sku || "").trim().toLowerCase() === itemSkuClean);
+    const itemsDescription = orderItems.map(item => {
+      const variant = (variantsData || []).find(v => v.sku === item.variant_sku);
       const product = variant ? (productsData || []).find(p => p.id === variant.product_id) : null;
       const prodName = product ? product.name : item.variant_sku;
       const optName = variant ? variant.name : '';

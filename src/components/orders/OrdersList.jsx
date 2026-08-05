@@ -5,16 +5,26 @@ import { AppContext } from '../../context/AppContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrder, onOpenEditOrder }) {
-    const { state, updateOrderStatus, deleteOrder, showToast, logActivity, setCurrentView, t, showConfirm, addCustomer, setCustomerSpam, syncBostaStatus, updateDepositStatus, updateOrderProperties, settleAdminsCustody, fetchMissingOrderItems } = useContext(AppContext);
+    const { state, updateOrderStatus, deleteOrder, showToast, logActivity, setCurrentView, t, showConfirm, addCustomer, setCustomerSpam, syncBostaStatus, updateDepositStatus, updateOrderProperties, settleAdminsCustody, fetchMissingOrderItems, approveOrderWithBosta, searchOrdersDatabase } = useContext(AppContext);
     const navigate = useNavigate();
     
     // Expanded rows state (keeps track of order IDs that are expanded)
     const [expandedOrderIds, setExpandedOrderIds] = useState({});
 
+    // Debounced database search when typing
+    useEffect(() => {
+        if (globalSearch && globalSearch.length >= 3 && searchOrdersDatabase) {
+            const delayDebounce = setTimeout(() => {
+                searchOrdersDatabase(globalSearch);
+            }, 300);
+            return () => clearTimeout(delayDebounce);
+        }
+    }, [globalSearch, searchOrdersDatabase]);
+
     // Auto-fetch missing items for orders
     React.useEffect(() => {
         (state.orders || []).forEach(ord => {
-            if ((!ord.items || ord.items.length === 0) && ord.id) {
+            if (ord.items === undefined && ord.id) {
                 fetchMissingOrderItems(ord.id);
             }
         });
@@ -43,6 +53,13 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         let bostaStateCode = null;
         let bostaTrackingNumber = '';
         let bostaExceptionReason = '';
+        let syncWithBosta = true;
+        let bostaCityCode = '';
+        let bostaCityName = '';
+        let bostaDistrictId = '';
+        let bostaDistrictName = '';
+        let bostaZoneId = '';
+        let allowToOpenPackage = true;
         
         if (addressData) {
             let parsed = addressData;
@@ -68,9 +85,34 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                 bostaStateCode = (parsed.bostaStateCode !== undefined && parsed.bostaStateCode !== null) ? parsed.bostaStateCode : null;
                 bostaTrackingNumber = parsed.bostaTrackingNumber || '';
                 bostaExceptionReason = parsed.bostaExceptionReason || '';
+                
+                syncWithBosta = parsed.syncWithBosta !== false;
+                bostaCityCode = parsed.bostaCityCode || '';
+                bostaCityName = parsed.bostaCityName || '';
+                bostaDistrictId = parsed.bostaDistrictId || '';
+                bostaDistrictName = parsed.bostaDistrictName || '';
+                bostaZoneId = parsed.bostaZoneId || '';
+                allowToOpenPackage = parsed.allowToOpenPackage !== false;
             }
         }
-        return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode, bostaStateName, bostaStateCode, bostaTrackingNumber, bostaExceptionReason };
+        return { 
+            detailAddress, 
+            phone, 
+            vatEnabled, 
+            orderDiscountPercent, 
+            customerCode, 
+            bostaStateName, 
+            bostaStateCode, 
+            bostaTrackingNumber, 
+            bostaExceptionReason,
+            syncWithBosta,
+            bostaCityCode,
+            bostaCityName,
+            bostaDistrictId,
+            bostaDistrictName,
+            bostaZoneId,
+            allowToOpenPackage
+        };
     };
 
     const handleStatusChange = async (orderId, newStatus, bostaTrackingNumber) => {
@@ -989,12 +1031,25 @@ ${followUpReason}
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                                                     {(() => {
                                                         const badge = getOrderStatusBadge(ord);
+                                                        const { 
+                                                            bostaTrackingNumber, 
+                                                            syncWithBosta, 
+                                                            bostaCityCode,
+                                                            bostaCityName,
+                                                            bostaDistrictId,
+                                                            bostaDistrictName,
+                                                            bostaZoneId,
+                                                            allowToOpenPackage,
+                                                            phone,
+                                                            detailAddress
+                                                        } = parseAddressData(ord.address);
+                                                        
                                                         return (
                                                             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '4px' }}>
                                                                 <span className={`badge ${badge.className}`} style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '4px', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                                                     {badge.label}
                                                                 </span>
-                                                                {bostaTrackingNumber && (
+                                                                {bostaTrackingNumber ? (
                                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
                                                                         <span style={{ fontSize: '10px', opacity: 0.8, fontFamily: 'monospace', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                                                                             بوليصة: {bostaTrackingNumber}
@@ -1020,6 +1075,49 @@ ${followUpReason}
                                                                             <i className="fa-solid fa-arrows-rotate"></i>
                                                                         </button>
                                                                     </div>
+                                                                ) : (
+                                                                    (syncWithBosta !== false && bostaCityCode && ord.status !== 'Cancelled') && (
+                                                                        <button
+                                                                            type="button"
+                                                                            title="إرسال الشحنة لبوسطة وتوليد البوليصة"
+                                                                            onClick={async (e) => {
+                                                                                e.stopPropagation();
+                                                                                const bostaMetadata = {
+                                                                                    customerName: ord.client,
+                                                                                    customerPhone: phone || '',
+                                                                                    customerSecondPhone: '',
+                                                                                    customerAddress: detailAddress || ord.address || '',
+                                                                                    governorate: ord.governorate || '',
+                                                                                    bostaCityCode,
+                                                                                    bostaCityName,
+                                                                                    bostaDistrictId,
+                                                                                    bostaDistrictName,
+                                                                                    bostaZoneId,
+                                                                                    allowToOpenPackage
+                                                                                };
+                                                                                await approveOrderWithBosta(ord.id, bostaMetadata, parseFloat(ord.deposit) || 0, ord.depositReceiverId, ord.depositStatus || 'confirmed');
+                                                                            }}
+                                                                            style={{
+                                                                                background: 'rgba(227, 0, 15, 0.1)',
+                                                                                border: '1px solid rgba(227, 0, 15, 0.3)',
+                                                                                cursor: 'pointer',
+                                                                                color: '#E3000F',
+                                                                                fontSize: '10px',
+                                                                                padding: '3px 6px',
+                                                                                borderRadius: '4px',
+                                                                                marginTop: '4px',
+                                                                                fontWeight: '600',
+                                                                                display: 'inline-flex',
+                                                                                alignItems: 'center',
+                                                                                gap: '4px',
+                                                                                transition: '0.2s'
+                                                                            }}
+                                                                            className="retry-bosta-btn"
+                                                                        >
+                                                                            <i className="fa-solid fa-truck"></i>
+                                                                            <span>ربط بوسطة</span>
+                                                                        </button>
+                                                                    )
                                                                 )}
                                                             </div>
                                                         );
@@ -1377,7 +1475,19 @@ ${followUpReason}
                     ) : (
                         paginatedOrders.map(ord => {
                             const isExpanded = expandedOrderIds[ord.id];
-                            const { phone, detailAddress, bostaStateName, bostaTrackingNumber } = parseAddressData(ord.address);
+                            const { 
+                                phone, 
+                                detailAddress, 
+                                bostaStateName, 
+                                bostaTrackingNumber,
+                                syncWithBosta,
+                                bostaCityCode,
+                                bostaCityName,
+                                bostaDistrictId,
+                                bostaDistrictName,
+                                bostaZoneId,
+                                allowToOpenPackage
+                            } = parseAddressData(ord.address);
                             const paymentStatus = getPaymentStatus(ord);
                             const remaining = getRemainingToCollect(ord);
                             const deliveryBadge = getOrderStatusBadge(ord);
@@ -1538,7 +1648,7 @@ ${followUpReason}
                                                             <strong>تفاصيل الخصم:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ord.discount_reason_details}</span>
                                                         </div>
                                                     )}
-                                                    {bostaTrackingNumber && (
+                                                    {bostaTrackingNumber ? (
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                                             <strong>بوليصة بوسطة:</strong>
                                                             <span style={{ fontFamily: 'monospace' }}>{bostaTrackingNumber}</span>
@@ -1551,6 +1661,36 @@ ${followUpReason}
                                                                 تحديث الحالة
                                                             </button>
                                                         </div>
+                                                    ) : (
+                                                        (syncWithBosta !== false && bostaCityCode && ord.status !== 'Cancelled') && (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                                <strong>ربط الشحنة ببوسطة:</strong>
+                                                                <button
+                                                                    type="button"
+                                                                    className="btn btn-primary"
+                                                                    style={{ padding: '4px 8px', fontSize: '10px', background: '#E3000F', border: 'none' }}
+                                                                    onClick={async (e) => {
+                                                                        e.stopPropagation();
+                                                                        const bostaMetadata = {
+                                                                            customerName: ord.client,
+                                                                            customerPhone: phone || '',
+                                                                            customerSecondPhone: '',
+                                                                            customerAddress: detailAddress || ord.address || '',
+                                                                            governorate: ord.governorate || '',
+                                                                            bostaCityCode,
+                                                                            bostaCityName,
+                                                                            bostaDistrictId,
+                                                                            bostaDistrictName,
+                                                                            bostaZoneId,
+                                                                            allowToOpenPackage
+                                                                        };
+                                                                        await approveOrderWithBosta(ord.id, bostaMetadata, parseFloat(ord.deposit) || 0, ord.depositReceiverId, ord.depositStatus || 'confirmed');
+                                                                    }}
+                                                                >
+                                                                    إرسال لبوسطة
+                                                                </button>
+                                                            </div>
+                                                        )
                                                     )}
                                                 </div>
                                             </div>

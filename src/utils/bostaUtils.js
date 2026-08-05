@@ -68,111 +68,39 @@ export const autoParseAddressToBostaLocation = (addressText = '', bostaCities = 
     }
 
     const cleanText = addressText.trim().toLowerCase()
-        .replace(/[إأآا]/g, 'ا')
-        .replace(/ة/g, 'ه')
-        .replace(/ى/g, 'ي');
-
-    let matchedCity = null;
-    let matchedDistrict = null;
-
-    // 1. Try to find matched City first
-    for (const city of bostaCities) {
-        const cAr = (city.cityOtherName || '').trim().toLowerCase()
-            .replace(/[إأآا]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
-        const cEn = (city.cityName || '').trim().toLowerCase();
-
-        // Remove "محافظة" or "الـ" for clean matching
-        const cleanCAr = cAr.replace(/^ال/, '').replace(/محافظه/g, '').trim();
-
-        if (cleanCAr.length > 2 && (cleanText.includes(cAr) || (cleanCAr.length >= 4 && cleanText.includes(cleanCAr)) || cleanText.includes(cEn))) {
-            matchedCity = city;
-            break;
-        }
-    }
-
-    // 2. Search for matched District inside the matchedCity (or across all cities if city not found)
-    const targetCities = matchedCity ? [matchedCity] : bostaCities;
-
-    let bestDistrictMatch = null;
-    let bestDistrictScore = 0;
-
-    for (const city of targetCities) {
-        for (const dist of (city.districts || [])) {
-            if (dist.dropOffAvailability === false) continue;
-
-            const distAr = (dist.districtOtherName || '').trim().toLowerCase()
-                .replace(/[إأآا]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
-            const zoneAr = (dist.zoneOtherName || '').trim().toLowerCase()
-                .replace(/[إأآا]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
-            
-            const cleanDistAr = distAr.replace(/^ال/, '').trim();
-            const cleanZoneAr = zoneAr.replace(/^ال/, '').trim();
-
-            if (cleanDistAr.length > 2 && (cleanText.includes(distAr) || (cleanDistAr.length >= 3 && cleanText.includes(cleanDistAr)))) {
-                const score = cleanDistAr.length + 10;
-                if (score > bestDistrictScore) {
-                    bestDistrictScore = score;
-                    bestDistrictMatch = { city, district: dist };
-                }
-            } else if (cleanZoneAr.length > 2 && (cleanText.includes(zoneAr) || (cleanZoneAr.length >= 3 && cleanText.includes(cleanZoneAr)))) {
-                const score = cleanZoneAr.length;
-                if (score > bestDistrictScore) {
-                    bestDistrictScore = score;
-                    bestDistrictMatch = { city, district: dist };
-                }
-            }
-        }
-    }
-
-    if (bestDistrictMatch) {
-        if (!matchedCity) matchedCity = bestDistrictMatch.city;
-        matchedDistrict = bestDistrictMatch.district;
-    }
-
-    return { matchedCity, matchedDistrict };
-};
-
-/**
- * Returns multiple smart Bosta location suggestions (up to 5) for a given address text.
- * Each suggestion contains { city, district, label }
- */
-export const getBostaAddressSuggestions = (addressText = '', bostaCities = []) => {
-    if (!addressText || typeof addressText !== 'string' || !Array.isArray(bostaCities)) {
-        return [];
-    }
-
-    const cleanText = addressText.trim().toLowerCase()
-        .replace(/[إأآا]/g, 'ا')
-        .replace(/ة/g, 'ه')
-        .replace(/ى/g, 'ي');
-
-    if (cleanText.length < 3) return [];
+        .replace(/[إأآا]/g, 'a')
+        .replace(/ة/g, 'h')
+        .replace(/ى/g, 'y')
+        .replace(/[-/\\(),]/g, ' ') // treat hyphens/slashes/parentheses/commas as spaces
+        .replace(/\s+/g, ' ');
 
     // Find candidate cities
     const candidateCities = [];
     for (const city of bostaCities) {
         const cAr = (city.cityOtherName || '').trim().toLowerCase()
-            .replace(/[إأآا]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+            .replace(/[إأآا]/g, 'a').replace(/ة/g, 'h').replace(/ى/g, 'y');
         const cEn = (city.cityName || '').trim().toLowerCase();
         const cleanCAr = cAr.replace(/^ال/, '').replace(/محافظه/g, '').trim();
 
-        if (cleanCAr.length > 2 && (cleanText.includes(cAr) || (cleanCAr.length >= 3 && cleanText.includes(cleanCAr)) || cleanText.includes(cEn))) {
+        if (cleanCAr.length > 2 && (cleanText.includes(cAr) || (cleanCAr.length >= 4 && cleanText.includes(cleanCAr)) || cleanText.includes(cEn))) {
             candidateCities.push(city);
         }
     }
 
-    const searchScope = candidateCities.length > 0 ? candidateCities : bostaCities;
-    const matches = [];
-    const seenKeys = new Set();
+    let bestDistrictMatch = null;
+    let bestDistrictScore = 0;
 
-    for (const city of searchScope) {
+    // Search districts across all cities
+    for (const city of bostaCities) {
         for (const dist of (city.districts || [])) {
             if (dist.dropOffAvailability === false) continue;
 
             const distAr = (dist.districtOtherName || '').trim().toLowerCase()
-                .replace(/[إأآا]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+                .replace(/[إأآا]/g, 'a').replace(/ة/g, 'h').replace(/ى/g, 'y')
+                .replace(/[-/\\(),]/g, ' ').replace(/\s+/g, ' ');
             const zoneAr = (dist.zoneOtherName || '').trim().toLowerCase()
-                .replace(/[إأآا]/g, 'ا').replace(/ة/g, 'ه').replace(/ى/g, 'ي');
+                .replace(/[إأآا]/g, 'a').replace(/ة/g, 'h').replace(/ى/g, 'y')
+                .replace(/[-/\\(),]/g, ' ').replace(/\s+/g, ' ');
 
             const cleanDistAr = distAr.replace(/^ال/, '').trim();
             const cleanZoneAr = zoneAr.replace(/^ال/, '').trim();
@@ -181,24 +109,26 @@ export const getBostaAddressSuggestions = (addressText = '', bostaCities = []) =
 
             // 1. Exact or substring match (District name is in the address)
             if (cleanDistAr.length > 2 && (cleanText.includes(distAr) || (cleanDistAr.length >= 3 && cleanText.includes(cleanDistAr)))) {
-                matchedScore = cleanDistAr.length + 50;
+                matchedScore = cleanDistAr.length + 100;
             } 
             // 2. Reverse substring match (Address part is in the district name)
             else if (cleanDistAr.length > 2) {
                 const addressWords = cleanText.split(/[\s,.-]+/).filter(w => w.length >= 3);
+                
+                let comboMatchCount = 0;
                 for (let i = 0; i < addressWords.length - 1; i++) {
                     const combo = `${addressWords[i]} ${addressWords[i+1]}`;
                     if (distAr.includes(combo) || cleanDistAr.includes(combo)) {
-                        matchedScore = combo.length + 30;
-                        break;
+                        comboMatchCount += combo.length;
                     }
                 }
                 
-                // Single word match fallback
-                if (matchedScore === 0) {
+                if (comboMatchCount > 0) {
+                    matchedScore = comboMatchCount + 40;
+                } else {
                     let matchingWordsCount = 0;
                     for (const word of addressWords) {
-                        if (word === 'شارع' || word === 'منطقه' || word === 'سيدي' || word === 'عماره' || word === 'بجوار') continue;
+                        if (word === 'شارع' || word === 'منطقه' || word === 'سيدي' || word === 'عماره' || word === 'بجوار' || word === 'شقه' || word === 'برج' || word === 'دور') continue;
                         if (distAr.includes(word) || cleanDistAr.includes(word)) {
                             matchingWordsCount++;
                         }
@@ -211,17 +141,136 @@ export const getBostaAddressSuggestions = (addressText = '', bostaCities = []) =
 
             // 3. Zone match fallback
             if (matchedScore === 0 && cleanZoneAr.length > 2 && (cleanText.includes(zoneAr) || (cleanZoneAr.length >= 3 && cleanText.includes(cleanZoneAr)))) {
-                matchedScore = cleanZoneAr.length;
+                matchedScore = cleanZoneAr.length + 10;
+            }
+
+            if (matchedScore > 0) {
+                const isCandidateCity = candidateCities.some(cc => cc.cityCode === city.cityCode);
+                const finalScore = matchedScore + (isCandidateCity ? 30 : 0);
+
+                if (finalScore > bestDistrictScore) {
+                    bestDistrictScore = finalScore;
+                    bestDistrictMatch = { city, district: dist };
+                }
+            }
+        }
+    }
+
+    if (bestDistrictMatch) {
+        return { 
+            matchedCity: bestDistrictMatch.city, 
+            matchedDistrict: bestDistrictMatch.district 
+        };
+    }
+
+    // Fallback: If no district matched, but we matched a candidate city, return that city
+    if (candidateCities.length > 0) {
+        return { matchedCity: candidateCities[0], matchedDistrict: null };
+    }
+
+    return { matchedCity: null, matchedDistrict: null };
+};
+
+/**
+ * Returns multiple smart Bosta location suggestions (up to 5) for a given address text.
+ * Each suggestion contains { city, district, label }
+ */
+export const getBostaAddressSuggestions = (addressText = '', bostaCities = []) => {
+    if (!addressText || typeof addressText !== 'string' || !Array.isArray(bostaCities)) {
+        return [];
+    }
+
+    // Clean input address: map Arabic letters, remove hyphens/slashes to treat them as spaces, collapse spaces
+    const cleanText = addressText.trim().toLowerCase()
+        .replace(/[إأآا]/g, 'a')
+        .replace(/ة/g, 'h')
+        .replace(/ى/g, 'y')
+        .replace(/[-/\\(),]/g, ' ') // treat hyphens, slashes, commas as spaces
+        .replace(/\s+/g, ' ');
+
+    if (cleanText.length < 3) return [];
+
+    // Find candidate cities
+    const candidateCities = [];
+    for (const city of bostaCities) {
+        const cAr = (city.cityOtherName || '').trim().toLowerCase()
+            .replace(/[إأآا]/g, 'a').replace(/ة/g, 'h').replace(/ى/g, 'y');
+        const cEn = (city.cityName || '').trim().toLowerCase();
+        const cleanCAr = cAr.replace(/^ال/, '').replace(/محافظه/g, '').trim();
+
+        if (cleanCAr.length > 2 && (cleanText.includes(cAr) || (cleanCAr.length >= 3 && cleanText.includes(cleanCAr)) || cleanText.includes(cEn))) {
+            candidateCities.push(city);
+        }
+    }
+
+    const matches = [];
+    const seenKeys = new Set();
+
+    // ALWAYS search across all cities (do not restrict searchScope to candidateCities)
+    for (const city of bostaCities) {
+        for (const dist of (city.districts || [])) {
+            if (dist.dropOffAvailability === false) continue;
+
+            const distAr = (dist.districtOtherName || '').trim().toLowerCase()
+                .replace(/[إأآا]/g, 'a').replace(/ة/g, 'h').replace(/ى/g, 'y')
+                .replace(/[-/\\(),]/g, ' ').replace(/\s+/g, ' ');
+            const zoneAr = (dist.zoneOtherName || '').trim().toLowerCase()
+                .replace(/[إأآا]/g, 'a').replace(/ة/g, 'h').replace(/ى/g, 'y')
+                .replace(/[-/\\(),]/g, ' ').replace(/\s+/g, ' ');
+
+            const cleanDistAr = distAr.replace(/^ال/, '').trim();
+            const cleanZoneAr = zoneAr.replace(/^ال/, '').trim();
+
+            let matchedScore = 0;
+
+            // 1. Exact or substring match (District name is in the address)
+            if (cleanDistAr.length > 2 && (cleanText.includes(distAr) || (cleanDistAr.length >= 3 && cleanText.includes(cleanDistAr)))) {
+                matchedScore = cleanDistAr.length + 100;
+            } 
+            // 2. Reverse substring match (Address part is in the district name)
+            else if (cleanDistAr.length > 2) {
+                const addressWords = cleanText.split(/[\s,.-]+/).filter(w => w.length >= 3);
+                
+                let comboMatchCount = 0;
+                for (let i = 0; i < addressWords.length - 1; i++) {
+                    const combo = `${addressWords[i]} ${addressWords[i+1]}`;
+                    if (distAr.includes(combo) || cleanDistAr.includes(combo)) {
+                        comboMatchCount += combo.length;
+                    }
+                }
+                
+                if (comboMatchCount > 0) {
+                    matchedScore = comboMatchCount + 40;
+                } else {
+                    let matchingWordsCount = 0;
+                    for (const word of addressWords) {
+                        if (word === 'شارع' || word === 'منطقه' || word === 'سيدي' || word === 'عماره' || word === 'بجوار' || word === 'شقه' || word === 'برج' || word === 'دور') continue;
+                        if (distAr.includes(word) || cleanDistAr.includes(word)) {
+                            matchingWordsCount++;
+                        }
+                    }
+                    if (matchingWordsCount > 0) {
+                        matchedScore = matchingWordsCount * 15;
+                    }
+                }
+            }
+
+            // 3. Zone match fallback
+            if (matchedScore === 0 && cleanZoneAr.length > 2 && (cleanText.includes(zoneAr) || (cleanZoneAr.length >= 3 && cleanText.includes(cleanZoneAr)))) {
+                matchedScore = cleanZoneAr.length + 10;
             }
 
             if (matchedScore > 0) {
                 const uniqueKey = `${city.cityCode}_${dist.districtId}`;
                 if (!seenKeys.has(uniqueKey)) {
                     seenKeys.add(uniqueKey);
+                    
+                    const isCandidateCity = candidateCities.some(cc => cc.cityCode === city.cityCode);
+                    
                     matches.push({
                         city,
                         district: dist,
-                        score: matchedScore + (candidateCities.includes(city) ? 20 : 0),
+                        score: matchedScore + (isCandidateCity ? 30 : 0),
                         label: `${getBostaDistrictDisplayName(dist)}، ${city.cityOtherName}`
                     });
                 }
@@ -229,6 +278,5 @@ export const getBostaAddressSuggestions = (addressText = '', bostaCities = []) =
         }
     }
 
-    // Sort by score descending and return top 5
     return matches.sort((a, b) => b.score - a.score).slice(0, 5);
 };

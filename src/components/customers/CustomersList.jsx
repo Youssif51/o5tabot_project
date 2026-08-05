@@ -4,14 +4,45 @@ import Modal from '../common/Modal';
 import { getLocalDateString } from '../../utils/dateUtils';
 import CustomerProfileDrawer from './CustomerProfileDrawer';
 
+const cleanAndNormalizePhoneNumber = (value) => {
+    if (!value) return '';
+    const arabicNumerals = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+    let normalized = value;
+    for (let i = 0; i < 10; i++) {
+        normalized = normalized.replace(new RegExp(arabicNumerals[i], 'g'), i.toString());
+    }
+    let digits = normalized.replace(/\D/g, '');
+    if (digits.startsWith('0020') && digits.length > 11) {
+        digits = digits.substring(4);
+    } else if (digits.startsWith('20') && digits.length > 11) {
+        digits = digits.substring(2);
+    } else if (digits.startsWith('2') && digits.length > 11) {
+        digits = digits.substring(1);
+    }
+    if (/^[1]/.test(digits) && digits.length === 10) {
+        digits = '0' + digits;
+    }
+    return digits.slice(0, 11);
+};
+
 export default function CustomersList({ globalSearch, setGlobalSearch }) {
-    const { state, addCustomer, editCustomer, deleteCustomer, showToast, logActivity, t, showConfirm, showAlert, setCustomerSpam } = useContext(AppContext);
+    const { state, addCustomer, editCustomer, deleteCustomer, showToast, logActivity, t, showConfirm, showAlert, setCustomerSpam, searchCustomersDatabase } = useContext(AppContext);
     
     // Modal state
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isEditMode, setIsEditMode] = useState(false);
     const [selectedProfileCustomer, setSelectedProfileCustomer] = useState(null);
     const [activeTab, setActiveTab] = useState('all'); // 'all', 'vip', 'spam'
+
+    // Debounced database search when typing
+    React.useEffect(() => {
+        if (globalSearch && globalSearch.length >= 3 && searchCustomersDatabase) {
+            const delayDebounce = setTimeout(() => {
+                searchCustomersDatabase(globalSearch);
+            }, 300);
+            return () => clearTimeout(delayDebounce);
+        }
+    }, [globalSearch, searchCustomersDatabase]);
     
     const [formId, setFormId] = useState('');
     const [formName, setFormName] = useState('');
@@ -472,7 +503,7 @@ export default function CustomersList({ globalSearch, setGlobalSearch }) {
                                 type="text" 
                                 className="form-input" 
                                 value={formPhone}
-                                onChange={(e) => setFormPhone(e.target.value)}
+                                onChange={(e) => setFormPhone(cleanAndNormalizePhoneNumber(e.target.value))}
                                 required 
                             />
                         </div>

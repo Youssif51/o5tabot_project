@@ -579,19 +579,25 @@ Deno.serve(async (req) => {
             
             const { data: variant } = await supabase
               .from("product_variants")
-              .select("sku, stock_sulur, average_cost, wholesale_price, product_id")
+              .select("sku, average_cost, wholesale_price, product_id")
               .eq("shopify_id", shopifyVariantId)
               .maybeSingle();
               
             if (variant) {
-              const currentStock = typeof variant.stock_sulur === 'number' ? variant.stock_sulur : 0;
-              const newStock = currentStock + qty;
+              // Adjust stock atomically via RPC
+              const { error: rpcErr } = await supabase.rpc("adjust_variant_stock", { p_sku: variant.sku, p_delta: qty });
+              if (rpcErr) {
+                console.error(`Error executing atomic stock adjustment via webhook:`, rpcErr);
+              }
               
-              await supabase
+              // Fetch the new updated stock for logging balance_after in ledger
+              const { data: updatedVariant } = await supabase
                 .from("product_variants")
-                .update({ stock_sulur: newStock })
-                .eq("sku", variant.sku);
-                
+                .select("stock_sulur")
+                .eq("sku", variant.sku)
+                .maybeSingle();
+
+              const newStock = updatedVariant ? updatedVariant.stock_sulur : 0;
               const uCost = parseFloat(variant.average_cost) || parseFloat(variant.wholesale_price) || 0;
               const tCost = uCost * qty;
               
@@ -608,7 +614,7 @@ Deno.serve(async (req) => {
                 balance_after: newStock
               }]);
               
-              console.log(`Restored local ERP stock for SKU ${variant.sku} via Webhook cancellation: ${currentStock} -> ${newStock} (+${qty})`);
+              console.log(`Restored local ERP stock atomically for SKU ${variant.sku} via Webhook cancellation. New Stock: ${newStock} (+${qty})`);
             }
           }
         }
@@ -758,6 +764,16 @@ Deno.serve(async (req) => {
       }]);
 
     if (oErr) {
+      if (oErr.code === "23505" || (oErr.message && oErr.message.includes("unique_shopify_order_id"))) {
+        console.log(`Duplicate Shopify order ${shopifyOrderId} received concurrently. Skipping insertion gracefully.`);
+        return new Response(
+          JSON.stringify({ success: true, message: "Order already processed (duplicate detected)." }),
+          {
+            status: 200,
+            headers: { "Content-Type": "application/json", ...corsHeaders }
+          }
+        );
+      }
       throw oErr;
     }
 

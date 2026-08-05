@@ -47,7 +47,7 @@ const calculateBostaShippingFee = (cityName) => {
 };
 
 export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
-    const { state, addOrder, editOrder, showToast, showConfirm, t, validateCoupon, applyCouponUsage, checkLiveCouponAvailability, getOrCreateCustomer, approveOrderWithBosta } = useContext(AppContext);
+    const { state, supabase, addOrder, editOrder, showToast, showConfirm, t, validateCoupon, applyCouponUsage, checkLiveCouponAvailability, getOrCreateCustomer, approveOrderWithBosta } = useContext(AppContext);
     
     const isEditMode = !!editOrderId;
     const originalOrder = editOrderId ? state.orders.find(o => o.id === editOrderId) : null;
@@ -208,16 +208,29 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         return { city, district };
     };
 
-    // Build rich list of unique customers for auto-fill & searching
     const getCustomerOptions = () => {
         const map = new Map();
         
         (state.customers || []).forEach(c => {
-            if (c.name) {
-                map.set(c.name.toLowerCase().trim(), {
+            const phoneKey = (c.phone || '').trim();
+            if (phoneKey) {
+                map.set(phoneKey, {
                     id: c.id,
                     name: c.name,
                     phone: c.phone || '',
+                    secondPhone: c.secondPhone || '',
+                    governorate: c.governorate || '',
+                    address: c.address || '',
+                    bostaCityCode: c.bosta_city_code,
+                    bostaCityName: c.bosta_city_name,
+                    bostaDistrictId: c.bosta_district_id,
+                    bostaDistrictName: c.bosta_district_name,
+                });
+            } else if (c.name) {
+                map.set('name-' + c.name.toLowerCase().trim(), {
+                    id: c.id,
+                    name: c.name,
+                    phone: '',
                     secondPhone: c.secondPhone || '',
                     governorate: c.governorate || '',
                     address: c.address || ''
@@ -226,27 +239,48 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         });
 
         (state.orders || []).forEach(o => {
-            if (o.client) {
-                const key = o.client.toLowerCase().trim();
-                const existing = map.get(key) || {};
-                const parsed = parseAddressData(o.address);
-                map.set(key, {
+            const parsed = parseAddressData(o.address);
+            const phoneKey = (parsed.phone || o.customerPhone || '').trim();
+            if (phoneKey) {
+                const existing = map.get(phoneKey) || {};
+                map.set(phoneKey, {
                     id: existing.id || o.customer_id || null,
-                    name: o.client,
-                    phone: existing.phone || parsed.phone || '',
+                    name: o.client || existing.name || '',
+                    phone: phoneKey,
                     secondPhone: existing.secondPhone || parsed.secondPhone || '',
                     governorate: existing.governorate || o.governorate || '',
-                    address: existing.address || parsed.detailAddress || (typeof o.address === 'string' && !o.address.startsWith('{') ? o.address : ''),
-                    bostaCityCode: parsed.bostaCityCode,
-                    bostaCityName: parsed.bostaCityName,
-                    bostaDistrictId: parsed.bostaDistrictId,
-                    bostaDistrictName: parsed.bostaDistrictName,
+                    address: existing.address || parsed.detailAddress || (typeof o.address === 'string' && !o.address.startsWith('{') ? o.address : '') || '',
+                    bostaCityCode: existing.bostaCityCode || parsed.bostaCityCode,
+                    bostaCityName: existing.bostaCityName || parsed.bostaCityName,
+                    bostaDistrictId: existing.bostaDistrictId || parsed.bostaDistrictId,
+                    bostaDistrictName: existing.bostaDistrictName || parsed.bostaDistrictName,
                     shippingFee: o.shipping_fee || 0
                 });
             }
         });
 
         return Array.from(map.values());
+    };
+
+    const cleanAndNormalizePhoneNumber = (value) => {
+        if (!value) return '';
+        const arabicNumerals = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
+        let normalized = value;
+        for (let i = 0; i < 10; i++) {
+            normalized = normalized.replace(new RegExp(arabicNumerals[i], 'g'), i.toString());
+        }
+        let digits = normalized.replace(/\D/g, '');
+        if (digits.startsWith('0020') && digits.length > 11) {
+            digits = digits.substring(4);
+        } else if (digits.startsWith('20') && digits.length > 11) {
+            digits = digits.substring(2);
+        } else if (digits.startsWith('2') && digits.length > 11) {
+            digits = digits.substring(1);
+        }
+        if (/^[1]/.test(digits) && digits.length === 10) {
+            digits = '0' + digits;
+        }
+        return digits.slice(0, 11);
     };
 
     const normalizePhoneStr = (p) => (p || '').replace(/\D/g, '').replace(/^20/, '0');
@@ -344,59 +378,80 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     setActiveCityDropdown(false);
                     setActiveDistrictDropdown(false);
                     
-                    // Map items safely
-                    const orderItemsList = Array.isArray(order.items) ? order.items : [];
-                    const qtyMap = {};
-                    orderItemsList.forEach(oi => {
-                        const sku = oi.variant_sku || oi.variantSku || oi.sku || '';
-                        if (sku) qtyMap[sku] = (qtyMap[sku] || 0) + (parseInt(oi.quantity) || 1);
-                    });
-                    setInitialItemQtyMap(qtyMap);
-
-                    const mappedItems = orderItemsList.map(oi => {
-                        const itemSku = oi.variant_sku || oi.variantSku || oi.sku || '';
-                        const itemQty = parseInt(oi.quantity) || 1;
-                        const itemPrice = parseFloat(oi.price) || 0;
-                        
-                        let retailPrice = itemPrice;
-                        let maxStock = itemQty;
-                        let productName = itemSku || 'منتج';
-                        let variantName = '';
-                        
-                        (state.products || []).forEach(p => {
-                            if (p && Array.isArray(p.variants)) {
-                                const v = p.variants.find(vr => vr.sku === itemSku);
-                                if (v) {
-                                    retailPrice = parseFloat(v.retailPrice) || itemPrice;
-                                    maxStock = (v.stock?.['Sulur'] || 0) + itemQty;
-                                    productName = p.name || itemSku;
-                                    variantName = v.name || '';
+                    // Fetch latest items directly from database to avoid stale local state overwrites
+                    (async () => {
+                        let orderItemsList = [];
+                        if (supabase) {
+                            try {
+                                const { data: dbItems } = await supabase
+                                    .from('order_items')
+                                    .select('*')
+                                    .eq('order_id', editOrderId);
+                                if (dbItems && dbItems.length > 0) {
+                                    orderItemsList = dbItems;
                                 }
+                            } catch (e) {
+                                console.error("Error fetching fresh order items:", e);
                             }
-                        });
-                        
-                        let itemDiscount = 0;
-                        if (retailPrice > 0) {
-                            itemDiscount = Math.round(100 * (1 - itemPrice / retailPrice));
-                            if (itemDiscount < 0 || itemDiscount > 100) itemDiscount = 0;
                         }
                         
-                        return {
-                            variantSku: itemSku,
-                            quantity: itemQty,
-                            price: retailPrice,
-                            discountPercent: itemDiscount,
-                            discountType: 'Percentage',
-                            maxStock: maxStock,
-                            searchVal: formatProductDisplayName(productName, variantName) || productName,
-                            isOpen: false,
-                            productName: productName,
-                            variantName: variantName
-                        };
-                    });
-                    setItems(mappedItems.length > 0 ? mappedItems : [
-                        { variantSku: '', quantity: 1, price: 0, discountPercent: 0, discountType: 'Percentage', maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }
-                    ]);
+                        // Fallback to local state if DB query fails or returns empty
+                        if (orderItemsList.length === 0) {
+                            orderItemsList = Array.isArray(order.items) ? order.items : [];
+                        }
+
+                        const qtyMap = {};
+                        orderItemsList.forEach(oi => {
+                            const sku = oi.variant_sku || oi.variantSku || oi.sku || '';
+                            if (sku) qtyMap[sku] = (qtyMap[sku] || 0) + (parseInt(oi.quantity) || 1);
+                        });
+                        setInitialItemQtyMap(qtyMap);
+
+                        const mappedItems = orderItemsList.map(oi => {
+                            const itemSku = oi.variant_sku || oi.variantSku || oi.sku || '';
+                            const itemQty = parseInt(oi.quantity) || 1;
+                            const itemPrice = parseFloat(oi.price) || 0;
+                            
+                            let retailPrice = itemPrice;
+                            let maxStock = itemQty;
+                            let productName = itemSku || 'منتج';
+                            let variantName = '';
+                            
+                            (state.products || []).forEach(p => {
+                                if (p && Array.isArray(p.variants)) {
+                                    const v = p.variants.find(vr => vr.sku === itemSku);
+                                    if (v) {
+                                        retailPrice = parseFloat(v.retailPrice) || itemPrice;
+                                        maxStock = (v.stock?.['Sulur'] || 0) + itemQty;
+                                        productName = p.name || itemSku;
+                                        variantName = v.name || '';
+                                    }
+                                }
+                            });
+                            
+                            let itemDiscount = 0;
+                            if (retailPrice > 0) {
+                                itemDiscount = Math.round(100 * (1 - itemPrice / retailPrice));
+                                if (itemDiscount < 0 || itemDiscount > 100) itemDiscount = 0;
+                            }
+                            
+                            return {
+                                variantSku: itemSku,
+                                quantity: itemQty,
+                                price: retailPrice,
+                                discountPercent: itemDiscount,
+                                discountType: 'Percentage',
+                                maxStock: maxStock,
+                                searchVal: formatProductDisplayName(productName, variantName) || productName,
+                                isOpen: false,
+                                productName: productName,
+                                variantName: variantName
+                            };
+                        });
+                        setItems(mappedItems.length > 0 ? mappedItems : [
+                            { variantSku: '', quantity: 1, price: 0, discountPercent: 0, discountType: 'Percentage', maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }
+                        ]);
+                    })();
                 }
             } else {
                 resetFormState();
@@ -895,12 +950,34 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     depositReceiverId: depositVal > 0 ? (depositReceiverId || state.currentUser?.id || null) : null,
                     depositStatus: depositVal > 0 ? (depositReceiverId === state.currentUser?.id ? 'confirmed' : (depositStatus || 'pending')) : 'confirmed',
                     shipping_fee: shippingFeeVal,
-                    createdBy: editOrderId ? (originalOrder?.createdBy || originalOrder?.created_by || 'sfsf') : (state.currentUser ? state.currentUser.name : 'sfsf')
+                    createdBy: editOrderId ? (originalOrder?.createdBy || originalOrder?.created_by || 'sfsf') : (state.currentUser ? state.currentUser.name : 'sfsf'),
+                    shopifyOrderId: editOrderId ? (originalOrder?.shopifyOrderId || originalOrder?.shopify_order_id || null) : null,
+                    source: editOrderId ? (originalOrder?.source || 'manual') : 'manual',
+                    paymentMethod: editOrderId ? (originalOrder?.paymentMethod || originalOrder?.payment_method || null) : null
                 };
 
                 if (editOrderId) {
                     await editOrder(newOrderObj);
                     showToast(isDraftSave ? "تم تعديل الطلب كمسودة بنجاح" : "تم تعديل واعتماد الطلب بنجاح", "success");
+
+                    // Auto-sync to Bosta if sync is now enabled, not draft, deposit is confirmed, and waybill did not exist before
+                    const hadBostaId = originalOrder?.address && parseAddressData(originalOrder.address)?.bostaDeliveryId;
+                    if (!isDraftSave && syncWithBosta && newOrderObj.status !== 'Draft' && newOrderObj.depositStatus !== 'pending' && !hadBostaId) {
+                        const bostaMetadata = {
+                            customerName: client,
+                            customerPhone: phone,
+                            customerSecondPhone: secondPhone,
+                            customerAddress: address,
+                            governorate: governorate,
+                            bostaCityCode: citySelected?.cityCode,
+                            bostaCityName: citySelected?.cityOtherName || citySelected?.cityName,
+                            bostaDistrictId: districtSelected?.districtId,
+                            bostaDistrictName: districtSelected?.districtOtherName || districtSelected?.districtName,
+                            bostaZoneId: districtSelected?.zoneId,
+                            allowToOpenPackage: allowToOpenPackage
+                        };
+                        approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit);
+                    }
                 } else {
                     await addOrder(newOrderObj);
                     showToast(isDraftSave ? "تم حفظ الطلب كمسودة بنجاح" : "تم إضافة طلب العميل بنجاح", "success");
@@ -1106,7 +1183,16 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         type="text" 
                                         className="form-input" 
                                         value={client}
-                                        onChange={(e) => { setClient(e.target.value); setIsClientDropdownOpen(true); }}
+                                        onChange={(e) => { 
+                                            setClient(e.target.value); 
+                                            setIsClientDropdownOpen(true); 
+                                            if (customerId) {
+                                                const currentCust = (state.customers || []).find(c => c.id === customerId);
+                                                if (currentCust && e.target.value !== currentCust.name) {
+                                                    setCustomerId(null);
+                                                }
+                                            }
+                                        }}
                                         onFocus={() => setIsClientDropdownOpen(true)}
                                         onBlur={() => setTimeout(() => setIsClientDropdownOpen(false), 200)}
                                         placeholder="اكتب اسم العميل للبحث أو الإضافة..." 
@@ -1178,19 +1264,32 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         className="form-input" 
                                         value={phone}
                                         onChange={(e) => {
-                                            const digits = e.target.value.replace(/\D/g, '');
-                                            if (digits.length <= 11) {
-                                                setPhone(digits);
-                                                if (digits.length === 11) {
-                                                    const match = customerOptions.find(c => c.phone === digits);
-                                                    if (match && (!client || client === match.name)) {
-                                                        handleSelectCustomer(match);
-                                                    }
+                                            const digits = cleanAndNormalizePhoneNumber(e.target.value);
+                                            setPhone(digits);
+                                            
+                                            // Reset autocompleted details if the phone number changes and no longer matches
+                                            if (customerId) {
+                                                const currentCust = (state.customers || []).find(c => c.id === customerId);
+                                                const currentCustPhone = currentCust ? cleanAndNormalizePhoneNumber(currentCust.phone) : '';
+                                                if (digits !== currentCustPhone) {
+                                                    setCustomerId(null);
+                                                    setSecondPhone('');
+                                                    setGovernorate('');
+                                                    setAddress('');
+                                                    setCitySelected(null);
+                                                    setDistrictSelected(null);
+                                                    setShippingFee(0);
+                                                }
+                                            }
+
+                                            if (digits.length === 11) {
+                                                const match = customerOptions.find(c => c.phone === digits);
+                                                if (match) {
+                                                    handleSelectCustomer(match);
                                                 }
                                             }
                                         }}
                                         placeholder="مثال: 01012345678" 
-                                        maxLength={11}
                                         required 
                                     />
                                     {(() => {
@@ -1218,10 +1317,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         className="form-input" 
                                         value={secondPhone}
                                         onChange={(e) => {
-                                            const digits = e.target.value.replace(/\D/g, '');
-                                            if (digits.length <= 11) {
-                                                setSecondPhone(digits);
-                                            }
+                                            const digits = cleanAndNormalizePhoneNumber(e.target.value);
+                                            setSecondPhone(digits);
                                         }}
                                         placeholder="مثال: 01112345678" 
                                     />
