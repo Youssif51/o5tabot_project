@@ -57,7 +57,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
         );
     }
 
-    // Accumulate total stock
+    // Accumulate total stock across all variants
     let sulurStock = 0;
     let singanallurStock = 0;
     let mainWholesalePrice = 0;
@@ -65,10 +65,17 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
     let mainRetailPrice = 0;
     let thresholdValue = 12;
 
+    if (product.variants && Array.isArray(product.variants)) {
+        product.variants.forEach(v => {
+            if (v && v.stock) {
+                sulurStock += (v.stock.Sulur || 0);
+                singanallurStock += (v.stock.Singanallur || 0);
+            }
+        });
+    }
+
     const mainVar = product.variants[0];
     if (mainVar) {
-        sulurStock = mainVar.stock.Sulur || 0;
-        singanallurStock = mainVar.stock.Singanallur || 0;
         mainWholesalePrice = mainVar.wholesalePrice;
         mainAverageCost = mainVar.averageCost || mainVar.wholesalePrice || 0;
         mainRetailPrice = mainVar.retailPrice;
@@ -817,7 +824,8 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                             'Purchase': 'مشتريات',
                                                             'Restock': 'إضافة مخزون (Restock)',
                                                             'Correction': 'تعديل جرد',
-                                                            'Waste': 'هالك'
+                                                            'Waste': 'هالك',
+                                                            'Edit Adjustment': 'تعديل أوردر'
                                                         }[log.type] || log.type;
                                                         const logSku = log.variant_sku || log.variantSku;
                                                         const variant = product.variants?.find(v => v.sku === logSku);
@@ -826,7 +834,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                             <tr key={idx}>
                                                                 <td style={{ whiteSpace: 'nowrap' }}>
                                                                      {(() => {
-                                                                         const { dateStr, timeStr } = formatLedgerDateTime(log.date || log.created_at);
+                                                                         const { dateStr, timeStr } = formatLedgerDateTime(log.created_at || log.date);
                                                                          return (
                                                                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
                                                                                  <span style={{ fontWeight: 'bold', color: 'var(--text-primary)' }}>{dateStr}</span>
@@ -908,7 +916,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                             <span style={{ color: 'var(--text-secondary)', fontSize: '11px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
                                                                  {(() => {
-                                                                     const { dateStr, timeStr } = formatLedgerDateTime(log.date || log.created_at);
+                                                                     const { dateStr, timeStr } = formatLedgerDateTime(log.created_at || log.date);
                                                                      return (
                                                                          <>
                                                                              <strong style={{ color: 'var(--text-primary)' }}>{dateStr}</strong>

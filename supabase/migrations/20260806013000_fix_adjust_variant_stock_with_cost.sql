@@ -1,8 +1,4 @@
--- ============================================================
--- 012: Add Atomic Stock Adjustment with Average Cost Function
--- ============================================================
-
--- UP Migration
+-- Recreate adjust_variant_stock_with_cost with v_product_id as TEXT
 CREATE OR REPLACE FUNCTION adjust_variant_stock_with_cost(
   p_sku TEXT,
   p_delta INTEGER,

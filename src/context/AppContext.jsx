@@ -268,7 +268,9 @@ export const AppProvider = ({ children }) => {
                         variantSku: oi.variant_sku,
                         quantity: parseInt(oi.quantity) || 0,
                         price: parseFloat(oi.price) || 0,
-                        costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0
+                        costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0,
+                        productName: oi.product_name || null,
+                        variantName: oi.variant_name || null
                     }));
                     return {
                         id: o.id,
@@ -345,7 +347,8 @@ export const AppProvider = ({ children }) => {
                     orderId: l.order_id || null,
                     unitCost: parseFloat(l.unit_cost) || 0,
                     totalCost: parseFloat(l.total_cost) || 0,
-                    notes: l.notes || null
+                    notes: l.notes || null,
+                    created_at: l.created_at || null
                 }));
 
                 // Sort products: newest first
@@ -942,11 +945,64 @@ export const AppProvider = ({ children }) => {
                 console.log(`Supabase Realtime customers channel status: ${status}`, err || '');
             });
 
+        const stockLedgerChannel = supabase
+            .channel('realtime-stock-ledger')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'stock_ledger' },
+                (payload) => {
+                    if (payload.eventType === 'INSERT' && payload.new) {
+                        const entry = payload.new;
+                        setState(curr => {
+                            // Avoid duplicates
+                            if (curr.stockLedger.some(l => l.id === entry.id)) return curr;
+                            const mapped = {
+                                id: entry.id,
+                                date: entry.date,
+                                productId: entry.product_id,
+                                variantSku: entry.variant_sku,
+                                warehouse: entry.warehouse,
+                                type: entry.type,
+                                quantity: parseInt(entry.quantity) || 0,
+                                balanceAfter: parseInt(entry.balance_after) || 0,
+                                orderId: entry.order_id || null,
+                                unitCost: parseFloat(entry.unit_cost) || 0,
+                                totalCost: parseFloat(entry.total_cost) || 0,
+                                notes: entry.notes || null,
+                                created_at: entry.created_at || null
+                            };
+                            return { ...curr, stockLedger: [mapped, ...curr.stockLedger] };
+                        });
+                    } else if (payload.eventType === 'DELETE' && payload.old) {
+                        setState(curr => ({
+                            ...curr,
+                            stockLedger: curr.stockLedger.filter(l => l.id !== payload.old.id)
+                        }));
+                    } else if (payload.eventType === 'UPDATE' && payload.new) {
+                        const entry = payload.new;
+                        setState(curr => ({
+                            ...curr,
+                            stockLedger: curr.stockLedger.map(l => l.id === entry.id ? {
+                                ...l,
+                                quantity: parseInt(entry.quantity) || 0,
+                                balanceAfter: parseInt(entry.balance_after) || 0,
+                                notes: entry.notes || l.notes,
+                                created_at: entry.created_at || l.created_at
+                            } : l)
+                        }));
+                    }
+                }
+            )
+            .subscribe((status, err) => {
+                console.log(`Supabase Realtime stock_ledger channel status: ${status}`, err || '');
+            });
+
         return () => {
             console.log("Cleaning up Supabase Realtime channels...");
             supabase.removeChannel(ordersChannel);
             supabase.removeChannel(orderItemsChannel);
             supabase.removeChannel(customersChannel);
+            supabase.removeChannel(stockLedgerChannel);
         };
     }, [supabase, language]);
 
@@ -2301,7 +2357,9 @@ export const AppProvider = ({ children }) => {
                                 variant_sku: item.variantSku || item.variant_sku || item.sku,
                                 quantity: qty,
                                 price: netPrice,
-                                cost_at_time_of_sale: item.costAtTimeOfSale || item.cost_at_time_of_sale || 0
+                                cost_at_time_of_sale: item.costAtTimeOfSale || item.cost_at_time_of_sale || 0,
+                                product_name: item.productName || null,
+                                variant_name: item.variantName || null
                             };
                         });
                         
@@ -2701,37 +2759,33 @@ export const AppProvider = ({ children }) => {
         }
     };
 
-    const deleteOrder = (orderId) => {
-        let orderTotal = 0;
-        let customerId = null;
-        let status = null;
-        let deletedOrderItems = [];
-        let orderWarehouse = 'Sulur';
-        let targetOrderObj = null;
-        
-        setState(prev => {
-            const order = prev.orders.find(o => o.id === orderId);
-            let products = [...prev.products];
-            if (order) {
-                targetOrderObj = order;
-                orderTotal = order.totalValue;
-                customerId = order.customer_id;
-                status = order.status;
-                deletedOrderItems = order.items || [];
-                orderWarehouse = order.warehouse || 'Sulur';
+    const deleteOrder = async (orderId) => {
+        // Find order object from current state BEFORE state mutation
+        const targetOrderObj = state.orders.find(o => o.id === orderId);
+        const status = targetOrderObj ? targetOrderObj.status : null;
+        const customerId = targetOrderObj ? (targetOrderObj.customer_id || targetOrderObj.customerId || null) : null;
+        const orderTotal = targetOrderObj ? (parseFloat(targetOrderObj.totalValue || targetOrderObj.total_value) || 0) : 0;
+        const orderWarehouse = targetOrderObj ? (targetOrderObj.warehouse || 'Sulur') : 'Sulur';
 
-                if (isDeductedStatus(status, order)) {
-                    deletedOrderItems.forEach(item => {
+        // Normalize items list
+        let orderItems = targetOrderObj ? (targetOrderObj.items || []) : [];
+
+        // 1. Instantly update local state: restore stock if deducted, and remove order
+        setState(prev => {
+            let products = [...prev.products];
+            if (targetOrderObj && isDeductedStatus(status, targetOrderObj) && orderItems.length > 0) {
+                orderItems.forEach(item => {
+                    const itemSku = item.variantSku || item.variant_sku || item.sku;
+                    const itemQty = Math.abs(parseInt(item.quantity) || 0);
+                    if (itemSku && itemQty > 0) {
                         products = products.map(p => {
-                            const hasVar = p.variants.some(v => v.sku === item.variantSku);
-                            if (hasVar) {
+                            if (p.variants.some(v => v.sku === itemSku)) {
                                 return {
                                     ...p,
                                     variants: p.variants.map(v => {
-                                        if (v.sku === item.variantSku) {
+                                        if (v.sku === itemSku) {
                                             const stock = { ...v.stock };
-                                            const wh = orderWarehouse;
-                                            stock[wh] = (stock[wh] || 0) + item.quantity;
+                                            stock[orderWarehouse] = (stock[orderWarehouse] || 0) + itemQty;
                                             return { ...v, stock };
                                         }
                                         return v;
@@ -2740,27 +2794,33 @@ export const AppProvider = ({ children }) => {
                             }
                             return p;
                         });
-                    });
-                }
+                    }
+                });
             }
             return {
                 ...prev,
                 products,
-                orders: prev.orders.filter(o => o.id !== orderId)
+                orders: (prev.orders || []).filter(o => o.id !== orderId)
             };
         });
 
-        // Trigger customer stats update if deleting a completed order
         if (status === "Completed" && customerId) {
             updateCustomerStats(customerId, -orderTotal, -1);
         }
 
-        logActivity("order", `Order ${orderId} removed from records.`);
-        showToast(`Order ${orderId} deleted.`);
+        logActivity("order", `Order ${orderId} deleted.`);
+        showToast(`تم حذف الطلب ${orderId} بنجاح`, "success");
 
         if (supabase) {
             (async () => {
                 try {
+                    // Fetch dbOrderItems if local items are empty to guarantee we have all items
+                    let dbOrderItems = orderItems;
+                    if (!dbOrderItems || dbOrderItems.length === 0) {
+                        const { data: fetchedItems } = await supabase.from('order_items').select('*').eq('order_id', orderId);
+                        if (fetchedItems) dbOrderItems = fetchedItems;
+                    }
+
                     // Cancel order on Shopify if it's a Shopify order
                     const shopifyOrdId = targetOrderObj?.shopifyOrderId || targetOrderObj?.shopify_order_id;
                     if (targetOrderObj?.source === 'shopify' && shopifyOrdId) {
@@ -2780,9 +2840,13 @@ export const AppProvider = ({ children }) => {
 
                     // Cancel Bosta delivery if exists
                     let addressObj = null;
-                    try { addressObj = targetOrderObj?.address ? JSON.parse(targetOrderObj.address) : null; } catch(e) {}
+                    try { 
+                        addressObj = typeof targetOrderObj?.address === 'string' ? JSON.parse(targetOrderObj.address) : (targetOrderObj?.address || null); 
+                    } catch(e) {}
+
                     if (addressObj && addressObj.bostaDeliveryId) {
                         try {
+                            console.log(`Cancelling Bosta delivery ${addressObj.bostaDeliveryId} for deleted order ${orderId}...`);
                             const { data: { session } } = await supabase.auth.getSession();
                             await fetch('https://skvwhgcclmvejmpsgkes.supabase.co/functions/v1/manage-bosta-delivery', {
                                 method: 'POST',
@@ -2797,27 +2861,50 @@ export const AppProvider = ({ children }) => {
                         }
                     }
 
-                    if (isDeductedStatus(status, targetOrderObj) && deletedOrderItems.length > 0) {
-                        for (const item of deletedOrderItems) {
-                            const { data: vData } = await supabase.from('product_variants').select('stock_sulur, product_id').eq('sku', item.variantSku).single();
-                            if (vData) {
-                                const newStock = vData.stock_sulur + item.quantity;
-                                await supabase.from('product_variants').update({ stock_sulur: newStock }).eq('sku', item.variantSku);
-                                syncVariantStockToShopify(item.variantSku);
-                                
-                                await supabase.from('stock_ledger').insert([{
-                                    order_id: orderId,
-                                    date: new Date().toISOString(),
-                                    product_id: vData.product_id,
-                                    variant_sku: item.variantSku,
-                                    warehouse: orderWarehouse,
-                                    type: 'Return',
-                                    quantity: item.quantity,
-                                    balance_after: newStock
-                                }]);
+                    // Restore stock in DB & Shopify atomically if status was deducted
+                    if (isDeductedStatus(status, targetOrderObj) && dbOrderItems && dbOrderItems.length > 0) {
+                        for (const item of dbOrderItems) {
+                            const itemSku = item.variantSku || item.variant_sku || item.sku;
+                            const itemQty = Math.abs(parseInt(item.quantity) || 0);
+                            if (!itemSku || itemQty <= 0) continue;
+
+                            // Atomic stock adjustment in DB
+                            const newStock = await adjustStockAtomically(itemSku, +itemQty);
+
+                            // Sync updated stock to Shopify
+                            try {
+                                syncVariantStockToShopify(itemSku);
+                            } catch (spErr) {
+                                console.error("Error syncing stock to Shopify on order delete:", spErr);
+                            }
+
+                            // Add Return entry in stock_ledger
+                            try {
+                                const { data: vData } = await supabase.from('product_variants').select('product_id, average_cost').eq('sku', itemSku).single();
+                                if (vData) {
+                                    const uCost = vData.average_cost || 0;
+                                    const tCost = uCost * itemQty;
+                                    await supabase.from('stock_ledger').insert([{
+                                        order_id: orderId,
+                                        date: new Date().toISOString(),
+                                        product_id: vData.product_id,
+                                        variant_sku: itemSku,
+                                        warehouse: orderWarehouse,
+                                        type: 'Return',
+                                        quantity: itemQty,
+                                        unit_cost: uCost,
+                                        total_cost: tCost,
+                                        balance_after: newStock !== undefined ? newStock : 0,
+                                        notes: `إلغاء وإعادة مخزون بسبب حذف الطلب #${orderId}`
+                                    }]);
+                                }
+                            } catch (ledgerErr) {
+                                console.error("Failed to insert stock ledger return on delete:", ledgerErr);
                             }
                         }
                     }
+
+                    // Finally delete order from DB (cascade deletes order_items)
                     await supabase.from('orders').delete().eq('id', orderId);
                 } catch (e) {
                     console.error("Supabase Error during order deletion:", e);
@@ -2961,34 +3048,59 @@ export const AppProvider = ({ children }) => {
                 });
             }
 
-            // Clean up ledger and generate new ledger entries
-            let newLedger = (prev.stockLedger || []).filter(entry => {
-                const oId = entry.orderId || entry.order_id;
-                return !oId || String(oId) !== String(oldOrder ? oldOrder.id : '');
-            });
+            // Delta-based ledger: keep old entries, add adjustment entries for changes
+            let newLedger = prev.stockLedger || [];
+            const editTimestamp = new Date().toISOString();
 
-            if (isDeductedStatus(enrichedOrder.status, enrichedOrder)) {
-                enrichedOrder.items.forEach(item => {
-                    const itemSku = item.variantSku || item.variant_sku || item.sku;
-                    const prod = products.find(p => p.variants.some(v => v.sku === itemSku));
-                    if (prod) {
-                        const vr = prod.variants.find(v => v.sku === itemSku);
-                        const currentBal = vr ? (vr.stock[enrichedOrder.warehouse || 'Sulur'] || 0) : 0;
-                        const uCost = item.costAtTimeOfSale || item.cost_at_time_of_sale || (vr ? vr.averageCost || vr.wholesalePrice : 0) || 0;
-                        const tCost = uCost * Math.abs(item.quantity);
-                        newLedger = [{
-                            date: enrichedOrder.date || new Date().toISOString(),
-                            productId: prod.id,
-                            variantSku: itemSku,
-                            orderId: enrichedOrder.id,
-                            warehouse: enrichedOrder.warehouse || 'Sulur',
-                            type: "Sale",
-                            quantity: -item.quantity,
-                            unitCost: uCost,
-                            totalCost: tCost,
-                            balanceAfter: currentBal
-                        }, ...newLedger];
+            if (oldOrder && isDeductedStatus(enrichedOrder.status, enrichedOrder)) {
+                // Build old and new SKU maps for comparison
+                const oldItems = oldOrder.items || [];
+                const newItems = enrichedOrder.items || [];
+                const oldMap = {};
+                oldItems.forEach(i => { const sk = i.variantSku || i.variant_sku || i.sku; if (sk) oldMap[sk] = (oldMap[sk] || 0) + (i.quantity || 0); });
+                const newMap = {};
+                newItems.forEach(i => { const sk = i.variantSku || i.variant_sku || i.sku; if (sk) newMap[sk] = (newMap[sk] || 0) + (i.quantity || 0); });
+
+                const allSkus = new Set([...Object.keys(oldMap), ...Object.keys(newMap)]);
+
+                allSkus.forEach(sku => {
+                    const oldQty = oldMap[sku] || 0;
+                    const newQty = newMap[sku] || 0;
+                    const delta = oldQty - newQty; // positive = returned stock, negative = more deducted
+
+                    if (delta === 0) return; // no change for this SKU
+
+                    const prod = products.find(p => p.variants.some(v => v.sku === sku));
+                    if (!prod) return;
+                    const vr = prod.variants.find(v => v.sku === sku);
+                    const currentBal = vr ? (vr.stock[enrichedOrder.warehouse || 'Sulur'] || 0) : 0;
+                    const uCost = (vr ? vr.averageCost || vr.wholesalePrice : 0) || 0;
+                    const tCost = uCost * Math.abs(delta);
+
+                    // Build descriptive note
+                    let note = '';
+                    if (oldQty === 0) {
+                        note = `تعديل أوردر: تم إضافة منتج جديد (كمية: ${newQty})`;
+                    } else if (newQty === 0) {
+                        note = `تعديل أوردر: تم حذف المنتج (كمية سابقة: ${oldQty})`;
+                    } else {
+                        note = `تعديل أوردر: الكمية تغيرت من ${oldQty} إلى ${newQty}`;
                     }
+
+                    newLedger = [{
+                        date: editTimestamp,
+                        productId: prod.id,
+                        variantSku: sku,
+                        orderId: enrichedOrder.id,
+                        warehouse: enrichedOrder.warehouse || 'Sulur',
+                        type: "Edit Adjustment",
+                        quantity: delta,
+                        unitCost: uCost,
+                        totalCost: tCost,
+                        balanceAfter: currentBal,
+                        notes: note,
+                        created_at: editTimestamp
+                    }, ...newLedger];
                 });
             }
 
@@ -3014,7 +3126,8 @@ export const AppProvider = ({ children }) => {
             return {
                 ...prev,
                 products,
-                orders: newOrders
+                orders: newOrders,
+                stockLedger: newLedger
             };
         });
 
@@ -3054,7 +3167,7 @@ export const AppProvider = ({ children }) => {
                     }
                     
                     if (!prodName) {
-                        prodName = item.variantSku;
+                        prodName = "منتج"; // Fallback to "منتج" instead of variantSku
                     }
                     
                     const displayName = formatProductDisplayName(prodName, optName);
@@ -3121,6 +3234,39 @@ export const AppProvider = ({ children }) => {
         if (supabase) {
             (async () => {
                 try {
+                    let finalAddress = enrichedOrder.address;
+                    try {
+                        const { data: dbOrder, error: fetchErr } = await supabase
+                            .from('orders')
+                            .select('address')
+                            .eq('id', enrichedOrder.id)
+                            .maybeSingle();
+                        
+                        if (!fetchErr && dbOrder && dbOrder.address) {
+                            let dbAddrObj = {};
+                            let currentAddrObj = {};
+                            try { dbAddrObj = JSON.parse(dbOrder.address); } catch (e) {}
+                            try { currentAddrObj = JSON.parse(enrichedOrder.address); } catch (e) {}
+                            
+                            const hasDbBosta = dbAddrObj && (dbAddrObj.bostaTrackingNumber || dbAddrObj.bostaDeliveryId);
+                            const hasCurrentBosta = currentAddrObj && (currentAddrObj.bostaTrackingNumber || currentAddrObj.bostaDeliveryId);
+                            
+                            if (hasDbBosta && !hasCurrentBosta) {
+                                const mergedAddressObj = {
+                                    ...currentAddrObj,
+                                    bostaTrackingNumber: dbAddrObj.bostaTrackingNumber,
+                                    bostaDeliveryId: dbAddrObj.bostaDeliveryId,
+                                    bostaStateCode: dbAddrObj.bostaStateCode,
+                                    bostaStateName: dbAddrObj.bostaStateName
+                                };
+                                finalAddress = JSON.stringify(mergedAddressObj);
+                                enrichedOrder.address = finalAddress;
+                            }
+                        }
+                    } catch (fetchEx) {
+                        console.error("Error merging DB address in editOrder:", fetchEx);
+                    }
+
                     const { error: orderError } = await supabase.from('orders').update({
                         client: enrichedOrder.client,
                         customer_id: enrichedOrder.customer_id || null,
@@ -3133,7 +3279,7 @@ export const AppProvider = ({ children }) => {
                         applied_coupon_code: enrichedOrder.applied_coupon_code || null,
                         discount_reason: enrichedOrder.discount_reason || null,
                         discount_reason_details: enrichedOrder.discount_reason_details || null,
-                        address: enrichedOrder.address || null,
+                        address: finalAddress || null,
                         governorate: enrichedOrder.governorate || null,
                         deposit: enrichedOrder.deposit || 0,
                         deposit_receiver_id: enrichedOrder.depositReceiverId || null,
@@ -3151,6 +3297,20 @@ export const AppProvider = ({ children }) => {
                         showToast(`فشل تعديل الطلب في قاعدة البيانات: ${orderError.message}`, "error");
                         await loadSupabaseData();
                         return;
+                    }
+
+                    // Fetch pre-existing order items directly from DB for delta calculations to prevent stale state issues
+                    let dbOrderItems = [];
+                    try {
+                        const { data: fetchedDbItems, error: fetchItemsErr } = await supabase
+                            .from('order_items')
+                            .select('*')
+                            .eq('order_id', enrichedOrder.id);
+                        if (!fetchItemsErr && fetchedDbItems) {
+                            dbOrderItems = fetchedDbItems;
+                        }
+                    } catch (e) {
+                        console.error("Failed to fetch order items from DB in editOrder:", e);
                     }
 
                     const { error: deleteItemsError } = await supabase.from('order_items').delete().eq('order_id', enrichedOrder.id);
@@ -3181,7 +3341,9 @@ export const AppProvider = ({ children }) => {
                                 variant_sku: item.variantSku || item.variant_sku || item.sku,
                                 quantity: qty,
                                 price: netPrice,
-                                cost_at_time_of_sale: item.costAtTimeOfSale || item.cost_at_time_of_sale || 0
+                                cost_at_time_of_sale: item.costAtTimeOfSale || item.cost_at_time_of_sale || 0,
+                                product_name: item.productName || null,
+                                variant_name: item.variantName || null
                             };
                         });
                         const { error: insertItemsError } = await supabase.from('order_items').insert(items);
@@ -3208,7 +3370,7 @@ export const AppProvider = ({ children }) => {
                     }
 
                     // Calculate deltas and update variant stock atomically in the database
-                    const oldSKUList = (oldOrderState ? oldOrderState.items : []).map(i => ({
+                    const oldSKUList = (dbOrderItems && dbOrderItems.length > 0 ? dbOrderItems : (oldOrderState ? oldOrderState.items : [])).map(i => ({
                         sku: i.variantSku || i.variant_sku || i.sku,
                         quantity: i.quantity || 0
                     }));
@@ -3253,38 +3415,68 @@ export const AppProvider = ({ children }) => {
                         await adjustStockAtomically(sku, delta);
                     }
 
-                    // Delete old ledger entries and insert new ones to keep DB ledger in sync
+                    // Delta-based DB ledger: insert adjustment entries for changes (keep old entries intact)
                     try {
-                        await supabase.from('stock_ledger').delete().eq('order_id', enrichedOrder.id);
-                        
                         if (isDeductedStatus(enrichedOrder.status, enrichedOrder)) {
-                            const ledgerEntries = [];
-                            for (const item of enrichedOrder.items) {
-                                const itemSku = item.variantSku || item.variant_sku || item.sku;
-                                const { data: vData } = await supabase.from('product_variants').select('product_id, stock_sulur, average_cost').eq('sku', itemSku).single();
+                            // Build old and new quantity maps from DB items and new items
+                            const oldDbMap = {};
+                            (dbOrderItems || []).forEach(i => {
+                                const sk = i.variant_sku || i.variantSku || i.sku;
+                                if (sk) oldDbMap[sk] = (oldDbMap[sk] || 0) + (parseInt(i.quantity) || 0);
+                            });
+                            const newDbMap = {};
+                            (enrichedOrder.items || []).forEach(i => {
+                                const sk = i.variantSku || i.variant_sku || i.sku;
+                                if (sk) newDbMap[sk] = (newDbMap[sk] || 0) + (parseInt(i.quantity) || 0);
+                            });
+
+                            const allEditSkus = new Set([...Object.keys(oldDbMap), ...Object.keys(newDbMap)]);
+                            const ledgerDeltaEntries = [];
+                            const editNow = new Date().toISOString();
+
+                            for (const sku of allEditSkus) {
+                                const oldQ = oldDbMap[sku] || 0;
+                                const newQ = newDbMap[sku] || 0;
+                                const qDelta = oldQ - newQ; // positive = returned, negative = more deducted
+
+                                if (qDelta === 0) continue;
+
+                                const { data: vData } = await supabase.from('product_variants').select('product_id, stock_sulur, average_cost').eq('sku', sku).single();
                                 if (vData) {
-                                    const uCost = item.costAtTimeOfSale || item.cost_at_time_of_sale || vData.average_cost || 0;
-                                    const tCost = uCost * Math.abs(item.quantity);
-                                    ledgerEntries.push({
+                                    const uCost = vData.average_cost || 0;
+                                    const tCost = uCost * Math.abs(qDelta);
+
+                                    let editNote = '';
+                                    if (oldQ === 0) {
+                                        editNote = `تعديل أوردر: تم إضافة منتج جديد (كمية: ${newQ})`;
+                                    } else if (newQ === 0) {
+                                        editNote = `تعديل أوردر: تم حذف المنتج (كمية سابقة: ${oldQ})`;
+                                    } else {
+                                        editNote = `تعديل أوردر: الكمية تغيرت من ${oldQ} إلى ${newQ}`;
+                                    }
+
+                                    ledgerDeltaEntries.push({
                                         order_id: enrichedOrder.id,
-                                        date: enrichedOrder.date || new Date().toISOString(),
+                                        date: editNow,
                                         product_id: vData.product_id,
-                                        variant_sku: itemSku,
+                                        variant_sku: sku,
                                         warehouse: enrichedOrder.warehouse || 'Sulur',
-                                        type: 'Sale',
-                                        quantity: -item.quantity,
+                                        type: 'Edit Adjustment',
+                                        quantity: qDelta,
                                         unit_cost: uCost,
                                         total_cost: tCost,
-                                        balance_after: vData.stock_sulur
+                                        balance_after: vData.stock_sulur,
+                                        notes: editNote
                                     });
                                 }
                             }
-                            if (ledgerEntries.length > 0) {
-                                await supabase.from('stock_ledger').insert(ledgerEntries);
+
+                            if (ledgerDeltaEntries.length > 0) {
+                                await supabase.from('stock_ledger').insert(ledgerDeltaEntries);
                             }
                         }
                     } catch (ledgerErr) {
-                        console.error("Failed to update database stock ledger inside editOrder:", ledgerErr);
+                        console.error("Failed to insert delta stock ledger entries inside editOrder:", ledgerErr);
                     }
 
                 } catch (e) {
@@ -4036,7 +4228,9 @@ export const AppProvider = ({ children }) => {
                 variantSku: oi.variant_sku,
                 quantity: parseInt(oi.quantity) || 0,
                 price: parseFloat(oi.price) || 0,
-                costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0
+                costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0,
+                productName: oi.product_name || null,
+                variantName: oi.variant_name || null
             }));
             setState(prev => ({
                 ...prev,
@@ -4093,7 +4287,9 @@ export const AppProvider = ({ children }) => {
                                 variantSku: oi.variant_sku,
                                 quantity: parseInt(oi.quantity) || 0,
                                 price: parseFloat(oi.price) || 0,
-                                costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0
+                                costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0,
+                                productName: oi.product_name || null,
+                                variantName: oi.variant_name || null
                             }));
                         }
                     } catch (e) {
@@ -4340,6 +4536,7 @@ export const AppProvider = ({ children }) => {
                 ...prev,
                 orders: (prev.orders || []).map(o => o.id === orderId ? {
                     ...o,
+                    depositStatus: 'settled',
                     depositRefundStatus: 'returned',
                     depositRefundAmount: refundAmount !== null ? parseFloat(refundAmount) : null,
                     depositRefundType: refundType,
@@ -4349,6 +4546,7 @@ export const AppProvider = ({ children }) => {
 
             // Persist to DB
             const updatePayload = {
+                deposit_status: 'settled',
                 deposit_refund_status: 'returned',
                 deposit_refund_amount: refundAmount !== null ? parseFloat(refundAmount) : null,
                 deposit_refund_type: refundType
@@ -4362,13 +4560,14 @@ export const AppProvider = ({ children }) => {
             if (dbErr) {
                 // Retry with standard columns if composite error (columns might not exist yet in DB)
                 await supabase.from('orders').update({
+                    deposit_status: 'settled',
                     deposit_refund_status: 'returned',
                     deposit_refund_proof_url: screenshotUrl
                 }).eq('id', orderId);
             }
 
             logActivity('order', `Deposit refund of ${state.storeSettings.currency}${refundAmount || 0} (${refundType || 'unknown'}) confirmed for cancelled order ${orderId} with screenshot proof.`);
-            showToast('تم تأكيد إعادة العربون بنجاح ✅', 'success');
+            showToast('تم تأكيد إعادة العربون وتسوية العهدة بنجاح ✅', 'success');
             return true;
         } catch (err) {
             console.error('confirmDepositRefund error:', err);
@@ -4396,7 +4595,7 @@ export const AppProvider = ({ children }) => {
                 ...prev,
                 orders: (prev.orders || []).map(o => o.id === orderId ? {
                     ...o,
-                    depositStatus: 'confirmed',
+                    depositStatus: 'settled',
                     depositRefundStatus: 'returned',
                     depositRefundAmount: refundAmount !== null ? parseFloat(refundAmount) : null,
                     depositRefundType: refundType,
@@ -4406,7 +4605,7 @@ export const AppProvider = ({ children }) => {
 
             // Persist to DB
             const updatePayload = {
-                deposit_status: 'confirmed',
+                deposit_status: 'settled',
                 deposit_refund_status: 'returned',
                 deposit_refund_amount: refundAmount !== null ? parseFloat(refundAmount) : null,
                 deposit_refund_type: refundType

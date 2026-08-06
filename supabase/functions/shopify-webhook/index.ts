@@ -812,7 +812,9 @@ Deno.serve(async (req) => {
         variant_sku: resolvedSku,
         quantity: parseInt(item.quantity) || 1,
         price: parseFloat(item.price) || 0,
-        cost_at_time_of_sale: costAtTimeOfSale
+        cost_at_time_of_sale: costAtTimeOfSale,
+        product_name: item.title || null,
+        variant_name: item.variant_title || null
       });
     }
 

@@ -745,12 +745,14 @@ export default function InventoryList({
                                             typeBadge = <span className="badge badge-warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-wrench"></i> {t('adjustments')}</span>;
                                         } else if (entry.type === "Waste") {
                                             typeBadge = <span className="badge badge-danger" style={{ background: '#721c24', display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-trash-can"></i> {t('damagedWaste')}</span>;
+                                        } else if (entry.type === "Edit Adjustment") {
+                                            typeBadge = <span className="badge badge-warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-pen-to-square"></i> تعديل أوردر</span>;
                                         } else {
                                             typeBadge = <span className="badge badge-info" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-rotate-left"></i> {t('return')}</span>;
                                         }
                                         return (
                                             <tr key={idx}>
-                                                <td>{formatLedgerDate(entry.date)}</td>
+                                                <td>{formatLedgerDate(entry.created_at || entry.date)}</td>
                                                 <td>
                                                     <div style={{ fontWeight: 600 }}>{prodName}</div>
                                                     <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{entry.variantSku}</div>
@@ -817,6 +819,8 @@ export default function InventoryList({
                                     typeBadge = <span className="badge badge-warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-wrench"></i> {t('adjustments')}</span>;
                                 } else if (entry.type === "Waste") {
                                     typeBadge = <span className="badge badge-danger" style={{ background: '#721c24', display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-trash-can"></i> {t('damagedWaste')}</span>;
+                                } else if (entry.type === "Edit Adjustment") {
+                                    typeBadge = <span className="badge badge-warning" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-pen-to-square"></i> تعديل أوردر</span>;
                                 } else {
                                     typeBadge = <span className="badge badge-info" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><i className="fa-solid fa-rotate-left"></i> {t('return')}</span>;
                                 }
@@ -843,7 +847,7 @@ export default function InventoryList({
                                                     {entry.variantSku}
                                                 </div>
                                             </div>
-                                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{formatLedgerDate(entry.date)}</span>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{formatLedgerDate(entry.created_at || entry.date)}</span>
                                         </div>
  
                                         {/* Body: Location, Type, Qty */}

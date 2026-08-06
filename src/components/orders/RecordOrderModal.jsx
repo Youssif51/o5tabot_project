@@ -75,6 +75,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const [discountReason, setDiscountReason] = useState('');
     const [discountReasonDetails, setDiscountReasonDetails] = useState('');
     const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
+    const [isPhoneDropdownOpen, setIsPhoneDropdownOpen] = useState(false);
+    const [isSecondPhoneDropdownOpen, setIsSecondPhoneDropdownOpen] = useState(false);
     const [phone, setPhone] = useState('');
     const [secondPhone, setSecondPhone] = useState('');
     const [governorate, setGovernorate] = useState('');
@@ -285,14 +287,26 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
     const normalizePhoneStr = (p) => (p || '').replace(/\D/g, '').replace(/^20/, '0');
     const customerOptions = getCustomerOptions();
-    const filteredCustomers = customerOptions.filter(c => {
-        const searchInput = (client || '').trim();
-        if (!searchInput) return true;
+    const filteredCustomers = []; // Disabled name autocomplete suggestions
+
+    const filteredCustomersByPhone = customerOptions.filter(c => {
+        const searchInput = (phone || '').trim();
+        if (!searchInput || searchInput.length < 3) return false;
         const normSearch = normalizePhoneStr(searchInput);
         const normPhone = normalizePhoneStr(c.phone);
-        return (c.name || '').toLowerCase().includes(searchInput.toLowerCase()) ||
-               (normPhone && normSearch && normPhone.includes(normSearch)) ||
-               (c.phone || '').includes(searchInput);
+        const normSecPhone = normalizePhoneStr(c.secondPhone || '');
+        return (normPhone && normPhone.includes(normSearch)) ||
+               (normSecPhone && normSecPhone.includes(normSearch));
+    });
+
+    const filteredCustomersBySecondPhone = customerOptions.filter(c => {
+        const searchInput = (secondPhone || '').trim();
+        if (!searchInput || searchInput.length < 3) return false;
+        const normSearch = normalizePhoneStr(searchInput);
+        const normPhone = normalizePhoneStr(c.phone);
+        const normSecPhone = normalizePhoneStr(c.secondPhone || '');
+        return (normPhone && normPhone.includes(normSearch)) ||
+               (normSecPhone && normSecPhone.includes(normSearch));
     });
 
     // Reset all form state variables cleanly
@@ -478,6 +492,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         if (!custObj) return;
         setClient(custObj.name);
         setIsClientDropdownOpen(false);
+        setIsPhoneDropdownOpen(false);
+        setIsSecondPhoneDropdownOpen(false);
         setCustomerId(custObj.id || null);
         
         if (custObj.customer_type === 'Spam') {
@@ -540,7 +556,11 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     };
 
     const handleRemoveItem = (index) => {
-        if (items.length <= 1) return;
+        if (items.length <= 1) {
+            // Reset the last item to empty instead of blocking removal
+            setItems([{ variantSku: '', quantity: 1, price: 0, discountPercent: 0, discountType: 'Percentage', maxStock: 0, searchVal: '', isOpen: false, productName: '', variantName: '' }]);
+            return;
+        }
         setItems(prev => prev.filter((_, i) => i !== index));
     };
 
@@ -1177,7 +1197,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     {step === 1 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                             <div className="grid-responsive-2col">
-                                <div className="form-group" style={{ position: 'relative' }}>
+                                <div className="form-group">
                                     <label className="form-label">اسم العميل *</label>
                                     <input 
                                         type="text" 
@@ -1185,7 +1205,6 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         value={client}
                                         onChange={(e) => { 
                                             setClient(e.target.value); 
-                                            setIsClientDropdownOpen(true); 
                                             if (customerId) {
                                                 const currentCust = (state.customers || []).find(c => c.id === customerId);
                                                 if (currentCust && e.target.value !== currentCust.name) {
@@ -1193,12 +1212,62 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                 }
                                             }
                                         }}
-                                        onFocus={() => setIsClientDropdownOpen(true)}
-                                        onBlur={() => setTimeout(() => setIsClientDropdownOpen(false), 200)}
-                                        placeholder="اكتب اسم العميل للبحث أو الإضافة..." 
+                                        placeholder="اكتب اسم العميل..." 
                                         required 
                                     />
-                                    {isClientDropdownOpen && filteredCustomers.length > 0 && (
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">كود العميل (تلقائي)</label>
+                                    <input 
+                                        type="text" 
+                                        className="form-input" 
+                                        value={customerCode} 
+                                        disabled 
+                                        style={{ background: 'var(--glass-bg-hover)', color: 'var(--text-secondary)', cursor: 'not-allowed' }}
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="grid-responsive-2col">
+                                <div className="form-group" style={{ position: 'relative' }}>
+                                    <label className="form-label">رقم الهاتف * (11 رقم)</label>
+                                    <input 
+                                        type="text" 
+                                        className="form-input" 
+                                        value={phone}
+                                        onChange={(e) => {
+                                            const digits = cleanAndNormalizePhoneNumber(e.target.value);
+                                            setPhone(digits);
+                                            setIsPhoneDropdownOpen(true);
+                                            
+                                            // Reset autocompleted details if the phone number changes and no longer matches
+                                            if (customerId) {
+                                                const currentCust = (state.customers || []).find(c => c.id === customerId);
+                                                const currentCustPhone = currentCust ? cleanAndNormalizePhoneNumber(currentCust.phone) : '';
+                                                if (digits !== currentCustPhone) {
+                                                    setCustomerId(null);
+                                                    setSecondPhone('');
+                                                    setGovernorate('');
+                                                    setAddress('');
+                                                    setCitySelected(null);
+                                                    setDistrictSelected(null);
+                                                    setShippingFee(0);
+                                                }
+                                            }
+
+                                            if (digits.length === 11) {
+                                                const match = customerOptions.find(c => c.phone === digits);
+                                                if (match) {
+                                                    handleSelectCustomer(match);
+                                                }
+                                            }
+                                        }}
+                                        onFocus={() => setIsPhoneDropdownOpen(true)}
+                                        onBlur={() => setTimeout(() => setIsPhoneDropdownOpen(false), 200)}
+                                        placeholder="مثال: 01012345678" 
+                                        required 
+                                    />
+                                    {isPhoneDropdownOpen && filteredCustomersByPhone.length > 0 && (
                                         <div className="glass-card" style={{
                                             position: 'absolute',
                                             top: '100%',
@@ -1213,7 +1282,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             padding: '6px',
                                             boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
                                         }}>
-                                            {filteredCustomers.map((cust, idx) => (
+                                            {filteredCustomersByPhone.map((cust, idx) => (
                                                 <div 
                                                     key={cust.id || cust.name || idx}
                                                     onMouseDown={() => handleSelectCustomer(cust)}
@@ -1243,55 +1312,6 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             ))}
                                         </div>
                                     )}
-                                </div>
-                                <div className="form-group">
-                                    <label className="form-label">كود العميل (تلقائي)</label>
-                                    <input 
-                                        type="text" 
-                                        className="form-input" 
-                                        value={customerCode} 
-                                        disabled 
-                                        style={{ background: 'var(--glass-bg-hover)', color: 'var(--text-secondary)', cursor: 'not-allowed' }}
-                                    />
-                                </div>
-                            </div>
-
-                            <div className="grid-responsive-2col">
-                                <div className="form-group">
-                                    <label className="form-label">رقم الهاتف * (11 رقم)</label>
-                                    <input 
-                                        type="text" 
-                                        className="form-input" 
-                                        value={phone}
-                                        onChange={(e) => {
-                                            const digits = cleanAndNormalizePhoneNumber(e.target.value);
-                                            setPhone(digits);
-                                            
-                                            // Reset autocompleted details if the phone number changes and no longer matches
-                                            if (customerId) {
-                                                const currentCust = (state.customers || []).find(c => c.id === customerId);
-                                                const currentCustPhone = currentCust ? cleanAndNormalizePhoneNumber(currentCust.phone) : '';
-                                                if (digits !== currentCustPhone) {
-                                                    setCustomerId(null);
-                                                    setSecondPhone('');
-                                                    setGovernorate('');
-                                                    setAddress('');
-                                                    setCitySelected(null);
-                                                    setDistrictSelected(null);
-                                                    setShippingFee(0);
-                                                }
-                                            }
-
-                                            if (digits.length === 11) {
-                                                const match = customerOptions.find(c => c.phone === digits);
-                                                if (match) {
-                                                    handleSelectCustomer(match);
-                                                }
-                                            }
-                                        }}
-                                        placeholder="مثال: 01012345678" 
-                                        required 
-                                    />
                                     {(() => {
                                         const cust = state.customers.find(c => phone && c.phone === phone);
                                         if (cust && cust.is_spam) {
@@ -1310,7 +1330,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         </div>
                                     )}
                                 </div>
-                                <div className="form-group">
+                                <div className="form-group" style={{ position: 'relative' }}>
                                     <label className="form-label">رقم الهاتف البديل (اختياري)</label>
                                     <input 
                                         type="text" 
@@ -1319,9 +1339,57 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         onChange={(e) => {
                                             const digits = cleanAndNormalizePhoneNumber(e.target.value);
                                             setSecondPhone(digits);
+                                            setIsSecondPhoneDropdownOpen(true);
                                         }}
+                                        onFocus={() => setIsSecondPhoneDropdownOpen(true)}
+                                        onBlur={() => setTimeout(() => setIsSecondPhoneDropdownOpen(false), 200)}
                                         placeholder="مثال: 01112345678" 
                                     />
+                                    {isSecondPhoneDropdownOpen && filteredCustomersBySecondPhone.length > 0 && (
+                                        <div className="glass-card" style={{
+                                            position: 'absolute',
+                                            top: '100%',
+                                            left: 0,
+                                            right: 0,
+                                            maxHeight: '200px',
+                                            overflowY: 'auto',
+                                            zIndex: 1000,
+                                            background: 'rgba(25, 25, 35, 0.98)',
+                                            border: '1px solid var(--glass-border)',
+                                            borderRadius: '8px',
+                                            padding: '6px',
+                                            boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
+                                        }}>
+                                            {filteredCustomersBySecondPhone.map((cust, idx) => (
+                                                <div 
+                                                    key={cust.id || cust.name || idx}
+                                                    onMouseDown={() => handleSelectCustomer(cust)}
+                                                    style={{ 
+                                                        padding: '10px 12px', 
+                                                        fontSize: '12px', 
+                                                        cursor: 'pointer', 
+                                                        borderBottom: '1px solid var(--glass-border)', 
+                                                        color: 'var(--text-primary)', 
+                                                        borderRadius: '6px',
+                                                        display: 'flex',
+                                                        justifyContent: 'space-between',
+                                                        alignItems: 'center'
+                                                    }}
+                                                    className="autocomplete-option"
+                                                >
+                                                    <div>
+                                                        <strong style={{ color: '#fff', fontSize: '13px' }}>{cust.name}</strong>
+                                                        {cust.phone && <span style={{ marginRight: '8px', color: 'var(--text-secondary)', fontSize: '11px' }}>({cust.phone})</span>}
+                                                    </div>
+                                                    {cust.governorate && (
+                                                        <span style={{ fontSize: '11px', color: 'var(--gold-primary)', background: 'rgba(212, 175, 55, 0.12)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(212, 175, 55, 0.2)' }}>
+                                                            {cust.governorate}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                     {secondPhone && secondPhone.length > 0 && secondPhone.length < 11 && (
                                         <div style={{ fontSize: '10px', color: 'var(--color-warning)', marginTop: '4px' }}>
                                             رقم الهاتف يجب أن يكون 11 رقماً (المتبقي: {11 - secondPhone.length})
@@ -2491,10 +2559,12 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 </div>
 
                 {/* NAVIGATION FOOTER */}
-                <div className="record-order-footer">
+                <div className="record-order-footer" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    {/* RIGHT SIDE (RTL): Cancel / Previous */}
                     <div>
                         {step > 1 ? (
                             <button type="button" className="btn btn-secondary" onClick={() => setStep(prev => prev - 1)}>
+                                <i className="fa-solid fa-arrow-right" style={{ marginLeft: '6px' }}></i>
                                 السابق
                             </button>
                         ) : (
@@ -2503,64 +2573,81 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             </button>
                         )}
                     </div>
-                    
-                    <div style={{ display: 'flex', gap: '12px' }}>
-                        {/* Draft Action */}
+
+                    {/* CENTER: Save Draft */}
+                    <div>
                         <button 
                             type="button" 
                             className="btn btn-secondary" 
                             onClick={() => handleSaveOrder(true)}
                             style={{ borderColor: 'var(--gold-border)' }}
                         >
+                            <i className="fa-regular fa-bookmark" style={{ marginLeft: '6px' }}></i>
                             حفظ مسودة
                         </button>
-                        
-                        {/* Step Navigation / Confirmation */}
+                    </div>
+
+                    {/* LEFT SIDE (RTL): Save Changes + Next/Confirm */}
+                    <div style={{ display: 'flex', gap: '10px' }}>
                         {step < 4 ? (
-                            <button 
-                                type="button" 
-                                className="btn btn-primary" 
-                                onClick={() => {
-                                    if (step === 1 && !isStep1Valid) {
-                                        showToast("يرجى استكمال بيانات العميل ورقم الهاتف والمحافظة والعنوان أولاً", "warning");
-                                        return;
-                                    }
-                                    if (step === 2 && !isStep2Valid) {
-                                        const hasZeroStock = items.some(i => i.variantSku && (i.maxStock || 0) <= 0);
-                                        if (hasZeroStock) {
-                                            showToast("لا يمكن المتابعة: يوجد منتج مختار غير متوفر في المخزن (الاستوك صفر)", "error");
-                                        } else {
-                                            showToast("يرجى اختيار منتجات صالحة ومتوفرة في المخزن أولاً", "warning");
+                            <>
+                                <button 
+                                    type="button" 
+                                    className="btn btn-primary" 
+                                    onClick={() => {
+                                        if (step === 1 && !isStep1Valid) {
+                                            showToast("يرجى استكمال بيانات العميل ورقم الهاتف والمحافظة والعنوان أولاً", "warning");
+                                            return;
                                         }
-                                        return;
+                                        if (step === 2 && !isStep2Valid) {
+                                            const hasZeroStock = items.some(i => i.variantSku && (i.maxStock || 0) <= 0);
+                                            if (hasZeroStock) {
+                                                showToast("لا يمكن المتابعة: يوجد منتج مختار غير متوفر في المخزن (الاستوك صفر)", "error");
+                                            } else {
+                                                showToast("يرجى اختيار منتجات صالحة ومتوفرة في المخزن أولاً", "warning");
+                                            }
+                                            return;
+                                        }
+                                        if (step === 3 && !isStep3Valid) {
+                                            showToast("يرجى تحديد مبلغ وسعر الشحن الزامي أولاً للمتابعة", "warning");
+                                            return;
+                                        }
+                                        setStep(prev => prev + 1);
+                                    }}
+                                    disabled={
+                                        (step === 1 && !isStep1Valid) ||
+                                        (step === 2 && !isStep2Valid) ||
+                                        (step === 3 && !isStep3Valid)
                                     }
-                                    if (step === 3 && !isStep3Valid) {
-                                        showToast("يرجى تحديد مبلغ وسعر الشحن الزامي أولاً للمتابعة", "warning");
-                                        return;
-                                    }
-                                    setStep(prev => prev + 1);
-                                }}
-                                disabled={
-                                    (step === 1 && !isStep1Valid) ||
-                                    (step === 2 && !isStep2Valid) ||
-                                    (step === 3 && !isStep3Valid)
-                                }
-                                style={{
-                                    opacity: ((step === 1 && !isStep1Valid) || (step === 2 && !isStep2Valid) || (step === 3 && !isStep3Valid)) ? 0.5 : 1,
-                                    cursor: ((step === 1 && !isStep1Valid) || (step === 2 && !isStep2Valid) || (step === 3 && !isStep3Valid)) ? 'not-allowed' : 'pointer'
-                                }}
-                            >
-                                التالي
-                            </button>
+                                    style={{
+                                        opacity: ((step === 1 && !isStep1Valid) || (step === 2 && !isStep2Valid) || (step === 3 && !isStep3Valid)) ? 0.5 : 1,
+                                        cursor: ((step === 1 && !isStep1Valid) || (step === 2 && !isStep2Valid) || (step === 3 && !isStep3Valid)) ? 'not-allowed' : 'pointer'
+                                    }}
+                                >
+                                    التالي
+                                    <i className="fa-solid fa-arrow-left" style={{ marginRight: '6px' }}></i>
+                                </button>
+                                {isEditMode && canConfirm && (
+                                    <button 
+                                        type="button" 
+                                        className="btn btn-primary" 
+                                        onClick={() => handleSaveOrder(false)}
+                                        style={{ background: '#27AE60', borderColor: '#27AE60' }}
+                                    >
+                                        <i className="fa-solid fa-floppy-disk" style={{ marginLeft: '6px' }}></i>
+                                        حفظ التعديلات
+                                    </button>
+                                )}
+                            </>
                         ) : (
                             <button 
                                 type="button" 
                                 className="btn btn-primary" 
                                 onClick={() => handleSaveOrder(false)}
-
                                 style={{ background: '#27AE60', borderColor: '#27AE60' }}
                             >
-                                تأكيد الطلب
+                                <i className="fa-solid fa-check" style={{ marginLeft: '6px' }}></i>
+                                {isEditMode ? 'حفظ التعديلات' : 'تأكيد الطلب'}
                             </button>
                         )}
                     </div>

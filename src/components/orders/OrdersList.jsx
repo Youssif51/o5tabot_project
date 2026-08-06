@@ -439,9 +439,16 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
     // Row Delete confirmation
     const handleDeleteOrder = (e, id) => {
         e.stopPropagation(); // prevent expanding row on delete click
-        showConfirm(`هل أنت متأكد من حذف السجل الخاص بالطلب ${id} نهائياً؟`, () => {
+        const order = (state.orders || []).find(o => o.id === id);
+        const isActive = order && order.status !== 'Cancelled';
+
+        let confirmMsg = `هل أنت متأكد من حذف السجل الخاص بالطلب #${id} نهائياً؟`;
+        if (isActive) {
+            confirmMsg = `⚠️ تحذير: هذا الطلب نشط حالياً.\n عند حذف الطلب سيتم إلغاؤه آلياً واعتباره ملغياً، وإعادة الكميات للمخزن، وإلغاء الشحنة والطلب إلكترونياً.\n\nهل أنت متأكد من رغبتك في حذف هذا الطلب النشط؟`;
+        }
+
+        showConfirm(confirmMsg, () => {
             deleteOrder(id);
-            showToast(`تم حذف الطلب ${id} بنجاح`, "success");
         });
     };
 
@@ -593,7 +600,7 @@ ${followUpReason}
                     });
 
                     (state.orders || []).forEach(o => {
-                        if (o.deposit > 0 && o.depositReceiverId) {
+                        if (o.deposit > 0 && o.depositReceiverId && o.depositRefundStatus !== 'returned' && o.depositStatus !== 'settled') {
                             if (!custodyMap[o.depositReceiverId]) {
                                 custodyMap[o.depositReceiverId] = { name: 'أدمن غير معروف', role: '', confirmed: 0, pending: 0, orderIds: [] };
                             }

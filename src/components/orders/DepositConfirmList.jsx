@@ -214,7 +214,7 @@ export default function DepositConfirmList() {
         });
 
         (state.orders || []).forEach(o => {
-            if (o.deposit > 0 && o.depositReceiverId) {
+            if (o.deposit > 0 && o.depositReceiverId && o.depositRefundStatus !== 'returned' && o.depositStatus !== 'settled') {
                 if (!custodyMap[o.depositReceiverId]) {
                     custodyMap[o.depositReceiverId] = { name: 'أدمن غير معروف', role: '', confirmed: 0, pending: 0, orderIds: [], ordersList: [] };
                 }

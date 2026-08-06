@@ -350,7 +350,9 @@ ${itemsList}
                             variantSku: oi.variant_sku,
                             quantity: parseInt(oi.quantity) || 0,
                             price: parseFloat(oi.price) || 0,
-                            costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0
+                            costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0,
+                            productName: oi.product_name || null,
+                            variantName: oi.variant_name || null
                         }));
                     }
                 }

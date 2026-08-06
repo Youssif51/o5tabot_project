@@ -228,10 +228,18 @@ Deno.serve(async (req) => {
 
     const totalQty = orderItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
     const itemsDescription = orderItems.map(item => {
-      const variant = (variantsData || []).find(v => v.sku === item.variant_sku);
-      const product = variant ? (productsData || []).find(p => p.id === variant.product_id) : null;
-      const prodName = product ? product.name : item.variant_sku;
-      const optName = variant ? variant.name : '';
+      // 1. Try denormalized names stored in order_items first
+      let prodName = item.product_name;
+      let optName = item.variant_name || '';
+
+      // 2. Fallback to product/variant lookup from database if empty
+      if (!prodName) {
+        const variant = (variantsData || []).find(v => v.sku === item.variant_sku);
+        const product = variant ? (productsData || []).find(p => p.id === variant.product_id) : null;
+        prodName = product ? product.name : "منتج"; // Fallback to "منتج" instead of variant_sku
+        optName = variant ? variant.name : '';
+      }
+
       const displayName = (optName && optName !== 'Standard Option' && optName !== 'Default Title')
         ? `${prodName} (${optName})`
         : prodName;
