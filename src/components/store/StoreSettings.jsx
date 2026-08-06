@@ -62,7 +62,7 @@ export default function StoreSettings() {
         }
     }, [state.userAvatars, state.currentUser?.id, state.currentUser?.avatar, state.storeSettings.adminAvatar, isDirty]);
 
-    const admins = (state.users || []).filter(u => u.role === 'SuperAdmin' || u.role === 'Admin');
+    const admins = (state.users || []).filter(u => u.role === 'SuperAdmin' || u.role === 'Admin' || u.role === 'Staff');
 
     const PERMISSIONS_MAP = {
         'view_dashboard': 'التقارير والإحصائيات',
@@ -260,7 +260,7 @@ export default function StoreSettings() {
                                         <div>
                                             <h4 style={{ margin: 0, fontSize: '16px', color: 'var(--text-color)' }}>{admin.name}</h4>
                                             <span style={{ fontSize: '12px', color: 'var(--primary-color)', fontWeight: 'bold' }}>
-                                                {admin.role === 'SuperAdmin' ? 'مدير النظام (SuperAdmin)' : 'مشرف (Admin)'}
+                                                {admin.role === 'SuperAdmin' ? 'مدير النظام (SuperAdmin)' : admin.role === 'Admin' ? 'مشرف (Admin)' : 'موظف (Staff)'}
                                             </span>
                                         </div>
                                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
@@ -269,11 +269,9 @@ export default function StoreSettings() {
                                                     كافة الصلاحيات
                                                 </span>
                                             ) : (
-                                                (admin.permissions || []).map(pid => (
-                                                    <span key={pid} className="status-badge" style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--text-color)', fontSize: '11px', padding: '2px 6px' }}>
-                                                        {PERMISSIONS_MAP[pid] || pid}
-                                                    </span>
-                                                ))
+                                                <span className="status-badge" style={{ background: 'rgba(241,196,15,0.1)', color: '#f1c40f', fontSize: '11px', padding: '2px 6px' }}>
+                                                    صلاحيات محدودة
+                                                </span>
                                             )}
                                         </div>
                                     </div>

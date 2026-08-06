@@ -2672,9 +2672,7 @@ export const AppProvider = ({ children }) => {
                             address: updatedAddressStr,
                             is_reviewed: o.is_reviewed || o.isReviewed || (o.source === 'shopify' ? true : o.is_reviewed),
                             isReviewed: o.is_reviewed || o.isReviewed || (o.source === 'shopify' ? true : o.isReviewed),
-                            ...(needsCreatorStamp && { createdBy: adminName, created_by: adminName }),
-                            updatedBy: adminName,
-                            updated_by: adminName
+                            ...(needsCreatorStamp && { createdBy: adminName, created_by: adminName })
                         };
                         if (newStatus === 'Cancelled' || newStatus === 'Rejected') {
                             updatedOrder.rejectedBy = prev.currentUser?.name || 'الأدمن';
@@ -2748,7 +2746,6 @@ export const AppProvider = ({ children }) => {
                 const dbUpdate = { 
                     status: newStatus,
                     address: updatedAddressStr,
-                    updated_by: adminName,
                     ...(needsCreatorStamp && { created_by: adminName })
                 };
                 
@@ -3486,8 +3483,7 @@ export const AppProvider = ({ children }) => {
                         }
                     },
                     goodsInfo: {
-                        amount: productValueAmount,
-                        notes: itemsDescription.substring(0, 500)
+                        amount: productValueAmount
                     },
                     receiver: {
                         firstName: firstName,

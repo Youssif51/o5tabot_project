@@ -91,6 +91,10 @@ export default function DepositConfirmList() {
         ...(state.deletedOrdersWithDeposits || [])
     ];
     const [expandedAdminId, setExpandedAdminId] = useState(null);
+    const [settleModalData, setSettleModalData] = useState(null); // { adminId, adminName, confirmedTotal, pendingTotal, ordersList, confirmedOrders }
+    const [customSettleAmount, setCustomSettleAmount] = useState('');
+    const [selectedSettleOrderIds, setSelectedSettleOrderIds] = useState([]);
+    const [amountError, setAmountError] = useState('');
     const location = useLocation();
 
     useEffect(() => {
@@ -113,6 +117,57 @@ export default function DepositConfirmList() {
             }, 300);
         }
     }, [location.state]);
+
+    const handleCustomAmountInputChange = (val, confirmedOrders, confirmedTotal) => {
+        const cleaned = val.replace(/[^0-9.]/g, '');
+        setCustomSettleAmount(cleaned);
+
+        const target = parseFloat(cleaned) || 0;
+        if (target > confirmedTotal) {
+            setAmountError(`⚠️ لا يمكن تجاوز إجمالي العهدة المؤكدة (${confirmedTotal.toLocaleString()} ${currency})`);
+        } else {
+            setAmountError('');
+        }
+
+        let runningSum = 0;
+        const selected = [];
+
+        // Sort confirmed oldest first
+        const sorted = [...confirmedOrders].sort((a, b) => new Date(a.createdAt || a.date) - new Date(b.createdAt || b.date));
+        for (const ord of sorted) {
+            const dep = parseFloat(ord.deposit) || 0;
+            if (runningSum + dep <= target) {
+                runningSum += dep;
+                selected.push(ord.id);
+            }
+        }
+        setSelectedSettleOrderIds(selected);
+    };
+
+    const handleCheckboxToggle = (orderId, confirmedOrders, confirmedTotal) => {
+        setSelectedSettleOrderIds(prev => {
+            let next;
+            if (prev.includes(orderId)) {
+                next = prev.filter(id => id !== orderId);
+            } else {
+                next = [...prev, orderId];
+            }
+            // Compute sum of next
+            const sum = confirmedOrders
+                .filter(o => next.includes(o.id))
+                .reduce((acc, o) => acc + (parseFloat(o.deposit) || 0), 0);
+            
+            setCustomSettleAmount(sum === 0 ? '' : sum.toString());
+            
+            if (sum > confirmedTotal) {
+                setAmountError(`⚠️ لا يمكن تجاوز إجمالي العهدة المؤكدة (${confirmedTotal.toLocaleString()} ${currency})`);
+            } else {
+                setAmountError('');
+            }
+            
+            return next;
+        });
+    };
     const [proofsPage, setProofsPage] = useState(1);
     // Refund confirmation state: { orderId, file, uploading }
     const [refundConfirm, setRefundConfirm] = useState({});
@@ -296,11 +351,45 @@ export default function DepositConfirmList() {
             
             {/* Header */}
             <div className="page-header" style={{ marginBottom: '24px' }}>
-                <div className="page-title-group">
-                    <h2 style={{ fontSize: '22px', fontWeight: 'bold' }}>مراجعة وتأكيد العرابين</h2>
-                    <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
-                        مراجعة المبالغ المحولة من العملاء وتأكيد استلام عهدة المحافظ الإلكترونية الخاصة بك.
-                    </p>
+                <div className="page-title-group" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '16px' }}>
+                    <div>
+                        <h2 style={{ fontSize: '22px', fontWeight: 'bold' }}>مراجعة وتأكيد العرابين</h2>
+                        <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '4px' }}>
+                            مراجعة المبالغ المحولة من العملاء وتأكيد استلام عهدة المحافظ الإلكترونية الخاصة بك.
+                        </p>
+                    </div>
+
+                    {/* My Custody Summary Badge */}
+                    {(() => {
+                        const myId = state.currentUser?.id;
+                        if (!myId) return null;
+                        let myConfirmed = 0;
+                        (allOrdersForDeposits || []).forEach(o => {
+                            if (o.depositReceiverId === myId && (parseFloat(o.deposit) || 0) > 0 && o.depositRefundStatus !== 'returned' && o.depositStatus !== 'settled') {
+                                if (o.depositStatus === 'confirmed') myConfirmed += (parseFloat(o.deposit) || 0);
+                            }
+                        });
+                        return (
+                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', gap: '10px',
+                                    background: 'linear-gradient(135deg, rgba(46,204,113,0.12) 0%, rgba(46,204,113,0.04) 100%)',
+                                    border: '1px solid rgba(46,204,113,0.25)',
+                                    borderRadius: '12px', padding: '10px 18px',
+                                    backdropFilter: 'blur(8px)',
+                                    boxShadow: '0 4px 15px rgba(46,204,113,0.05)'
+                                }}>
+                                    <i className="fa-solid fa-vault" style={{ fontSize: '18px', color: '#2ecc71' }}></i>
+                                    <div style={{ textAlign: 'right' }}>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '2px' }}>عُهدتك المؤكدة</div>
+                                        <div style={{ fontSize: '18px', fontWeight: 700, color: '#2ecc71', letterSpacing: '-0.5px', fontFamily: 'monospace' }}>
+                                            {myConfirmed.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500 }}>{currency}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             </div>
 
@@ -543,37 +632,106 @@ export default function DepositConfirmList() {
                     ) : (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
                             <div className="grid-responsive-fit-320">
-                                {adminCustodies.map(cust => (
-                                    <div key={cust.id} style={{ background: 'rgba(0,0,0,0.2)', padding: '18px', borderRadius: '8px', border: '1px solid var(--glass-border)', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <strong style={{ fontSize: '15px', color: '#fff' }}>{cust.name} ({cust.role === 'SuperAdmin' ? 'سوبر أدمن' : 'أدمن'})</strong>
-                                            <span className="badge badge-success" style={{ fontSize: '13px', background: 'rgba(46, 204, 113, 0.1)', color: '#2ecc71', border: '1px solid rgba(46, 204, 113, 0.2)', padding: '4px 8px', borderRadius: '4px' }}>
-                                                {cust.confirmed} {currency} عُهدة مؤكدة
-                                            </span>
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12.5px' }}>
-                                            <span style={{ color: 'var(--text-muted)' }}>معلق في المحفظة: {cust.pending} {currency}</span>
-                                            <div style={{ display: 'flex', gap: '8px' }}>
+                                {adminCustodies.map(cust => {
+                                    const isCurrentExpanded = expandedAdminId === cust.id;
+                                    return (
+                                        <div key={cust.id} style={{
+                                            background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.03) 0%, rgba(255, 255, 255, 0.01) 100%)',
+                                            padding: '20px',
+                                            borderRadius: '12px',
+                                            border: '1px solid var(--glass-border)',
+                                            boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.2)',
+                                            display: 'flex',
+                                            flexDirection: 'column',
+                                            gap: '16px',
+                                            transition: 'transform 0.2s ease, border-color 0.2s ease'
+                                        }}>
+                                            {/* Header Info */}
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                                    <div style={{
+                                                        width: '36px', height: '36px', borderRadius: '50%',
+                                                        background: cust.role === 'SuperAdmin' ? 'rgba(212,175,55,0.15)' : 'rgba(255,255,255,0.05)',
+                                                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                                        border: cust.role === 'SuperAdmin' ? '1px solid rgba(212,175,55,0.3)' : '1px solid var(--glass-border)'
+                                                    }}>
+                                                        <i className={cust.role === 'SuperAdmin' ? 'fa-solid fa-user-shield' : 'fa-solid fa-user-tie'} style={{ color: cust.role === 'SuperAdmin' ? 'var(--gold-primary)' : 'var(--text-secondary)', fontSize: '16px' }}></i>
+                                                    </div>
+                                                    <div>
+                                                        <div style={{ fontSize: '14px', fontWeight: 600, color: '#fff' }}>{cust.name}</div>
+                                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{cust.role === 'SuperAdmin' ? 'سوبر أدمن' : 'أدمن النظام'}</div>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Financial Metrics */}
+                                            <div style={{
+                                                background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: '8px',
+                                                display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                                            }}>
+                                                <div>
+                                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '2px' }}>عُهدة مؤكدة</div>
+                                                    <div style={{ fontSize: '15px', fontWeight: 700, color: '#2ecc71', fontFamily: 'monospace' }}>
+                                                        {cust.confirmed.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500 }}>{currency}</span>
+                                                    </div>
+                                                </div>
+                                                <div style={{ borderLeft: '1px solid var(--glass-border)', height: '24px' }}></div>
+                                                <div style={{ textAlign: 'left' }}>
+                                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginBottom: '2px' }}>معلق بالمحفظة</div>
+                                                    <div style={{ fontSize: '14px', fontWeight: 600, color: 'var(--gold-primary)', fontFamily: 'monospace' }}>
+                                                        {cust.pending.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500 }}>{currency}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            {/* Action Buttons */}
+                                            <div style={{ display: 'flex', gap: '8px', width: '100%' }}>
                                                 <button 
-                                                    className="btn"
-                                                    onClick={() => setExpandedAdminId(expandedAdminId === cust.id ? null : cust.id)}
-                                                    style={{ padding: '4px 10px', fontSize: '11px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: '4px', cursor: 'pointer' }}
+                                                    className="btn btn-secondary"
+                                                    onClick={() => setExpandedAdminId(isCurrentExpanded ? null : cust.id)}
+                                                    style={{
+                                                        flex: 1, padding: '8px 12px', fontSize: '12px',
+                                                        background: isCurrentExpanded ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.02)',
+                                                        color: 'var(--text-primary)', border: '1px solid var(--glass-border)',
+                                                        borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                                        transition: 'background 0.2s'
+                                                    }}
                                                 >
-                                                    {expandedAdminId === cust.id ? 'إخفاء التفاصيل' : 'عرض كشف العهدة'}
+                                                    <i className="fa-solid fa-list-check" style={{ fontSize: '12px' }}></i>
+                                                    {isCurrentExpanded ? 'إخفاء التفاصيل' : 'عرض كشف العهدة'}
                                                 </button>
                                                 {cust.confirmed > 0 && (
                                                     <button 
                                                         className="btn"
-                                                        onClick={() => settleAdminsCustody(cust.id, cust.orderIds)}
-                                                        style={{ padding: '4px 12px', fontSize: '11px', background: 'var(--gold-primary)', color: '#000', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
+                                                        onClick={() => {
+                                                            const confirmedOrders = cust.ordersList.filter(o => o.depositStatus === 'confirmed');
+                                                            setSettleModalData({
+                                                                adminId: cust.id,
+                                                                adminName: cust.name,
+                                                                confirmedTotal: cust.confirmed,
+                                                                pendingTotal: cust.pending,
+                                                                ordersList: cust.ordersList,
+                                                                confirmedOrders: confirmedOrders
+                                                            });
+                                                            setCustomSettleAmount(cust.confirmed.toString());
+                                                            setSelectedSettleOrderIds(confirmedOrders.map(o => o.id));
+                                                            setAmountError('');
+                                                        }}
+                                                        style={{
+                                                            flex: 1.2, padding: '8px 12px', fontSize: '12px',
+                                                            background: 'var(--gold-primary)', color: '#000', border: 'none',
+                                                            borderRadius: '8px', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                                                            transition: 'transform 0.1s'
+                                                        }}
                                                     >
-                                                        تسوية وتصفير العهدة
+                                                        <i className="fa-solid fa-receipt" style={{ fontSize: '12px' }}></i>
+                                                        تسوية العهدة
                                                     </button>
                                                 )}
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
 
                             {/* Active Custody Order Details Breakdown */}
@@ -1527,6 +1685,195 @@ export default function DepositConfirmList() {
                                 )}
                             </>
                         )}
+                    </div>
+                );
+            })()}
+
+            {/* Custom Settle Custody Modal */}
+            {settleModalData && (() => {
+                const confirmedOrders = settleModalData.confirmedOrders || [];
+                const selectedSum = confirmedOrders
+                    .filter(o => selectedSettleOrderIds.includes(o.id))
+                    .reduce((acc, o) => acc + (parseFloat(o.deposit) || 0), 0);
+                const remainingAmount = Math.max(0, settleModalData.confirmedTotal - selectedSum);
+
+                return (
+                    <div style={{
+                        position: 'fixed',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        background: 'rgba(0,0,0,0.85)',
+                        backdropFilter: 'blur(8px)',
+                        zIndex: 99999,
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '20px'
+                    }} onClick={() => setSettleModalData(null)}>
+                        <div style={{
+                            background: 'var(--bg-secondary, #1a1d24)',
+                            border: '1px solid var(--gold-primary)',
+                            borderRadius: '14px',
+                            maxWidth: '750px',
+                            width: '100%',
+                            maxHeight: '90vh',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            overflow: 'hidden',
+                            boxShadow: '0 20px 50px rgba(0,0,0,0.7)',
+                            animation: 'fadeIn 0.2s ease-out'
+                        }} onClick={e => e.stopPropagation()}>
+                            {/* Modal Header */}
+                            <div style={{
+                                padding: '16px 20px',
+                                borderBottom: '1px solid var(--glass-border)',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                background: 'rgba(0,0,0,0.2)'
+                            }}>
+                                <h3 style={{ margin: 0, fontSize: '16px', color: 'var(--gold-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                    <i className="fa-solid fa-receipt"></i>
+                                    تسوية وتصفير عهدة مخصصة - للأدمن {settleModalData.adminName}
+                                </h3>
+                                <button
+                                    onClick={() => setSettleModalData(null)}
+                                    style={{ background: 'none', border: 'none', color: '#fff', fontSize: '18px', cursor: 'pointer' }}
+                                >
+                                    ✕
+                                </button>
+                            </div>
+
+                            {/* Modal Body */}
+                            <div style={{ padding: '20px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                {/* Custody Breakdown Overview Card */}
+                                <div style={{
+                                    display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px'
+                                }}>
+                                    <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--glass-border)', textAlign: 'center' }}>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '4px' }}>إجمالي العهدة المؤكدة</div>
+                                        <strong style={{ fontSize: '15px', color: '#fff', fontFamily: 'monospace' }}>{settleModalData.confirmedTotal.toLocaleString()} {currency}</strong>
+                                    </div>
+                                    <div style={{ background: 'rgba(46,204,113,0.08)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(46,204,113,0.2)', textAlign: 'center' }}>
+                                        <div style={{ fontSize: '11px', color: '#2ecc71', marginBottom: '4px' }}>المبلغ المحدد للتسوية</div>
+                                        <strong style={{ fontSize: '16px', color: '#2ecc71', fontFamily: 'monospace' }}>{selectedSum.toLocaleString()} {currency}</strong>
+                                    </div>
+                                    <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '8px', border: '1px solid var(--glass-border)', textAlign: 'center' }}>
+                                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '4px' }}>المتبقي في عهدة الأدمن</div>
+                                        <strong style={{ fontSize: '15px', color: 'var(--gold-primary)', fontFamily: 'monospace' }}>{remainingAmount.toLocaleString()} {currency}</strong>
+                                    </div>
+                                </div>
+
+                                {/* Custom Amount Input */}
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                    <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>أدخل المبلغ المراد تسويته:</label>
+                                    <div style={{ position: 'relative' }}>
+                                        <input
+                                            type="text"
+                                            value={customSettleAmount}
+                                            onChange={e => handleCustomAmountInputChange(e.target.value, settleModalData.confirmedOrders, settleModalData.confirmedTotal)}
+                                            style={{
+                                                width: '100%', padding: '10px 14px', background: 'rgba(0,0,0,0.3)',
+                                                border: '1px solid var(--glass-border)', borderRadius: '8px', color: '#fff',
+                                                fontSize: '15px', fontFamily: 'monospace', outline: 'none'
+                                            }}
+                                            placeholder="أدخل قيمة التسوية..."
+                                        />
+                                        <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: 'var(--text-muted)' }}>{currency}</span>
+                                    </div>
+                                    {amountError && (
+                                        <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: 600, marginTop: '2px' }}>{amountError}</span>
+                                    )}
+                                </div>
+
+                                {/* Table of Confirmed Orders */}
+                                <div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                                        <label style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-secondary)' }}>حدد الطلبات لتسويتها يدوياً أو دع النظام يختارها:</label>
+                                        <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>محدد: {selectedSettleOrderIds.length} من {confirmedOrders.length} طلبات</span>
+                                    </div>
+                                    <div className="table-wrapper" style={{ maxHeight: '200px', overflowY: 'auto', border: '1px solid var(--glass-border)', borderRadius: '8px' }}>
+                                        <table className="custom-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                                            <thead>
+                                                <tr style={{ background: 'rgba(0,0,0,0.2)', borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }}>
+                                                    <th style={{ padding: '8px', textAlign: 'center', width: '40px' }}>✓</th>
+                                                    <th style={{ padding: '8px', textAlign: 'center' }}>رقم الطلب</th>
+                                                    <th style={{ padding: '8px', textAlign: 'center' }}>العميل</th>
+                                                    <th style={{ padding: '8px', textAlign: 'center' }}>العربون</th>
+                                                    <th style={{ padding: '8px', textAlign: 'center' }}>التاريخ</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {confirmedOrders.map(ord => {
+                                                    const isChecked = selectedSettleOrderIds.includes(ord.id);
+                                                    return (
+                                                        <tr 
+                                                            key={ord.id} 
+                                                            onClick={() => handleCheckboxToggle(ord.id, confirmedOrders, settleModalData.confirmedTotal)}
+                                                            style={{
+                                                                borderBottom: '1px solid rgba(255,255,255,0.05)', textAlign: 'center',
+                                                                cursor: 'pointer', background: isChecked ? 'rgba(46,204,113,0.03)' : 'transparent',
+                                                                transition: 'background 0.2s'
+                                                            }}
+                                                        >
+                                                            <td style={{ padding: '8px' }} onClick={e => e.stopPropagation()}>
+                                                                <input
+                                                                    type="checkbox"
+                                                                    checked={isChecked}
+                                                                    onChange={() => handleCheckboxToggle(ord.id, confirmedOrders, settleModalData.confirmedTotal)}
+                                                                    style={{ cursor: 'pointer' }}
+                                                                />
+                                                            </td>
+                                                            <td style={{ padding: '8px', fontWeight: 'bold', color: 'var(--gold-primary)' }}>#{ord.id}</td>
+                                                            <td style={{ padding: '8px' }}>{ord.client}</td>
+                                                            <td style={{ padding: '8px', fontWeight: 'bold' }}>{ord.deposit} {currency}</td>
+                                                            <td style={{ padding: '8px', color: 'var(--text-muted)' }}>{ord.date}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Modal Footer */}
+                            <div style={{
+                                padding: '14px 20px',
+                                borderTop: '1px solid var(--glass-border)',
+                                display: 'flex',
+                                justifyContent: 'space-between',
+                                alignItems: 'center',
+                                background: 'rgba(0,0,0,0.2)'
+                            }}>
+                                <button
+                                    onClick={() => setSettleModalData(null)}
+                                    style={{
+                                        padding: '8px 18px', background: 'rgba(255,255,255,0.05)', color: '#fff',
+                                        border: '1px solid var(--glass-border)', borderRadius: '8px', cursor: 'pointer', fontSize: '13px'
+                                    }}
+                                >
+                                    إلغاء
+                                </button>
+                                <button
+                                    disabled={selectedSettleOrderIds.length === 0 || !!amountError}
+                                    onClick={async () => {
+                                        setSettleModalData(null);
+                                        await settleAdminsCustody(settleModalData.adminId, selectedSettleOrderIds);
+                                    }}
+                                    style={{
+                                        padding: '8px 24px', background: (selectedSettleOrderIds.length === 0 || !!amountError) ? 'var(--text-muted)' : 'var(--gold-primary)',
+                                        color: '#000', border: 'none', borderRadius: '8px', cursor: (selectedSettleOrderIds.length === 0 || !!amountError) ? 'not-allowed' : 'pointer',
+                                        fontSize: '13px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '6px'
+                                    }}
+                                >
+                                    <i className="fa-solid fa-receipt"></i>
+                                    تأكيد تسوية الطلبات المحددة ({selectedSum.toLocaleString()} {currency})
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 );
             })()}
