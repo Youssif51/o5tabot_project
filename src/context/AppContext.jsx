@@ -272,6 +272,17 @@ export const AppProvider = ({ children }) => {
                         productName: oi.product_name || null,
                         variantName: oi.variant_name || null
                     }));
+                    let isReviewed = false;
+                    if (o.address) {
+                        if (typeof o.address === 'object') {
+                            isReviewed = !!(o.address.isReviewed || o.address.is_reviewed);
+                        } else if (typeof o.address === 'string' && o.address.trim().startsWith('{')) {
+                            try {
+                                const parsed = JSON.parse(o.address);
+                                isReviewed = !!(parsed.isReviewed || parsed.is_reviewed);
+                            } catch(e) {}
+                        }
+                    }
                     return {
                         id: o.id,
                         client: o.client,
@@ -301,6 +312,8 @@ export const AppProvider = ({ children }) => {
                         applied_coupon_code: o.applied_coupon_code || null,
                         discount_reason: o.discount_reason || null,
                         discount_reason_details: o.discount_reason_details || null,
+                        is_reviewed: isReviewed,
+                        isReviewed: isReviewed,
                         items
                     };
                 });
@@ -497,10 +510,22 @@ export const AppProvider = ({ children }) => {
                         price: parseFloat(oi.price) || 0,
                         costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0
                     }));
+                    let isReviewed = false;
+                    if (o.address) {
+                        if (typeof o.address === 'object') {
+                            isReviewed = !!(o.address.isReviewed || o.address.is_reviewed);
+                        } else if (typeof o.address === 'string' && o.address.trim().startsWith('{')) {
+                            try {
+                                const parsed = JSON.parse(o.address);
+                                isReviewed = !!(parsed.isReviewed || parsed.is_reviewed);
+                            } catch(e) {}
+                        }
+                    }
                     return {
                         ...o,
                         items: oItems,
-                        isReviewed: o.is_reviewed,
+                        isReviewed: isReviewed,
+                        is_reviewed: isReviewed,
                         shopifyOrderId: o.shopify_order_id,
                         paymentMethod: o.payment_method,
                         shippingFee: o.shipping_fee,
@@ -2490,9 +2515,17 @@ export const AppProvider = ({ children }) => {
         if (!order) return;
         
         let addressObj = null;
-        try {
-            addressObj = order.address ? JSON.parse(order.address) : null;
-        } catch(e) {}
+        if (order.address) {
+            if (typeof order.address === 'object') {
+                addressObj = order.address;
+            } else {
+                try {
+                    addressObj = JSON.parse(order.address);
+                } catch(e) {
+                    addressObj = { detailAddress: order.address };
+                }
+            }
+        }
 
         let updatedAddressStr = newAddress ? (typeof newAddress === 'string' ? newAddress : JSON.stringify(newAddress)) : order.address;
 
@@ -2666,6 +2699,42 @@ export const AppProvider = ({ children }) => {
             try {
                 const adminName = state.currentUser?.name || 'الأدمن';
                 const needsCreatorStamp = !order.createdBy || order.createdBy === 'Shopify Webhook';
+                // 1. Fetch latest order address from database to prevent overwriting Bosta tracking info
+                const { data: dbOrderData } = await supabase.from('orders').select('address, status').eq('id', orderId).maybeSingle();
+                let dbAddressObj = null;
+                if (dbOrderData && dbOrderData.address) {
+                    try {
+                        dbAddressObj = typeof dbOrderData.address === 'string' ? JSON.parse(dbOrderData.address) : dbOrderData.address;
+                    } catch (e) {}
+                }
+
+                if (dbAddressObj && dbAddressObj.bostaDeliveryId) {
+                    const localHadBosta = addressObj && addressObj.bostaDeliveryId;
+                    if (!localHadBosta) {
+                        // The database was updated with Bosta tracking info in the background!
+                        addressObj = dbAddressObj;
+                        updatedAddressStr = JSON.stringify(dbAddressObj);
+                        
+                        // Trigger Bosta cancellation here since it was skipped in the synchronous path
+                        if (newStatus === 'Cancelled' && dbAddressObj.bostaStateCode !== 49) {
+                            try {
+                                showToast("جاري إلغاء الشحنة في بوسطة...", "info");
+                                const { data: bostaData } = await supabase.functions.invoke('manage-bosta-delivery', {
+                                    body: { action: 'cancel', bostaDeliveryId: dbAddressObj.bostaDeliveryId }
+                                });
+                                if (bostaData && bostaData.success) {
+                                    dbAddressObj.bostaStateName = "Cancelled";
+                                    dbAddressObj.bostaStateCode = 49;
+                                    updatedAddressStr = JSON.stringify(dbAddressObj);
+                                    showToast("تم إلغاء الشحنة في بوسطة بنجاح", "success");
+                                }
+                            } catch (e) {
+                                console.error("Error cancelling late-bound Bosta delivery:", e);
+                            }
+                        }
+                    }
+                }
+
                 const dbUpdate = { 
                     status: newStatus,
                     address: updatedAddressStr,
@@ -2734,8 +2803,6 @@ export const AppProvider = ({ children }) => {
                                     }))
                                 }));
                                 
-                                await syncVariantStockToShopify(itemSku);
-                                
                                 const uCost = item.cost_at_time_of_sale || item.costAtTimeOfSale || vData.average_cost || 0;
                                 const tCost = uCost * Math.abs(item.quantity);
 
@@ -2751,6 +2818,8 @@ export const AppProvider = ({ children }) => {
                                     total_cost: tCost,
                                     balance_after: newStock
                                 }]);
+                                
+                                await syncVariantStockToShopify(itemSku);
                             }
                         }
                     } else if (wasDeducted && !isDeducted) {
@@ -2774,8 +2843,6 @@ export const AppProvider = ({ children }) => {
                                     }))
                                 }));
                                 
-                                await syncVariantStockToShopify(itemSku);
-                                
                                 const uCost = item.cost_at_time_of_sale || item.costAtTimeOfSale || vData.average_cost || 0;
                                 const tCost = uCost * Math.abs(item.quantity);
 
@@ -2791,6 +2858,8 @@ export const AppProvider = ({ children }) => {
                                     total_cost: tCost,
                                     balance_after: newStock
                                 }]);
+                                
+                                await syncVariantStockToShopify(itemSku);
                             }
                         }
                     } else if (isCancellation && isShopifyOrder) {
@@ -4618,11 +4687,18 @@ export const AppProvider = ({ children }) => {
             // Build updated address object ensuring is_reviewed: true is persisted
             let finalAddressStr = data.updatedAddress || targetOrder?.address || '';
             try {
-                const parsed = typeof finalAddressStr === 'string' ? JSON.parse(finalAddressStr) : { ...finalAddressStr };
+                let parsed;
+                if (typeof finalAddressStr === 'string' && finalAddressStr.trim().startsWith('{')) {
+                    parsed = JSON.parse(finalAddressStr);
+                } else {
+                    parsed = { detailAddress: finalAddressStr };
+                }
                 parsed.isReviewed = true;
                 parsed.is_reviewed = true;
                 finalAddressStr = JSON.stringify(parsed);
-            } catch(e) {}
+            } catch(e) {
+                console.error("Error setting isReviewed on address JSON in approveOrderWithBosta:", e);
+            }
 
             const updatePayload = {
                 deposit: depositAmount,

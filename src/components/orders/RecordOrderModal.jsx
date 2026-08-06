@@ -101,7 +101,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const [deposit, setDeposit] = useState('');
     const [depositReceiverId, setDepositReceiverId] = useState(() => state.currentUser?.id || '');
     const [depositStatus, setDepositStatus] = useState('confirmed');
-    const [depositConfirmChecked, setDepositConfirmChecked] = useState(true);
+    const [depositConfirmChecked, setDepositConfirmChecked] = useState(false);
     
     const currency = state.storeSettings.currency || '$';
     
@@ -341,6 +341,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         // Default receiver to the currently logged-in user when creating a new order
         setDepositReceiverId(state.currentUser?.id || '');
         setDepositStatus('confirmed');
+        setDepositConfirmChecked(false);
         setCustomerId(null);
         setCouponCode('');
         setCouponValid(false);
@@ -384,6 +385,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     // If none was saved, fall back to current user as a safe default
                     setDepositReceiverId(order.depositReceiverId || state.currentUser?.id || '');
                     setDepositStatus(order.depositStatus || 'confirmed');
+                    setDepositConfirmChecked(order.depositStatus === 'confirmed');
 
                     const { city, district } = resolveBostaCityAndDistrict(order.governorate, parsed.bostaCityCode, parsed.bostaDistrictId, parsed.bostaDistrictName);
                     setCitySelected(city || null);
@@ -1003,7 +1005,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             bostaZoneId: districtSelected?.zoneId,
                             allowToOpenPackage: allowToOpenPackage
                         };
-                        approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit);
+                        await approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit);
                     }
                 } else {
                     await addOrder(newOrderObj);
@@ -1023,7 +1025,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             bostaZoneId: districtSelected?.zoneId,
                             allowToOpenPackage: allowToOpenPackage
                         };
-                        approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit);
+                        await approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit);
                     }
                 }
 
