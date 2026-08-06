@@ -41,7 +41,10 @@ const parseAddressData = (addressData) => {
             bostaExceptionReason = parsed.bostaExceptionReason || '';
         }
     }
-    return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode, bostaStateName, bostaStateCode, bostaTrackingNumber, bostaExceptionReason };
+    const isDeleted = addressData && typeof addressData === 'object' 
+        ? !!(addressData.isDeleted || addressData.is_deleted)
+        : (addressData && typeof addressData === 'string' && addressData.startsWith('{') ? (() => { try { const p = JSON.parse(addressData); return !!(p.isDeleted || p.is_deleted); } catch(e) { return false; } })() : false);
+    return { detailAddress, phone, vatEnabled, orderDiscountPercent, customerCode, bostaStateName, bostaStateCode, bostaTrackingNumber, bostaExceptionReason, isDeleted };
 };
 
 const normalizePhoneNumber = (phoneStr) => {
@@ -83,6 +86,10 @@ const getRemainingToCollect = (ord) => {
 
 export default function DepositConfirmList() {
     const { state, updateDepositStatus, settleAdminsCustody, confirmDepositRefund, confirmDepositAndRefund, showToast, showConfirm } = useContext(AppContext);
+    const allOrdersForDeposits = [
+        ...(state.orders || []),
+        ...(state.deletedOrdersWithDeposits || [])
+    ];
     const [expandedAdminId, setExpandedAdminId] = useState(null);
     const location = useLocation();
 
@@ -144,7 +151,7 @@ export default function DepositConfirmList() {
     };
 
     // Orders that were cancelled but this admin still needs to return the deposit
-    const myPendingRefunds = (state.orders || []).filter(o =>
+    const myPendingRefunds = (allOrdersForDeposits || []).filter(o =>
         o.depositReceiverId === state.currentUser?.id &&
         o.status === 'Cancelled' &&
         (parseFloat(o.deposit) || 0) > 0 &&
@@ -198,7 +205,7 @@ export default function DepositConfirmList() {
     const currency = state.storeSettings?.currency || 'EGP';
 
     // 1. Filter pending deposits assigned to current admin
-    const myPendingDeposits = (state.orders || []).filter(o => 
+    const myPendingDeposits = (allOrdersForDeposits || []).filter(o => 
         o.depositReceiverId === state.currentUser?.id && 
         o.depositStatus === 'pending' &&
         (parseFloat(o.deposit) || 0) > 0
@@ -213,7 +220,7 @@ export default function DepositConfirmList() {
             custodyMap[u.id] = { name: u.name, role: u.role, confirmed: 0, pending: 0, orderIds: [], ordersList: [] };
         });
 
-        (state.orders || []).forEach(o => {
+        (allOrdersForDeposits || []).forEach(o => {
             if (o.deposit > 0 && o.depositReceiverId && o.depositRefundStatus !== 'returned' && o.depositStatus !== 'settled') {
                 if (!custodyMap[o.depositReceiverId]) {
                     custodyMap[o.depositReceiverId] = { name: 'أدمن غير معروف', role: '', confirmed: 0, pending: 0, orderIds: [], ordersList: [] };
@@ -238,7 +245,7 @@ export default function DepositConfirmList() {
     const adminCustodies = getAdminCustodyData();
 
     // 3. Historical settlements/audit log
-    const historicalDeposits = (state.orders || []).filter(o => 
+    const historicalDeposits = (allOrdersForDeposits || []).filter(o => 
         o.deposit > 0 && 
         (o.depositStatus === 'settled' || o.depositStatus === 'rejected')
     );
@@ -1143,7 +1150,7 @@ export default function DepositConfirmList() {
 
             {/* Section 4: SuperAdmin Panel for Cancelled and Returned Deposits (Follow-up List) */}
             {state.currentUser?.role === 'SuperAdmin' && (() => {
-                const cancelledOrReturnedDeposits = (state.orders || []).filter(o => 
+                const cancelledOrReturnedDeposits = (allOrdersForDeposits || []).filter(o => 
                     o.status === 'Cancelled' && 
                     (parseFloat(o.deposit) || 0) > 0 &&
                     o.depositRefundStatus !== 'returned'
@@ -1273,6 +1280,7 @@ export default function DepositConfirmList() {
                                                 <th style={{ padding: '10px 8px', textAlign: 'center' }}>رقم الهاتف</th>
                                                 <th style={{ padding: '10px 8px', textAlign: 'right' }}>المنتجات المطلوبة</th>
                                                 <th style={{ padding: '10px 8px', textAlign: 'center' }}>مبلغ العربون</th>
+                                                <th style={{ padding: '10px 8px', textAlign: 'center' }}>مستلم العربون</th>
                                                 <th style={{ padding: '10px 8px', textAlign: 'center' }}>الحالة</th>
                                                 <th style={{ padding: '10px 8px', textAlign: 'center' }}>تاريخ الإلغاء/الطلب</th>
                                                 <th style={{ padding: '10px 8px', textAlign: 'center' }}>إجراءات الاتصال</th>
@@ -1282,6 +1290,8 @@ export default function DepositConfirmList() {
                                             {paginatedSA.map(ord => {
                                                 const { phone } = parseAddressData(ord.address);
                                                 const orderClass = getOrderClass(ord);
+                                                const receiverUser = (state.users || []).find(u => u.id === ord.depositReceiverId);
+                                                const receiverName = receiverUser ? receiverUser.name : 'أدمن غير معروف';
                                                 return (
                                                     <tr key={ord.id} style={{ borderBottom: '1px solid var(--glass-border)' }}>
                                                         <td style={{ padding: '12px 8px', fontWeight: 600 }}>{ord.client}</td>
@@ -1294,6 +1304,7 @@ export default function DepositConfirmList() {
                                                             </div>
                                                         </td>
                                                         <td style={{ padding: '12px 8px', textAlign: 'center', fontWeight: 'bold', color: 'var(--gold-primary)' }}>{ord.deposit} {currency}</td>
+                                                        <td style={{ padding: '12px 8px', textAlign: 'center', color: 'var(--text-secondary)' }}>{receiverName}</td>
                                                         <td style={{ padding: '12px 8px', textAlign: 'center' }}>
                                                             <span style={{ 
                                                                 padding: '4px 10px', 
@@ -1371,6 +1382,8 @@ export default function DepositConfirmList() {
                                 {/* Mobile Layout (Card Based) */}
                                 <div className="sa-mobile-cards" style={{ display: 'none' }}>
                                     {paginatedSA.map(ord => {
+                                         const receiverUser = (state.users || []).find(u => u.id === ord.depositReceiverId);
+                                         const receiverName = receiverUser ? receiverUser.name : 'أدمن غير معروف';
                                         const { phone } = parseAddressData(ord.address);
                                         const orderClass = getOrderClass(ord);
                                         return (
@@ -1396,6 +1409,10 @@ export default function DepositConfirmList() {
                                                         {orderClass}
                                                     </span>
                                                 </div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', marginTop: '4px' }}>
+                                                     <span style={{ color: 'var(--text-muted)' }}>مستلم العربون:</span>
+                                                     <span style={{ color: 'var(--text-primary)', fontWeight: 'bold' }}>{receiverName}</span>
+                                                 </div>
                                                 <div style={{ fontSize: '12.5px', margin: '4px 0' }}>
                                                     <div style={{ fontWeight: 600, marginBottom: '4px', color: 'var(--text-secondary)' }}>المنتجات المطلوبة:</div>
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingRight: '8px' }}>

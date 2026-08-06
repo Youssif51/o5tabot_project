@@ -21,6 +21,27 @@ function normalizePhone(phoneStr: string | null | undefined): string {
   return cleaned;
 }
 
+// Fetch helper function with exponential backoff retry for transient failures (e.g. 5xx or 429 status codes)
+async function fetchWithRetry(url: string, options: any, retries = 3, delay = 1000): Promise<Response> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const res = await fetch(url, options);
+      if (res.status >= 500 || res.status === 429) {
+        console.warn(`Bosta API returned status ${res.status}. Retrying ${i + 1}/${retries} after ${delay * Math.pow(2, i)}ms...`);
+        await new Promise(r => setTimeout(r, delay * Math.pow(2, i)));
+        continue;
+      }
+      return res;
+    } catch (err) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      console.error(`Bosta API request error: ${errMsg}. Retrying ${i + 1}/${retries} after ${delay * Math.pow(2, i)}ms...`);
+      if (i === retries - 1) throw err;
+      await new Promise(r => setTimeout(r, delay * Math.pow(2, i)));
+    }
+  }
+  return fetch(url, options);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -217,7 +238,7 @@ Deno.serve(async (req) => {
     const skus = orderItems.map(item => item.variant_sku);
     const { data: variantsData } = await supabaseAdmin
       .from('product_variants')
-      .select('sku, name, product_id')
+      .select('sku, name, product_id, retail_price')
       .in('sku', skus);
 
     const productIds = (variantsData || []).map(v => v.product_id);
@@ -250,8 +271,12 @@ Deno.serve(async (req) => {
     const shippingFee = parseFloat(order.shipping_fee) || 0;
     const codAmount = Math.max(0, orderTotal - (parseFloat(depositAmount) || 0));
     
-    // Goods Info Amount should be the net product total (without shipping)
-    const netProductsTotal = Math.max(0, orderTotal - shippingFee);
+    // Goods Info Amount should be the original products subtotal (before order discounts) using original retail prices
+    const grossProductsTotal = orderItems.reduce((sum, item) => {
+      const variant = (variantsData || []).find(v => v.sku === item.variant_sku);
+      const originalPrice = variant ? (parseFloat(variant.retail_price) || 0) : (parseFloat(item.price) || 0);
+      return sum + (originalPrice * (parseInt(item.quantity) || 0));
+    }, 0);
 
     // Ensure address line 1 is at least 5 characters
     let firstLine = detailAddress.trim();
@@ -259,7 +284,7 @@ Deno.serve(async (req) => {
       firstLine = `${firstLine} - المحافظة أو المنطقة`;
     }
 
-    const productValueAmount = netProductsTotal < 1000 ? netProductsTotal + 100 : netProductsTotal;
+    const productValueAmount = grossProductsTotal < 1000 ? grossProductsTotal + 100 : grossProductsTotal;
 
     const bostaPayload = {
       type: 10, // Send / Deliver
@@ -296,8 +321,8 @@ Deno.serve(async (req) => {
 
     console.log("Sending payload to Bosta API:", JSON.stringify(bostaPayload, null, 2));
 
-    // 6. Send request to Bosta
-    const bostaRes = await fetch('https://api.bosta.co/api/v2/deliveries?apiVersion=1', {
+    // 6. Send request to Bosta with retry capability
+    const bostaRes = await fetchWithRetry('https://api.bosta.co/api/v2/deliveries?apiVersion=1', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

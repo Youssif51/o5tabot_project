@@ -20,6 +20,7 @@ const defaultActivities = [];
         products: [],
         suppliers: [],
         orders: [],
+        deletedOrdersWithDeposits: [],
         purchaseOrders: [],
         wastes: [],
         stockLedger: [],
@@ -123,7 +124,7 @@ export const AppProvider = ({ children }) => {
                     supabase.from('suppliers').select('*'),
                     supabase.from('orders')
                         .select('*')
-                        .or(`date.gte.${ninetyDaysAgoStr},status.not.in.(Completed,Cancelled)`)
+                        .or(`date.gte.${ninetyDaysAgoStr},status.not.in.(Completed,Cancelled),deposit_status.eq.pending,deposit_refund_status.eq.awaiting_return`)
                         .order('date', { ascending: false }),
                     supabase.from('purchase_orders')
                         .select('*')
@@ -273,13 +274,16 @@ export const AppProvider = ({ children }) => {
                         variantName: oi.variant_name || null
                     }));
                     let isReviewed = false;
+                    let isDeleted = false;
                     if (o.address) {
                         if (typeof o.address === 'object') {
                             isReviewed = !!(o.address.isReviewed || o.address.is_reviewed);
+                            isDeleted = !!(o.address.isDeleted || o.address.is_deleted);
                         } else if (typeof o.address === 'string' && o.address.trim().startsWith('{')) {
                             try {
                                 const parsed = JSON.parse(o.address);
                                 isReviewed = !!(parsed.isReviewed || parsed.is_reviewed);
+                                isDeleted = !!(parsed.isDeleted || parsed.is_deleted);
                             } catch(e) {}
                         }
                     }
@@ -314,6 +318,8 @@ export const AppProvider = ({ children }) => {
                         discount_reason_details: o.discount_reason_details || null,
                         is_reviewed: isReviewed,
                         isReviewed: isReviewed,
+                        isDeleted: isDeleted,
+                        is_deleted: isDeleted,
                         items
                     };
                 });
@@ -453,7 +459,8 @@ export const AppProvider = ({ children }) => {
                     ...prev,
                     products: mappedProducts,
                     suppliers: mappedSuppliers,
-                    orders: mappedOrders,
+                    orders: mappedOrders.filter(o => !o.isDeleted),
+                    deletedOrdersWithDeposits: mappedOrders.filter(o => o.isDeleted && o.deposit > 0),
                     purchaseOrders: mappedPurchaseOrders,
                     wastes: mappedWastes,
                     customers: sortedCustomers,
@@ -2212,7 +2219,8 @@ export const AppProvider = ({ children }) => {
     const settleAdminsCustody = async (adminId, orderIds) => {
         setState(prev => ({
             ...prev,
-            orders: (prev.orders || []).map(o => orderIds.includes(o.id) ? { ...o, depositStatus: 'settled' } : o)
+            orders: (prev.orders || []).map(o => orderIds.includes(o.id) ? { ...o, depositStatus: 'settled' } : o),
+            deletedOrdersWithDeposits: (prev.deletedOrdersWithDeposits || []).map(o => orderIds.includes(o.id) ? { ...o, depositStatus: 'settled' } : o)
         }));
         if (supabase) {
             try {
@@ -2501,10 +2509,12 @@ export const AppProvider = ({ children }) => {
                             }
                         }
                     }
+                    await loadSupabaseData();
                 } catch (e) {
                     console.error("Supabase Error:", e);
                     showToast(`حدث خطأ أثناء الاتصال بالخادم: ${e.message}`, "error");
                     rollbackLocalState();
+                    await loadSupabaseData();
                 }
             })();
         }
@@ -2901,9 +2911,11 @@ export const AppProvider = ({ children }) => {
                         const orderTotalVal = parseFloat(orderData.total_value) || 0;
                         updateCustomerStats(orderData.customer_id, -orderTotalVal, -1);
                     }
+                    await loadSupabaseData();
                 }
             } catch (e) {
                 console.error("Supabase Error:", e);
+                await loadSupabaseData();
             }
         }
     };
@@ -2946,10 +2958,45 @@ export const AppProvider = ({ children }) => {
                     }
                 });
             }
+            let newOrders = [];
+            let newDeletedOrdersWithDeposits = [...(prev.deletedOrdersWithDeposits || [])];
+            
+            if (targetOrderObj && parseFloat(targetOrderObj.deposit) > 0) {
+                // Soft delete: remove from orders, add to deletedOrdersWithDeposits with updated details
+                newOrders = (prev.orders || []).filter(o => o.id !== orderId);
+                
+                let parsedAddr = {};
+                if (targetOrderObj.address) {
+                    try {
+                        parsedAddr = typeof targetOrderObj.address === 'string' ? JSON.parse(targetOrderObj.address) : targetOrderObj.address;
+                    } catch (e) {
+                        parsedAddr = { detailAddress: targetOrderObj.address };
+                    }
+                }
+                parsedAddr.isDeleted = true;
+                parsedAddr.is_deleted = true;
+                
+                const softDeletedOrder = {
+                    ...targetOrderObj,
+                    status: 'Cancelled',
+                    address: parsedAddr,
+                    isDeleted: true,
+                    is_deleted: true,
+                    depositRefundStatus: (targetOrderObj.depositRefundStatus !== 'returned' && targetOrderObj.depositStatus !== 'settled') ? 'awaiting_return' : targetOrderObj.depositRefundStatus
+                };
+                
+                // Avoid duplication
+                newDeletedOrdersWithDeposits = newDeletedOrdersWithDeposits.filter(o => o.id !== orderId);
+                newDeletedOrdersWithDeposits.push(softDeletedOrder);
+            } else {
+                newOrders = (prev.orders || []).filter(o => o.id !== orderId);
+            }
+
             return {
                 ...prev,
                 products,
-                orders: (prev.orders || []).filter(o => o.id !== orderId)
+                orders: newOrders,
+                deletedOrdersWithDeposits: newDeletedOrdersWithDeposits
             };
         });
 
@@ -3066,8 +3113,34 @@ export const AppProvider = ({ children }) => {
                         }
                     }
 
-                    // Finally delete order from DB (cascade deletes order_items)
-                    await supabase.from('orders').delete().eq('id', orderId);
+                    // If order has deposit, do NOT delete from DB, just update status and address JSON to mark isDeleted
+                    if (targetOrderObj && parseFloat(targetOrderObj.deposit) > 0) {
+                        let updatedAddressObj = {};
+                        if (targetOrderObj.address) {
+                            try {
+                                updatedAddressObj = typeof targetOrderObj.address === 'string' ? JSON.parse(targetOrderObj.address) : targetOrderObj.address;
+                            } catch (e) {
+                                updatedAddressObj = { detailAddress: targetOrderObj.address };
+                            }
+                        }
+                        updatedAddressObj.isDeleted = true;
+                        updatedAddressObj.is_deleted = true;
+
+                        const dbUpdate = {
+                            status: 'Cancelled',
+                            address: JSON.stringify(updatedAddressObj)
+                        };
+
+                        if (targetOrderObj.depositRefundStatus !== 'returned' && targetOrderObj.depositStatus !== 'settled') {
+                            dbUpdate.deposit_refund_status = 'awaiting_return';
+                        }
+
+                        await supabase.from('orders').update(dbUpdate).eq('id', orderId);
+                    } else {
+                        // Finally delete order from DB (cascade deletes order_items)
+                        await supabase.from('orders').delete().eq('id', orderId);
+                    }
+                    await loadSupabaseData();
                 } catch (e) {
                     console.error("Supabase Error during order deletion:", e);
                 }
@@ -3083,22 +3156,65 @@ export const AppProvider = ({ children }) => {
         let hasChanges = false;
         
         if (oldOrderState) {
-            const clientChanged = (oldOrderState.client || '') !== (updatedOrder.client || '');
+            const clientChanged = (oldOrderState.client || '').trim() !== (updatedOrder.client || '').trim();
             const warehouseChanged = (oldOrderState.warehouse || 'Sulur') !== (updatedOrder.warehouse || 'Sulur');
             const statusChanged = (oldOrderState.status || '') !== (updatedOrder.status || '');
-            const totalChanged = (parseFloat(oldOrderState.totalValue) || 0) !== (parseFloat(updatedOrder.totalValue) || 0);
-            const discountTypeChanged = (oldOrderState.discount_type || oldOrderState.discountType || null) !== (updatedOrder.discount_type || updatedOrder.discountType || null);
-            const discountValChanged = (parseFloat(oldOrderState.discount_value || oldOrderState.discountValue) || 0) !== (parseFloat(updatedOrder.discount_value || updatedOrder.discountValue) || 0);
-            const couponChanged = (oldOrderState.applied_coupon_code || oldOrderState.appliedCouponCode || null) !== (updatedOrder.applied_coupon_code || updatedOrder.appliedCouponCode || null);
-            const reasonChanged = (oldOrderState.discount_reason || oldOrderState.discountReason || null) !== (updatedOrder.discount_reason || updatedOrder.discountReason || null);
-            const reasonDetailsChanged = (oldOrderState.discount_reason_details || oldOrderState.discountReasonDetails || null) !== (updatedOrder.discount_reason_details || updatedOrder.discountReasonDetails || null);
-            const addressChanged = (oldOrderState.address || '') !== (updatedOrder.address || '');
-            const govChanged = (oldOrderState.governorate || '') !== (updatedOrder.governorate || '');
-            const depositChanged = (parseFloat(oldOrderState.deposit) || 0) !== (parseFloat(updatedOrder.deposit) || 0);
+            const totalChanged = Math.abs((parseFloat(oldOrderState.totalValue) || 0) - (parseFloat(updatedOrder.totalValue) || 0)) > 0.01;
+            
+            const oldDiscountType = oldOrderState.discount_type || oldOrderState.discountType || null;
+            const newDiscountType = updatedOrder.discount_type || updatedOrder.discountType || null;
+            const discountTypeChanged = oldDiscountType !== newDiscountType;
+            
+            const oldDiscountVal = parseFloat(oldOrderState.discount_value || oldOrderState.discountValue) || 0;
+            const newDiscountVal = parseFloat(updatedOrder.discount_value || updatedOrder.discountValue) || 0;
+            const discountValChanged = Math.abs(oldDiscountVal - newDiscountVal) > 0.01;
+            
+            const oldCoupon = oldOrderState.applied_coupon_code || oldOrderState.appliedCouponCode || null;
+            const newCoupon = updatedOrder.applied_coupon_code || updatedOrder.appliedCouponCode || null;
+            const couponChanged = oldCoupon !== newCoupon;
+            
+            const oldReason = oldOrderState.discount_reason || oldOrderState.discountReason || null;
+            const newReason = updatedOrder.discount_reason || updatedOrder.discountReason || null;
+            const reasonChanged = oldReason !== newReason;
+            
+            const oldReasonDetails = oldOrderState.discount_reason_details || oldOrderState.discountReasonDetails || null;
+            const newReasonDetails = updatedOrder.discount_reason_details || updatedOrder.discountReasonDetails || null;
+            const reasonDetailsChanged = oldReasonDetails !== newReasonDetails;
+            
+            const govChanged = (oldOrderState.governorate || '').trim() !== (updatedOrder.governorate || '').trim();
+            const depositChanged = Math.abs((parseFloat(oldOrderState.deposit) || 0) - (parseFloat(updatedOrder.deposit) || 0)) > 0.01;
             const receiverChanged = (oldOrderState.depositReceiverId || null) !== (updatedOrder.depositReceiverId || null);
             const depStatusChanged = (oldOrderState.depositStatus || '') !== (updatedOrder.depositStatus || '');
-            const shippingChanged = (parseFloat(oldOrderState.shipping_fee || oldOrderState.shippingFee) || 0) !== (parseFloat(updatedOrder.shipping_fee || updatedOrder.shippingFee) || 0);
-            const paymentMethodChanged = (oldOrderState.paymentMethod || oldOrderState.payment_method || null) !== (updatedOrder.paymentMethod || updatedOrder.payment_method || null);
+            const shippingChanged = Math.abs((parseFloat(oldOrderState.shipping_fee || oldOrderState.shippingFee) || 0) - (parseFloat(updatedOrder.shipping_fee || updatedOrder.shippingFee) || 0)) > 0.01;
+            
+            const oldPayment = oldOrderState.paymentMethod || oldOrderState.payment_method || null;
+            const newPayment = updatedOrder.paymentMethod || updatedOrder.payment_method || null;
+            const paymentMethodChanged = oldPayment !== newPayment;
+
+            // Compare address details instead of raw JSON string to prevent false-positives from key ordering or helper fields
+            let addressChanged = false;
+            try {
+                const parseAddr = (addr) => {
+                    if (!addr) return {};
+                    if (typeof addr === 'object') return addr;
+                    if (typeof addr === 'string' && addr.trim().startsWith('{')) {
+                        return JSON.parse(addr);
+                    }
+                    return { detailAddress: addr };
+                };
+                const oldAddr = parseAddr(oldOrderState.address);
+                const newAddr = parseAddr(updatedOrder.address);
+                
+                addressChanged = 
+                    (oldAddr.detailAddress || '').trim() !== (newAddr.detailAddress || '').trim() ||
+                    (oldAddr.phone || '').trim() !== (newAddr.phone || '').trim() ||
+                    (oldAddr.secondPhone || '').trim() !== (newAddr.secondPhone || '').trim() ||
+                    (oldAddr.bostaCityCode || null) !== (newAddr.bostaCityCode || null) ||
+                    (oldAddr.bostaDistrictId || null) !== (newAddr.bostaDistrictId || null) ||
+                    (oldAddr.bostaZoneId || null) !== (newAddr.bostaZoneId || null);
+            } catch (e) {
+                addressChanged = (oldOrderState.address || '') !== (updatedOrder.address || '');
+            }
 
             let itemsChanged = false;
             const oldItems = oldOrderState.items || [];
@@ -3114,7 +3230,7 @@ export const AppProvider = ({ children }) => {
                     if (
                         oiSku !== niSku ||
                         oi.quantity !== ni.quantity ||
-                        oi.price !== ni.price
+                        Math.abs((parseFloat(oi.price) || 0) - (parseFloat(ni.price) || 0)) > 0.01
                     ) {
                         itemsChanged = true;
                         break;
@@ -3307,11 +3423,22 @@ export const AppProvider = ({ children }) => {
             try {
                 showToast("جاري تحديث بيانات الشحنة في بوسطة...", "info");
                 const orderTotal = parseFloat(enrichedOrder.totalValue) || 0;
-                const shippingFee = parseFloat(enrichedOrder.shipping_fee) || 0;
                 const depositAmount = parseFloat(enrichedOrder.deposit) || 0;
                 const codAmount = Math.max(0, orderTotal - depositAmount);
-                const netProductsTotal = Math.max(0, orderTotal - shippingFee);
-                const productValueAmount = netProductsTotal < 1000 ? netProductsTotal + 100 : netProductsTotal;
+                
+                // Goods Info Amount should be the original products subtotal (before order discounts) using original retail prices
+                const grossProductsTotal = enrichedOrder.items.reduce((sum, item) => {
+                    let originalPrice = parseFloat(item.price) || 0; // fallback
+                    if (state.products) {
+                        const prod = state.products.find(p => p.variants.some(v => v.sku === item.variantSku));
+                        if (prod) {
+                            const vr = prod.variants.find(v => v.sku === item.variantSku);
+                            if (vr) originalPrice = parseFloat(vr.retailPrice) || originalPrice;
+                        }
+                    }
+                    return sum + (originalPrice * (parseInt(item.quantity) || 0));
+                }, 0);
+                const productValueAmount = grossProductsTotal < 1000 ? grossProductsTotal + 100 : grossProductsTotal;
                 
                 const totalQty = enrichedOrder.items.reduce((sum, item) => sum + (item.quantity || 0), 0);
                 const itemsDescription = enrichedOrder.items.map(item => {
@@ -3329,12 +3456,14 @@ export const AppProvider = ({ children }) => {
                     }
                     
                     if (!prodName) {
-                        prodName = "منتج"; // Fallback to "منتج" instead of variantSku
+                        prodName = "منتج"; // Fallback to "منتج"
                     }
                     
                     const displayName = formatProductDisplayName(prodName, optName);
                     return `${item.quantity}x ${displayName}`;
-                }).join(", ").substring(0, 120);
+                }).join(", ").substring(0, 500);
+
+                const altPhoneClean = addressObj.secondPhone ? addressObj.secondPhone.replace(/\D/g, '') : '';
 
                 const fullName = (enrichedOrder.client || "").trim();
                 const nameParts = fullName.split(/\s+/);
@@ -3353,17 +3482,18 @@ export const AppProvider = ({ children }) => {
                         packageType: "Small",
                         packageDetails: {
                             itemsCount: totalQty,
-                            description: itemsDescription
+                            description: itemsDescription.substring(0, 500)
                         }
                     },
                     goodsInfo: {
-                        amount: productValueAmount
+                        amount: productValueAmount,
+                        notes: itemsDescription.substring(0, 500)
                     },
                     receiver: {
                         firstName: firstName,
                         lastName: lastName,
                         phone: addressObj.phone,
-                        ...(addressObj.secondPhone && { secondPhone: addressObj.secondPhone.replace(/\D/g, '') })
+                        ...(altPhoneClean && { secondPhone: altPhoneClean })
                     }
                 };
 
@@ -3640,9 +3770,10 @@ export const AppProvider = ({ children }) => {
                     } catch (ledgerErr) {
                         console.error("Failed to insert delta stock ledger entries inside editOrder:", ledgerErr);
                     }
-
+                    await loadSupabaseData();
                 } catch (e) {
                     console.error("Supabase Error:", e);
+                    await loadSupabaseData();
                 }
             })();
         }
@@ -4757,6 +4888,7 @@ export const AppProvider = ({ children }) => {
                     : `Order approved! Waybill #${data.trackingNumber} created successfully!`, 
                 "success"
             );
+            await loadSupabaseData();
             return true;
             
         } catch (err) {
@@ -4932,6 +5064,14 @@ export const AppProvider = ({ children }) => {
                     depositRefundAmount: refundAmount !== null ? parseFloat(refundAmount) : null,
                     depositRefundType: refundType,
                     depositRefundScreenshot: screenshotUrl || o.depositRefundScreenshot
+                } : o),
+                deletedOrdersWithDeposits: (prev.deletedOrdersWithDeposits || []).map(o => o.id === orderId ? {
+                    ...o,
+                    depositStatus: 'settled',
+                    depositRefundStatus: 'returned',
+                    depositRefundAmount: refundAmount !== null ? parseFloat(refundAmount) : null,
+                    depositRefundType: refundType,
+                    depositRefundScreenshot: screenshotUrl || o.depositRefundScreenshot
                 } : o)
             }));
 
@@ -4985,6 +5125,14 @@ export const AppProvider = ({ children }) => {
             setState(prev => ({
                 ...prev,
                 orders: (prev.orders || []).map(o => o.id === orderId ? {
+                    ...o,
+                    depositStatus: 'settled',
+                    depositRefundStatus: 'returned',
+                    depositRefundAmount: refundAmount !== null ? parseFloat(refundAmount) : null,
+                    depositRefundType: refundType,
+                    depositRefundScreenshot: screenshotUrl || o.depositRefundScreenshot
+                } : o),
+                deletedOrdersWithDeposits: (prev.deletedOrdersWithDeposits || []).map(o => o.id === orderId ? {
                     ...o,
                     depositStatus: 'settled',
                     depositRefundStatus: 'returned',

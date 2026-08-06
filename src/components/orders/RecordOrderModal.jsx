@@ -368,14 +368,34 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     setSecondPhone(parsed.secondPhone);
                     setAddress(parsed.detailAddress || order.address);
                     setVatEnabled(parsed.vatEnabled);
-                    setGlobalDiscountValue(parsed.globalDiscountValue || '');
-                    setGlobalDiscountType(parsed.globalDiscountType || 'Percentage');
                     setOriginalAddressObj(parsed.originalObj || {});
                     
                     setDiscountReason(order.discount_reason || parsed.discountReason || '');
                     setDiscountReasonDetails(order.discount_reason_details || parsed.discountReasonDetails || '');
 
-                    setCouponCode(parsed.appliedCoupon || '');
+                    const hasCoupon = !!(order.applied_coupon_code || parsed.appliedCoupon);
+                    const savedCouponCode = order.applied_coupon_code || parsed.appliedCoupon || '';
+                    
+                    if (hasCoupon) {
+                        setCouponCode(savedCouponCode);
+                        setCouponDiscountValue(parseFloat(order.discount_value) || 0);
+                        setCouponDiscountType(order.discount_type || 'Percentage');
+                        setGlobalDiscountValue('');
+                        setGlobalDiscountType('Percentage');
+                    } else if (parseFloat(order.discount_value) > 0) {
+                        setGlobalDiscountValue(String(order.discount_value));
+                        setGlobalDiscountType(order.discount_type || 'Percentage');
+                        setCouponCode('');
+                        setCouponDiscountValue(0);
+                        setCouponDiscountType('');
+                    } else {
+                        setGlobalDiscountValue(parsed.globalDiscountValue || '');
+                        setGlobalDiscountType(parsed.globalDiscountType || 'Percentage');
+                        setCouponCode('');
+                        setCouponDiscountValue(0);
+                        setCouponDiscountType('');
+                    }
+                    
                     setCustomerId(order.customer_id || null);
                     
                     setGovernorate(order.governorate || '');
@@ -818,7 +838,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
     const isDiscountInfoValid = !hasDiscount || (!!discountReason && !!discountReasonDetails.trim());
 
-    const isStep3Valid = shippingFee !== '' && shippingFee !== null && !isNaN(shippingFee) && parseFloat(shippingFee) > 0 && depositVal >= 0 && (depositVal === 0 || !!depositReceiverId) && isDiscountInfoValid;
+    const isStep3Valid = shippingFee !== '' && shippingFee !== null && !isNaN(shippingFee) && parseFloat(shippingFee) > 0 && depositVal >= 0 && depositVal <= finalOrderTotal && (depositVal === 0 || !!depositReceiverId) && isDiscountInfoValid;
 
     // Check if the current order is a potential duplicate of another existing order
     const isPotentialDuplicate = React.useMemo(() => {
@@ -948,8 +968,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     items: orderItems,
                     totalValue: finalOrderTotal,
                     customer_id: finalCustomerId,
-                    discount_type: couponValid ? couponDiscountType : null,
-                    discount_value: couponValid ? couponDiscountValue : 0,
+                    discount_type: couponValid ? couponDiscountType : (parseFloat(globalDiscountValue) > 0 ? globalDiscountType : null),
+                    discount_value: couponValid ? couponDiscountValue : (parseFloat(globalDiscountValue) > 0 ? parseFloat(globalDiscountValue) : 0),
                     applied_coupon_code: couponValid ? couponCode : null,
                     warehouse: 'Sulur',
                     status: finalStatus,
@@ -2263,6 +2283,11 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         }}
                                         placeholder="0.00"
                                     />
+                                    {depositVal > finalOrderTotal && (
+                                        <span style={{ color: '#ff4757', fontSize: '11.5px', marginTop: '6px', display: 'block', fontWeight: 'bold' }}>
+                                            ⚠️ لا يمكن أن يتجاوز العربون إجمالي الطلب ({finalOrderTotal} {currency})
+                                        </span>
+                                    )}
                                 </div>
                                 {parseFloat(deposit) > 0 && (
                                     <div className="form-group">

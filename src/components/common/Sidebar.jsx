@@ -27,17 +27,22 @@ export default function Sidebar() {
         return false;
     };
 
+    const allOrdersForSidebar = [
+        ...(state.orders || []),
+        ...(state.deletedOrdersWithDeposits || [])
+    ];
+
     const pendingShopifyCount = (state.orders || []).filter(o => 
         o.status === 'Pending' && o.source === 'shopify' && !isOrderReviewed(o)
     ).length;
-    const pendingDepositCount = (state.orders || []).filter(o => 
+    const pendingDepositCount = (allOrdersForSidebar || []).filter(o => 
         o.depositReceiverId === state.currentUser?.id && 
         o.depositStatus === 'pending' &&
         (parseFloat(o.deposit) || 0) > 0
     ).length;
 
     // Cancelled orders where this admin still needs to confirm deposit return
-    const pendingRefundCount = (state.orders || []).filter(o =>
+    const pendingRefundCount = (allOrdersForSidebar || []).filter(o =>
         o.depositReceiverId === state.currentUser?.id &&
         o.status === 'Cancelled' &&
         (parseFloat(o.deposit) || 0) > 0 &&
