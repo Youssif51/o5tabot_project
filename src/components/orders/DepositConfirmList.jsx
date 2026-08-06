@@ -217,6 +217,14 @@ export default function DepositConfirmList() {
     const [historyPage, setHistoryPage] = useState(1);
     const [superAdminPage, setSuperAdminPage] = useState(1);
     const [expandedHistoryOrderIds, setExpandedHistoryOrderIds] = useState({});
+    const [expandedPendingOrderIds, setExpandedPendingOrderIds] = useState({});
+    
+    const togglePendingOrder = (orderId) => {
+        setExpandedPendingOrderIds(prev => ({
+            ...prev,
+            [orderId]: !prev[orderId]
+        }));
+    };
     
     const toggleHistoryOrder = (orderId) => {
         setExpandedHistoryOrderIds(prev => ({
@@ -425,173 +433,344 @@ export default function DepositConfirmList() {
                                 </tr>
                             </thead>
                             <tbody>
-                                {myPendingDeposits.map(ord => (
-                                    <tr key={ord.id} id={`pending-deposit-row-${ord.id}`} style={{ borderBottom: '1px solid var(--glass-bg)', textAlign: 'center', transition: 'all 0.5s ease' }}>
-                                        <td style={{ padding: '12px 8px', fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--gold-primary)' }}>#{ord.id}<i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '6px' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ord.id); showToast('تم نسخ رقم الطلب', 'success'); }} title="نسخ رقم الطلب"></i></td>
-                                        <td style={{ padding: '12px 8px' }}>{ord.client}</td>
-                                        <td style={{ padding: '12px 8px', fontWeight: 'bold', color: '#2ecc71' }}>{ord.deposit} {currency}</td>
-                                        <td style={{ padding: '12px 8px' }}>
-                                            {formatOrderDateWithTime(ord)}
-                                        </td>
-                                        <td style={{ padding: '12px 8px', color: 'var(--text-muted)' }}>{ord.createdBy || 'الآدمن'}</td>
-                                        <td style={{ padding: '12px 8px' }}>
-                                            {ord.status === 'Cancelled' ? (
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
-                                                    <span style={{ fontSize: '10px', color: '#ef4444', fontWeight: 'bold' }}>⚠️ الطلب ملغى</span>
-                                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center' }}>
+                                {myPendingDeposits.map(ord => {
+                                    const isExpanded = !!expandedPendingOrderIds[ord.id];
+                                    const parsedAddress = (() => {
+                                        try {
+                                            return JSON.parse(ord.address || '{}');
+                                        } catch {
+                                            return {};
+                                        }
+                                    })();
+                                    const phone = parsedAddress.phone || '';
+                                    const detailAddress = parsedAddress.detailAddress || '';
+                                    const remaining = getRemainingToCollect(ord);
+                                    const productsSubtotal = (ord.items || []).reduce((sum, item) => sum + (item.quantity * item.price), 0);
+                                    const receiverAdmin = (state.users || []).find(u => u.id === ord.depositReceiverId);
+                                    const depositLabel = receiverAdmin ? `العربون المدفوع (${receiverAdmin.name})` : 'العربون المدفوع';
+
+                                    return (
+                                        <React.Fragment key={ord.id}>
+                                            <tr 
+                                                id={`pending-deposit-row-${ord.id}`} 
+                                                style={{ 
+                                                    borderBottom: '1px solid var(--glass-bg)', 
+                                                    textAlign: 'center', 
+                                                    transition: 'all 0.5s ease',
+                                                    background: isExpanded ? 'rgba(212, 175, 55, 0.03)' : 'transparent'
+                                                }}
+                                            >
+                                                <td 
+                                                    style={{ padding: '12px 8px', fontFamily: 'monospace', fontWeight: 'bold', color: 'var(--gold-primary)', cursor: 'pointer' }}
+                                                    onClick={() => togglePendingOrder(ord.id)}
+                                                    title="اضغط لعرض تفاصيل الطلب"
+                                                >
+                                                    <i className={`fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} style={{ marginLeft: '6px', fontSize: '10px', color: 'var(--text-muted)' }}></i>
+                                                    #{ord.id}
+                                                    <i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '6px' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ord.id); showToast('تم نسخ رقم الطلب', 'success'); }} title="نسخ رقم الطلب"></i>
+                                                </td>
+                                                <td style={{ padding: '12px 8px', cursor: 'pointer' }} onClick={() => togglePendingOrder(ord.id)} title="اضغط لعرض تفاصيل الطلب">{ord.client}</td>
+                                                <td style={{ padding: '12px 8px', fontWeight: 'bold', color: '#2ecc71', cursor: 'pointer' }} onClick={() => togglePendingOrder(ord.id)} title="اضغط لعرض تفاصيل الطلب">{ord.deposit} {currency}</td>
+                                                <td style={{ padding: '12px 8px', cursor: 'pointer' }} onClick={() => togglePendingOrder(ord.id)} title="اضغط لعرض تفاصيل الطلب">
+                                                    {formatOrderDateWithTime(ord)}
+                                                </td>
+                                                <td style={{ padding: '12px 8px', color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => togglePendingOrder(ord.id)} title="اضغط لعرض تفاصيل الطلب">{ord.createdBy || 'الآدمن'}</td>
+                                                <td style={{ padding: '12px 8px' }}>
+                                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
+                                                        {ord.status === 'Cancelled' && (
+                                                            <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: 'bold', marginLeft: '4px' }}>⚠️ ملغى</span>
+                                                        )}
                                                         <button 
                                                             className="btn"
                                                             onClick={() => updateDepositStatus(ord.id, 'confirmed')}
-                                                            style={{ padding: '6px 10px', fontSize: '11px', background: '#2ecc71', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                                                            style={{ padding: '6px 14px', fontSize: '12px', background: '#2ecc71', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
                                                         >
                                                             نعم، استلمت
                                                         </button>
                                                         <button 
                                                             className="btn"
-                                                            onClick={() => updateDepositStatus(ord.id, 'rejected')}
-                                                            style={{ padding: '6px 10px', fontSize: '11px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px solid var(--glass-border)', borderRadius: '4px', cursor: 'pointer' }}
+                                                            onClick={() => updateDepositStatus(ord.id, 'unconfirmed')}
+                                                            style={{ padding: '6px 14px', fontSize: '12px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
                                                         >
-                                                            لم تصلني الفلوس أصلاً
+                                                            لا، لم أستلم
                                                         </button>
-
-                                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                                            <input
-                                                                type="file"
-                                                                accept="image/*"
-                                                                style={{ display: 'none' }}
-                                                                ref={el => fileInputRefs.current[`shortcut-${ord.id}`] = el}
-                                                                onChange={e => handleRefundFileChange(ord.id, e.target.files?.[0] || null)}
-                                                            />
-                                                            <button
-                                                                onClick={() => fileInputRefs.current[`shortcut-${ord.id}`]?.click()}
-                                                                title="إرفاق إثبات الاسترداد"
-                                                                style={{ padding: '6px 10px', fontSize: '12px', background: (refundConfirm[ord.id]?.file ? 'rgba(46,204,113,0.2)' : 'rgba(255,255,255,0.1)'), color: (refundConfirm[ord.id]?.file ? '#2ecc71' : '#fff'), border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                                                            >
-                                                                <i className={refundConfirm[ord.id]?.file ? 'fa-solid fa-check' : 'fa-solid fa-image'}></i>
-                                                            </button>
-                                                            <button 
-                                                                className="btn"
-                                                                onClick={() => handleConfirmDepositAndRefund(ord.id)}
-                                                                disabled={refundConfirm[ord.id]?.uploading}
-                                                                style={{ padding: '6px 14px', fontSize: '11px', background: '#eab308', color: '#000', border: 'none', borderRadius: '4px', cursor: (refundConfirm[ord.id]?.uploading ? 'not-allowed' : 'pointer'), fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}
-                                                            >
-                                                                {refundConfirm[ord.id]?.uploading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-bolt"></i>}
-                                                                استلمتها وأرجعتها
-                                                            </button>
-                                                        </div>
                                                     </div>
-                                                </div>
-                                            ) : (
-                                                <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
-                                                    <button 
-                                                        className="btn"
-                                                        onClick={() => updateDepositStatus(ord.id, 'confirmed')}
-                                                        style={{ padding: '6px 14px', fontSize: '12px', background: '#2ecc71', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
-                                                    >
-                                                        نعم، استلمت
-                                                    </button>
-                                                    <button 
-                                                        className="btn"
-                                                        onClick={() => updateDepositStatus(ord.id, 'rejected')}
-                                                        style={{ padding: '6px 14px', fontSize: '12px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
-                                                    >
-                                                        لا، لم أستلم
-                                                    </button>
-                                                </div>
+                                                </td>
+                                            </tr>
+                                            {isExpanded && (
+                                                <tr style={{ background: 'var(--glass-bg)' }}>
+                                                    <td colSpan="6" style={{ padding: '20px', borderBottom: '1px solid var(--glass-border)', textAlign: 'right' }}>
+                                                        <div className="grid-responsive-1-1_3-1" style={{ gap: '24px', direction: 'rtl' }}>
+                                                            
+                                                            {/* Customer details */}
+                                                            <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+                                                                <h4 style={{ fontSize: '13px', color: 'var(--gold-primary)', marginBottom: '12px', fontWeight: 600 }}>
+                                                                    <i className="fa-solid fa-user-tag" style={{ marginLeft: '6px' }}></i> تفاصيل العميل والشحن
+                                                                </h4>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px', color: 'var(--text-primary)' }}>
+                                                                    <div><strong>كود العميل:</strong> {getCustomerCode(ord.client)}</div>
+                                                                    <div><strong>اسم العميل:</strong> {ord.client}</div>
+                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                        <strong>رقم الهاتف:</strong> {phone || 'غير مسجل'}
+                                                                        {phone && (
+                                                                            <a 
+                                                                                href={getWhatsAppLink(phone, ord)} 
+                                                                                target="_blank" 
+                                                                                rel="noopener noreferrer"
+                                                                                style={{ color: '#25D366', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
+                                                                                title="مراسلة عبر واتساب"
+                                                                            >
+                                                                                <i className="fa-brands fa-whatsapp" style={{ fontSize: '14px', fontWeight: 'bold' }}></i>
+                                                                            </a>
+                                                                        )}
+                                                                    </div>
+                                                                    <div><strong>المحافظة:</strong> {ord.governorate || 'غير مسجل'}</div>
+                                                                    <div style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><strong>العنوان بالتفصيل:</strong> {detailAddress || 'غير مسجل'}</div>
+                                                                    <div><strong>سجل الطلب بواسطة:</strong> <span style={{ color: 'var(--gold-primary)' }}>{ord.createdBy || 'الآدمن'}</span></div>
+                                                                    {ord.discount_reason && (
+                                                                        <div style={{ marginTop: '4px', borderTop: '1px dashed var(--glass-border)', paddingTop: '4px' }}>
+                                                                            <strong>سبب الخصم:</strong> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{ord.discount_reason}</span>
+                                                                        </div>
+                                                                    )}
+                                                                    {ord.discount_reason_details && (
+                                                                        <div>
+                                                                            <strong>تفاصيل الخصم:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ord.discount_reason_details}</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Products Table */}
+                                                            <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+                                                                <h4 style={{ fontSize: '13px', color: 'var(--gold-primary)', marginBottom: '12px', fontWeight: 600 }}>
+                                                                    <i className="fa-solid fa-box-open" style={{ marginLeft: '6px' }}></i> المنتجات المطلوبة ({(ord.items || []).length} أصناف)
+                                                                </h4>
+                                                                <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse', color: 'var(--text-primary)' }}>
+                                                                    <thead>
+                                                                        <tr style={{ borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }}>
+                                                                            <th style={{ textAlign: 'right', padding: '6px 4px' }}>اسم الصنف / SKU</th>
+                                                                            <th style={{ textAlign: 'center', padding: '6px 4px' }}>الكمية</th>
+                                                                            <th style={{ textAlign: 'center', padding: '6px 4px' }}>سعر الوحدة</th>
+                                                                            <th style={{ textAlign: 'left', padding: '6px 4px' }}>الإجمالي</th>
+                                                                        </tr>
+                                                                    </thead>
+                                                                    <tbody>
+                                                                        {(ord.items || []).map((item, idx) => (
+                                                                            <tr key={idx} style={{ borderBottom: '1px solid var(--glass-bg)' }}>
+                                                                                <td style={{ padding: '8px 4px', textAlign: 'right' }}>{getProductNameBySku(item.variantSku)}</td>
+                                                                                <td style={{ textAlign: 'center', padding: '8px 4px' }}>{item.quantity}</td>
+                                                                                <td style={{ textAlign: 'center', padding: '8px 4px' }}>{currency} {item.price.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                                                <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold' }}>{currency} {(item.quantity * item.price).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                                            </tr>
+                                                                        ))}
+                                                                    </tbody>
+                                                                </table>
+                                                            </div>
+
+                                                            {/* Financial breakdown */}
+                                                            <div className="glass-card" style={{ padding: '16px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
+                                                                <h4 style={{ fontSize: '13px', color: 'var(--gold-primary)', marginBottom: '12px', fontWeight: 600 }}>
+                                                                    <i className="fa-solid fa-file-invoice-dollar" style={{ marginLeft: '6px' }}></i> تفصيل التكلفة
+                                                                </h4>
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px', color: 'var(--text-primary)' }}>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                        <span>إجمالي المنتجات:</span>
+                                                                        <span>{currency} {productsSubtotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                    </div>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                        <span>مصاريف الشحن:</span>
+                                                                        <span>+{currency} {(ord.shipping_fee || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                    </div>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
+                                                                        <span>{depositLabel}:</span>
+                                                                        <span>-{currency} {(ord.deposit || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                    </div>
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: ord.status === 'Cancelled' ? 'var(--text-muted)' : 'var(--gold-primary)', borderTop: '1px dashed var(--glass-border-hover)', paddingTop: '8px', marginTop: '4px', fontSize: '13px' }}>
+                                                                        <span>المتبقي للتحصيل:</span>
+                                                                        <span>{ord.status === 'Cancelled' ? 'ملغي' : `${currency} ${remaining > 0 ? remaining.toLocaleString('en-US', {maximumFractionDigits: 2}) : '0.00'}`}</span>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                        </div>
+                                                    </td>
+                                                </tr>
                                             )}
-                                        </td>
-                                    </tr>
-                                ))}
+                                        </React.Fragment>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
 
                     {/* Mobile view cards for Section 1 */}
                     <div className="dc-mobile-cards">
-                        {myPendingDeposits.map(ord => (
-                            <div 
-                                key={ord.id} 
-                                id={`pending-deposit-card-${ord.id}`}
-                                className="sa-mobile-card"
-                                style={{
-                                    background: 'rgba(255, 255, 255, 0.02)',
-                                    border: '1px solid var(--glass-border)',
-                                    borderRadius: '12px',
-                                    padding: '16px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '10px',
-                                    transition: 'all 0.5s ease'
-                                }}
-                            >
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}>
-                                    <strong style={{ color: 'var(--gold-primary)', fontSize: '15px', fontFamily: 'monospace' }}>#{ord.id}</strong><i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '6px' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ord.id); showToast('تم نسخ رقم الطلب', 'success'); }} title="نسخ رقم الطلب"></i>
-                                    <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{formatOrderDateWithTime(ord)}</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px' }}>
-                                    <div>
-                                        <span style={{ color: 'var(--text-muted)' }}>العميل:</span>
-                                        <strong style={{ color: '#fff', marginRight: '6px' }}>{ord.client}</strong>
-                                    </div>
-                                    <div>
-                                        <span style={{ color: 'var(--text-muted)' }}>العربون:</span>
-                                        <strong style={{ color: '#2ecc71', marginRight: '6px' }}>{ord.deposit} {currency}</strong>
-                                    </div>
-                                </div>
-                                <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                                    <span>مسجل الطلب: </span>
-                                    <strong style={{ color: 'var(--text-secondary)' }}>{ord.createdBy || 'الآدمن'}</strong>
-                                </div>
+                        {myPendingDeposits.map(ord => {
+                            const isExpanded = !!expandedPendingOrderIds[ord.id];
+                            const parsedAddress = (() => {
+                                try {
+                                    return JSON.parse(ord.address || '{}');
+                                } catch {
+                                    return {};
+                                }
+                            })();
+                            const phone = parsedAddress.phone || '';
+                            const detailAddress = parsedAddress.detailAddress || '';
+                            const remaining = getRemainingToCollect(ord);
+                            const productsSubtotal = (ord.items || []).reduce((sum, item) => sum + (item.quantity * item.price), 0);
+                            const receiverAdmin = (state.users || []).find(u => u.id === ord.depositReceiverId);
+                            const depositLabel = receiverAdmin ? `العربون المدفوع (${receiverAdmin.name})` : 'العربون المدفوع';
 
-                                <div style={{ borderTop: '1px dashed var(--glass-border)', paddingTop: '10px', marginTop: '4px' }}>
-                                    {ord.status === 'Cancelled' ? (
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
-                                            <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: 'bold' }}>⚠️ الطلب ملغى</span>
-                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap', justifyContent: 'center', width: '100%' }}>
-                                                <button 
-                                                    className="btn"
-                                                    onClick={() => updateDepositStatus(ord.id, 'confirmed')}
-                                                    style={{ padding: '6px 10px', fontSize: '11px', background: '#2ecc71', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', flex: '1 1 auto' }}
-                                                >
-                                                    نعم، استلمت
-                                                </button>
-                                                <button 
-                                                    className="btn"
-                                                    onClick={() => updateDepositStatus(ord.id, 'rejected')}
-                                                    style={{ padding: '6px 10px', fontSize: '11px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)', border: '1px solid var(--glass-border)', borderRadius: '4px', cursor: 'pointer', flex: '1 1 auto' }}
-                                                >
-                                                    لم تصلني الفلوس
-                                                </button>
+                            return (
+                                <div 
+                                    key={ord.id} 
+                                    id={`pending-deposit-card-${ord.id}`}
+                                    className="sa-mobile-card"
+                                    style={{
+                                        background: isExpanded ? 'rgba(212, 175, 55, 0.03)' : 'rgba(255, 255, 255, 0.02)',
+                                        border: '1px solid var(--glass-border)',
+                                        borderRadius: '12px',
+                                        padding: '16px',
+                                        display: 'flex',
+                                        flexDirection: 'column',
+                                        gap: '10px',
+                                        transition: 'background 0.2s ease'
+                                    }}
+                                >
+                                    <div 
+                                        onClick={() => togglePendingOrder(ord.id)}
+                                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px', cursor: 'pointer' }}
+                                    >
+                                        <div style={{ display: 'flex', alignItems: 'center' }}>
+                                            <strong style={{ color: 'var(--gold-primary)', fontSize: '15px', fontFamily: 'monospace' }}>#{ord.id}</strong>
+                                            <i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)', marginLeft: '6px' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(ord.id); showToast('تم نسخ رقم الطلب', 'success'); }} title="نسخ رقم الطلب"></i>
+                                        </div>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{formatOrderDateWithTime(ord)}</span>
+                                            <i className={`fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} style={{ fontSize: '11px', color: 'var(--text-muted)' }}></i>
+                                        </div>
+                                    </div>
+                                    <div 
+                                        onClick={() => togglePendingOrder(ord.id)}
+                                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '13px', cursor: 'pointer' }}
+                                    >
+                                        <div>
+                                            <span style={{ color: 'var(--text-muted)' }}>العميل:</span>
+                                            <strong style={{ color: '#fff', marginRight: '6px' }}>{ord.client}</strong>
+                                        </div>
+                                        <div>
+                                            <span style={{ color: 'var(--text-muted)' }}>العربون:</span>
+                                            <strong style={{ color: '#2ecc71', marginRight: '6px' }}>{ord.deposit} {currency}</strong>
+                                        </div>
+                                    </div>
+                                    <div 
+                                        onClick={() => togglePendingOrder(ord.id)}
+                                        style={{ fontSize: '12px', color: 'var(--text-muted)', cursor: 'pointer' }}
+                                    >
+                                        <span>مسجل الطلب: </span>
+                                        <strong style={{ color: 'var(--text-secondary)' }}>{ord.createdBy || 'الآدمن'}</strong>
+                                    </div>
 
-                                                <div style={{ display: 'flex', gap: '4px', alignItems: 'center', width: '100%', marginTop: '4px', justifyContent: 'center' }}>
-                                                    <input
-                                                        type="file"
-                                                        accept="image/*"
-                                                        style={{ display: 'none' }}
-                                                        ref={el => fileInputRefs.current[`shortcut-mobile-${ord.id}`] = el}
-                                                        onChange={e => handleRefundFileChange(ord.id, e.target.files?.[0] || null)}
-                                                    />
-                                                    <button
-                                                        onClick={() => fileInputRefs.current[`shortcut-mobile-${ord.id}`]?.click()}
-                                                        title="إرفاق إثبات الاسترداد"
-                                                        style={{ padding: '6px 10px', fontSize: '12px', background: (refundConfirm[ord.id]?.file ? 'rgba(46,204,113,0.2)' : 'rgba(255,255,255,0.1)'), color: (refundConfirm[ord.id]?.file ? '#2ecc71' : '#fff'), border: 'none', borderRadius: '4px', cursor: 'pointer' }}
-                                                    >
-                                                        <i className={refundConfirm[ord.id]?.file ? 'fa-solid fa-check' : 'fa-solid fa-image'}></i> إثبات
-                                                    </button>
-                                                    <button 
-                                                        className="btn"
-                                                        onClick={() => handleConfirmDepositAndRefund(ord.id)}
-                                                        disabled={refundConfirm[ord.id]?.uploading}
-                                                        style={{ padding: '6px 14px', fontSize: '11px', background: '#eab308', color: '#000', border: 'none', borderRadius: '4px', cursor: (refundConfirm[ord.id]?.uploading ? 'not-allowed' : 'pointer'), fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px', flex: '1 1 auto' }}
-                                                    >
-                                                        {refundConfirm[ord.id]?.uploading ? <i className="fa-solid fa-spinner fa-spin"></i> : <i className="fa-solid fa-bolt"></i>}
-                                                        استلمتها وأرجعتها
-                                                    </button>
+                                    {/* Collapsible Details */}
+                                    {isExpanded && (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', borderTop: '1px dashed var(--glass-border)', paddingTop: '12px', marginTop: '4px', textAlign: 'right', direction: 'rtl' }}>
+                                            
+                                            {/* Client Details Card */}
+                                            <div style={{ background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: '8px', border: '1px solid var(--glass-border)', fontSize: '12px' }}>
+                                                <h4 style={{ fontSize: '12px', color: 'var(--gold-primary)', marginBottom: '8px', fontWeight: 600 }}>
+                                                    <i className="fa-solid fa-user-tag" style={{ marginLeft: '6px' }}></i> تفاصيل العميل والشحن
+                                                </h4>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', color: 'var(--text-primary)' }}>
+                                                    <div><strong>كود العميل:</strong> {getCustomerCode(ord.client)}</div>
+                                                    <div><strong>اسم العميل:</strong> {ord.client}</div>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                        <strong>رقم الهاتف:</strong> {phone || 'غير مسجل'}
+                                                        {phone && (
+                                                            <a 
+                                                                href={getWhatsAppLink(phone, ord)} 
+                                                                target="_blank" 
+                                                                rel="noopener noreferrer"
+                                                                style={{ color: '#25D366', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
+                                                                title="مراسلة عبر واتساب"
+                                                            >
+                                                                <i className="fa-brands fa-whatsapp" style={{ fontSize: '14px', fontWeight: 'bold' }}></i>
+                                                            </a>
+                                                        )}
+                                                    </div>
+                                                    <div><strong>المحافظة:</strong> {ord.governorate || 'غير مسجل'}</div>
+                                                    <div style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><strong>العنوان بالتفصيل:</strong> {detailAddress || 'غير مسجل'}</div>
+                                                    <div><strong>سجل الطلب بواسطة:</strong> <span style={{ color: 'var(--gold-primary)' }}>{ord.createdBy || 'الآدمن'}</span></div>
+                                                    {ord.discount_reason && (
+                                                        <div style={{ marginTop: '4px', borderTop: '1px dashed var(--glass-border)', paddingTop: '4px' }}>
+                                                            <strong>سبب الخصم:</strong> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{ord.discount_reason}</span>
+                                                        </div>
+                                                    )}
+                                                    {ord.discount_reason_details && (
+                                                        <div>
+                                                            <strong>تفاصيل الخصم:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ord.discount_reason_details}</span>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
+
+                                            {/* Products Table Card */}
+                                            <div style={{ background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: '8px', border: '1px solid var(--glass-border)', fontSize: '12px' }}>
+                                                <h4 style={{ fontSize: '12px', color: 'var(--gold-primary)', marginBottom: '8px', fontWeight: 600 }}>
+                                                    <i className="fa-solid fa-box-open" style={{ marginLeft: '6px' }}></i> المنتجات المطلوبة ({(ord.items || []).length} أصناف)
+                                                </h4>
+                                                <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse', color: 'var(--text-primary)' }}>
+                                                    <thead>
+                                                        <tr style={{ borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }}>
+                                                            <th style={{ textAlign: 'right', padding: '4px 0' }}>الصنف</th>
+                                                            <th style={{ textAlign: 'center', padding: '4px 0' }}>الكمية</th>
+                                                            <th style={{ textAlign: 'left', padding: '4px 0' }}>الإجمالي</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {(ord.items || []).map((item, idx) => (
+                                                            <tr key={idx} style={{ borderBottom: '1px solid var(--glass-bg)' }}>
+                                                                <td style={{ padding: '6px 0', textAlign: 'right' }}>{getProductNameBySku(item.variantSku)}</td>
+                                                                <td style={{ textAlign: 'center', padding: '6px 0' }}>{item.quantity}</td>
+                                                                <td style={{ textAlign: 'left', padding: '6px 0', fontWeight: 'bold' }}>{currency} {(item.quantity * item.price).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+
+                                            {/* Cost Summary Card */}
+                                            <div style={{ background: 'rgba(0,0,0,0.15)', padding: '12px', borderRadius: '8px', border: '1px solid var(--glass-border)', fontSize: '12px' }}>
+                                                <h4 style={{ fontSize: '12px', color: 'var(--gold-primary)', marginBottom: '8px', fontWeight: 600 }}>
+                                                    <i className="fa-solid fa-file-invoice-dollar" style={{ marginLeft: '6px' }}></i> تفصيل التكلفة
+                                                </h4>
+                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', color: 'var(--text-primary)' }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                        <span>إجمالي المنتجات:</span>
+                                                        <span>{currency} {productsSubtotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                        <span>الشحن:</span>
+                                                        <span>+{currency} {(ord.shipping_fee || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
+                                                        <span>{depositLabel}:</span>
+                                                        <span>-{currency} {(ord.deposit || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                    </div>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: ord.status === 'Cancelled' ? 'var(--text-muted)' : 'var(--gold-primary)', borderTop: '1px dashed var(--glass-border-hover)', paddingTop: '6px', marginTop: '2px', fontSize: '13px' }}>
+                                                        <span>المتبقي للتحصيل:</span>
+                                                        <span>{ord.status === 'Cancelled' ? 'ملغي' : `${currency} ${remaining > 0 ? remaining.toLocaleString('en-US', {maximumFractionDigits: 2}) : '0.00'}`}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+
                                         </div>
-                                    ) : (
-                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                                    )}
+
+                                    <div style={{ borderTop: '1px dashed var(--glass-border)', paddingTop: '10px', marginTop: '4px' }}>
+                                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center' }}>
+                                            {ord.status === 'Cancelled' && (
+                                                <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: 'bold', marginLeft: '4px' }}>⚠️ ملغى</span>
+                                            )}
                                             <button 
                                                 className="btn"
                                                 onClick={() => updateDepositStatus(ord.id, 'confirmed')}
@@ -601,16 +780,16 @@ export default function DepositConfirmList() {
                                             </button>
                                             <button 
                                                 className="btn"
-                                                onClick={() => updateDepositStatus(ord.id, 'rejected')}
+                                                onClick={() => updateDepositStatus(ord.id, 'unconfirmed')}
                                                 style={{ padding: '6px 14px', fontSize: '12px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600, flex: 1 }}
                                             >
                                                 لا، لم أستلم
                                             </button>
                                         </div>
-                                    )}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                     </>
                 )}

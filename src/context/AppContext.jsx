@@ -805,8 +805,9 @@ export const AppProvider = ({ children }) => {
                             }
                         }
 
-                        // Play sound and trigger popup notification only if it was actually added
-                        if (added) {
+                        // Play sound and trigger popup notification only if it was actually added and is a Shopify order
+                        const isShopify = enrichedOrder.source === 'shopify' || !!enrichedOrder.shopifyOrderId;
+                        if (added && isShopify) {
                             try {
                                 console.log("Playing notification audio alert...");
                                 const audio = new Audio('/universfield-new-notification-031-480569.mp3');
@@ -2429,25 +2430,15 @@ export const AppProvider = ({ children }) => {
                     }
 
                     if (enrichedOrder.items && enrichedOrder.items.length > 0) {
-                        const itemsSubtotal = enrichedOrder.items.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)), 0);
-                        const discountVal = parseFloat(enrichedOrder.discount_value) || 0;
-
                         const items = enrichedOrder.items.map(item => {
                             const rawPrice = parseFloat(item.price) || 0;
                             const qty = parseInt(item.quantity) || 1;
-                            let netPrice = rawPrice;
-                            if (itemsSubtotal > 0 && discountVal > 0) {
-                                const lineTotal = rawPrice * qty;
-                                const discountShare = (lineTotal / itemsSubtotal) * discountVal;
-                                const netLineTotal = Math.max(0, lineTotal - discountShare);
-                                netPrice = qty > 0 ? (netLineTotal / qty) : rawPrice;
-                            }
-
+                            
                             return {
                                 order_id: enrichedOrder.id,
                                 variant_sku: item.variantSku || item.variant_sku || item.sku,
                                 quantity: qty,
-                                price: netPrice,
+                                price: rawPrice, // Keep item-level price separate (do not mix with global order-level discount)
                                 cost_at_time_of_sale: item.costAtTimeOfSale || item.cost_at_time_of_sale || 0,
                                 product_name: item.productName || null,
                                 variant_name: item.variantName || null
@@ -3610,25 +3601,15 @@ export const AppProvider = ({ children }) => {
                     }
 
                     if (enrichedOrder.items && enrichedOrder.items.length > 0) {
-                        const itemsSubtotal = enrichedOrder.items.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)), 0);
-                        const discountVal = parseFloat(enrichedOrder.discount_value) || 0;
-
                         const items = enrichedOrder.items.map(item => {
                             const rawPrice = parseFloat(item.price) || 0;
                             const qty = parseInt(item.quantity) || 1;
-                            let netPrice = rawPrice;
-                            if (itemsSubtotal > 0 && discountVal > 0) {
-                                const lineTotal = rawPrice * qty;
-                                const discountShare = (lineTotal / itemsSubtotal) * discountVal;
-                                const netLineTotal = Math.max(0, lineTotal - discountShare);
-                                netPrice = qty > 0 ? (netLineTotal / qty) : rawPrice;
-                            }
-
+                            
                             return {
                                 order_id: enrichedOrder.id,
                                 variant_sku: item.variantSku || item.variant_sku || item.sku,
                                 quantity: qty,
-                                price: netPrice,
+                                price: rawPrice, // Keep item-level price separate (do not mix with global order-level discount)
                                 cost_at_time_of_sale: item.costAtTimeOfSale || item.cost_at_time_of_sale || 0,
                                 product_name: item.productName || null,
                                 variant_name: item.variantName || null

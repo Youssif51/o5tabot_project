@@ -553,15 +553,35 @@ export default function App() {
             {shopifyNotification?.visible && (
                 <>
                 <style>{`
-                    @keyframes slideUp {
-                        from {
-                            transform: translateY(100px);
+                    @keyframes slideInCreative {
+                        0% {
+                            transform: translateY(30px) scale(0.95);
                             opacity: 0;
                         }
-                        to {
-                            transform: translateY(0);
+                        100% {
+                            transform: translateY(0) scale(1);
                             opacity: 1;
                         }
+                    }
+                    @keyframes greenPulse {
+                        0% {
+                            box-shadow: 0 0 0 0 rgba(150, 191, 72, 0.7);
+                        }
+                        70% {
+                            box-shadow: 0 0 0 6px rgba(150, 191, 72, 0);
+                        }
+                        100% {
+                            box-shadow: 0 0 0 0 rgba(150, 191, 72, 0);
+                        }
+                    }
+                    .shopify-popup-btn-view:hover {
+                        transform: translateY(-1px);
+                        box-shadow: 0 4px 12px rgba(150, 191, 72, 0.4);
+                        background: linear-gradient(135deg, #a7d452, #689f22) !important;
+                    }
+                    .shopify-popup-btn-close:hover {
+                        background: rgba(255, 255, 255, 0.15) !important;
+                        color: #fff !important;
                     }
                 `}</style>
                 <div 
@@ -570,103 +590,107 @@ export default function App() {
                         position: 'fixed',
                         bottom: '24px',
                         right: '24px',
-                        width: '360px',
-                        maxWidth: 'calc(100vw - 48px)',
-                        background: 'rgba(26, 26, 26, 0.95)',
-                        backdropFilter: 'blur(16px)',
-                        border: '1px solid rgba(150, 191, 72, 0.4)',
-                        boxShadow: '0 10px 40px rgba(0, 0, 0, 0.5), 0 0 20px rgba(150, 191, 72, 0.2)',
-                        borderRadius: '12px',
-                        padding: '16px',
+                        width: '290px',
+                        background: 'rgba(15, 22, 12, 0.95)',
+                        backdropFilter: 'blur(20px)',
+                        border: '1px solid rgba(150, 191, 72, 0.35)',
+                        boxShadow: '0 12px 36px rgba(0, 0, 0, 0.6), inset 0 1px 1px rgba(255,255,255,0.05)',
+                        borderRadius: '16px',
+                        padding: '12px 14px',
                         zIndex: 2001,
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '12px',
-                        animation: 'slideUp 0.4s cubic-bezier(0.165, 0.84, 0.44, 1) forwards',
+                        gap: '10px',
+                        animation: 'slideInCreative 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards',
                         direction: 'rtl'
                     }}
                 >
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.1)', paddingBottom: '8px' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div style={{
-                                width: '32px',
-                                height: '32px',
+                    {/* Header */}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{
+                                width: '6px',
+                                height: '6px',
                                 borderRadius: '50%',
-                                background: 'linear-gradient(135deg, #96bf48, #5a8a1e)',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                color: '#fff',
-                                boxShadow: '0 0 10px rgba(150, 191, 72, 0.5)'
-                            }}>
-                                <i className="fa-solid fa-shopping-bag" style={{ fontSize: '14px' }}></i>
-                            </div>
-                            <span style={{ fontWeight: 'bold', fontSize: '14px', color: '#96bf48' }}>
-                                طلب جديد من شوبيفاي! 🛒
+                                background: '#96bf48',
+                                display: 'inline-block',
+                                animation: 'greenPulse 1.8s infinite'
+                            }}></span>
+                            <span style={{ fontWeight: 800, fontSize: '11px', color: '#96bf48', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                                طلب شوبيفاي جديد
                             </span>
                         </div>
                         <button 
                             onClick={() => setShopifyNotification(prev => ({ ...prev, visible: false }))}
-                            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', fontSize: '16px' }}
-                        >
-                            <i className="fa-solid fa-xmark"></i>
-                        </button>
-                    </div>
-
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '13px', color: 'rgba(255,255,255,0.85)' }}>
-                        <div>
-                            <strong>رقم الطلب:</strong> <span style={{ fontFamily: 'monospace', color: '#fff' }}>{shopifyNotification.orderId}</span>
-                        </div>
-                        <div>
-                            <strong>اسم العميل:</strong> <span style={{ color: '#fff', fontWeight: 500 }}>{shopifyNotification.client}</span>
-                        </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px' }}>
-                            <span><strong>عدد المنتجات:</strong> {shopifyNotification.itemCount} قطع</span>
-                            <span style={{ color: '#96bf48', fontWeight: 'bold' }}>{shopifyNotification.totalValue.toLocaleString('en-US', {maximumFractionDigits: 2})} EGP</span>
-                        </div>
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
-                        <button 
-                            onClick={() => {
-                                setCurrentView('shopifyPending');
-                                setShopifyNotification(prev => ({ ...prev, visible: false }));
-                            }}
-                            style={{
-                                flex: 1,
-                                background: 'linear-gradient(135deg, #96bf48, #5a8a1e)',
-                                color: '#fff',
-                                border: 'none',
-                                padding: '8px 12px',
-                                borderRadius: '6px',
-                                fontSize: '12px',
-                                fontWeight: 'bold',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
+                            className="shopify-popup-btn-close"
+                            style={{ 
+                                background: 'rgba(255,255,255,0.05)', 
+                                border: 'none', 
+                                color: 'rgba(255,255,255,0.5)', 
+                                cursor: 'pointer', 
+                                width: '18px', 
+                                height: '18px', 
+                                borderRadius: '50%', 
+                                display: 'flex', 
+                                alignItems: 'center', 
                                 justifyContent: 'center',
-                                gap: '6px',
+                                fontSize: '10px',
                                 transition: 'all 0.2s'
                             }}
                         >
-                            <i className="fa-solid fa-eye"></i> عرض الطلب
-                        </button>
-                        <button 
-                            onClick={() => setShopifyNotification(prev => ({ ...prev, visible: false }))}
-                            style={{
-                                background: 'rgba(255,255,255,0.1)',
-                                color: '#fff',
-                                border: 'none',
-                                padding: '8px 12px',
-                                borderRadius: '6px',
-                                fontSize: '12px',
-                                cursor: 'pointer',
-                                transition: 'all 0.2s'
-                            }}
-                        >
-                            إغلاق
+                            ✕
                         </button>
                     </div>
+
+                    {/* Order Meta & Price */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                        <span style={{ fontSize: '15px', fontWeight: 'bold', color: '#fff', fontFamily: 'monospace' }}>
+                            #{shopifyNotification.orderId}
+                        </span>
+                        <span style={{ fontSize: '14px', color: '#96bf48', fontWeight: 800 }}>
+                            {shopifyNotification.totalValue.toLocaleString('en-US', {maximumFractionDigits: 0})} EGP
+                        </span>
+                    </div>
+
+                    {/* Customer & Item count */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '8px', fontSize: '12px' }}>
+                        <div style={{ color: 'rgba(255,255,255,0.7)' }}>
+                            <span style={{ color: 'rgba(255,255,255,0.4)', marginLeft: '4px' }}>العميل:</span>
+                            <strong style={{ color: '#fff', fontWeight: 500 }}>{shopifyNotification.client}</strong>
+                        </div>
+                        <div style={{ color: 'rgba(255,255,255,0.7)' }}>
+                            <span style={{ color: 'rgba(255,255,255,0.4)', marginLeft: '4px' }}>المنتجات:</span>
+                            <span style={{ color: '#fff' }}>{shopifyNotification.itemCount} قطع</span>
+                        </div>
+                    </div>
+
+                    {/* Action Button */}
+                    <button 
+                        onClick={() => {
+                            setCurrentView('shopifyPending');
+                            setShopifyNotification(prev => ({ ...prev, visible: false }));
+                        }}
+                        className="shopify-popup-btn-view"
+                        style={{
+                            width: '100%',
+                            background: 'linear-gradient(135deg, #96bf48, #5a8a1e)',
+                            color: '#fff',
+                            border: 'none',
+                            padding: '6px 12px',
+                            borderRadius: '8px',
+                            fontSize: '11px',
+                            fontWeight: 'bold',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '4px',
+                            transition: 'all 0.2s',
+                            marginTop: '2px'
+                        }}
+                    >
+                        <i className="fa-solid fa-eye" style={{ fontSize: '10px' }}></i> عرض الطلب
+                    </button>
                 </div>
                 </>
             )}

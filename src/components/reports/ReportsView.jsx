@@ -14,6 +14,7 @@ export default function ReportsView() {
     const [hoveredDayIdx, setHoveredDayIdx] = useState(6);
     const [isCatModalOpen, setIsCatModalOpen] = useState(false);
     const [isProdModalOpen, setIsProdModalOpen] = useState(false);
+    const [discountPage, setDiscountPage] = useState(1);
 
     // Helper date matcher
     // Helper date matcher
@@ -78,9 +79,9 @@ export default function ReportsView() {
 
         const ordTotal = ord.totalValue !== undefined && ord.totalValue !== null 
             ? parseFloat(ord.totalValue) 
-            : (parseFloat(ord.total_value) || 0);
+            : (ord.total_value !== undefined && ord.total_value !== null ? parseFloat(ord.total_value) : null);
 
-        const hasTotalValue = ordTotal > 0;
+        const hasTotalValue = ordTotal !== null;
         const netRevenue = hasTotalValue ? ordTotal : Math.max(0, grossValue - (parseFloat(ord.discount_value) || 0));
         const originalTotal = grossValue + (parseFloat(ord.shipping_fee) || 0);
         const discount = hasTotalValue ? Math.max(0, originalTotal - ordTotal) : (parseFloat(ord.discount_value) || 0);
@@ -332,6 +333,134 @@ export default function ReportsView() {
     });
 
     const sortedAdmins = Object.values(adminStats).filter(a => a.name !== 'غير محدد').sort((a, b) => (b.registeredCount + b.approvedCount) - (a.registeredCount + a.approvedCount));
+
+    // --- Detailed Discount Analytics ---
+    let discountedOrdersCount = 0;
+    let totalCouponDiscountsVal = 0;
+    let totalManualDiscountsVal = 0;
+    let totalProductDiscountsVal = 0;
+    
+    const couponStatsMap = {};
+    const manualStatsMap = {};
+    const adminDiscountStatsMap = {};
+    const discountedOrdersList = [];
+
+    (state.orders || []).forEach(ord => {
+        if (!isDeductedStatus(ord.status, ord)) return;
+        if (!isDateInPeriod(ord.date, timeFilter)) return;
+
+        const ordDetails = getOrderProfitDetails(ord);
+        const orderId = ord.id;
+        const clientName = ord.client;
+        const creatorName = ord.createdBy || ord.created_by || 'غير محدد';
+
+        // Calculate item-level product discounts
+        let itemDiscountsTotal = 0;
+        let originalProductsTotal = 0;
+
+        (ord.items || []).forEach(item => {
+            const sku = item.variantSku || item.variant_sku || item.sku;
+            let originalPrice = parseFloat(item.price) || 0;
+            
+            // Look up original retail price
+            (state.products || []).forEach(p => {
+                const vr = (p.variants || []).find(v => v.sku === sku);
+                if (vr) {
+                    const retailPrice = parseFloat(vr.retailPrice || vr.retail_price) || 0;
+                    if (retailPrice > originalPrice) {
+                        originalPrice = retailPrice;
+                    }
+                }
+            });
+            const qty = parseInt(item.quantity) || 1;
+            const salePrice = parseFloat(item.price) || 0;
+            const itemDiscount = Math.max(0, originalPrice - salePrice) * qty;
+
+            itemDiscountsTotal += itemDiscount;
+            originalProductsTotal += originalPrice * qty;
+        });
+
+        // Calculate order-level discount mathematically
+        const finalPaidVal = parseFloat(ord.totalValue !== undefined && ord.totalValue !== null ? ord.totalValue : ord.total_value) || 0;
+        const originalTotalVal = originalProductsTotal + (parseFloat(ord.shipping_fee) || 0);
+        const totalOrderDiscount = Math.max(0, originalTotalVal - finalPaidVal);
+
+        const remainingDiscount = Math.max(0, totalOrderDiscount - itemDiscountsTotal);
+        const orderDiscountVal = parseFloat(ord.discount_value) || 0;
+        const isCoupon = !!ord.applied_coupon_code;
+
+        // Build manual reason string combining reason and details
+        const mainReason = ord.discount_reason ? String(ord.discount_reason).trim() : '';
+        const subDetails = ord.discount_reason_details ? String(ord.discount_reason_details).trim() : '';
+        const manualReasonStr = mainReason && subDetails 
+            ? `${mainReason} (${subDetails})` 
+            : (mainReason || subDetails || 'بدون سبب محدد');
+
+        let couponDiscount = 0;
+        let manualDiscount = 0;
+
+        if (isCoupon) {
+            couponDiscount = remainingDiscount;
+        } else if (orderDiscountVal > 0 || remainingDiscount > 0) {
+            manualDiscount = remainingDiscount;
+        }
+
+        if (totalOrderDiscount > 0) {
+            discountedOrdersCount++;
+            totalCouponDiscountsVal += couponDiscount;
+            totalManualDiscountsVal += manualDiscount;
+            totalProductDiscountsVal += itemDiscountsTotal;
+
+            // Track coupon stats
+            if (isCoupon && ord.applied_coupon_code) {
+                const code = ord.applied_coupon_code;
+                if (!couponStatsMap[code]) {
+                    couponStatsMap[code] = { code, count: 0, totalDiscount: 0 };
+                }
+                couponStatsMap[code].count++;
+                couponStatsMap[code].totalDiscount += couponDiscount;
+            }
+
+            // Track manual reason stats
+            const isManualReasonRegistered = manualDiscount > 0 || (manualReasonStr && manualReasonStr !== 'بدون سبب محدد' && !isCoupon);
+            if (isManualReasonRegistered) {
+                const reason = manualReasonStr;
+                const allocatedDiscount = manualDiscount > 0 ? manualDiscount : totalOrderDiscount;
+                if (!manualStatsMap[reason]) {
+                    manualStatsMap[reason] = { reason, count: 0, totalDiscount: 0 };
+                }
+                manualStatsMap[reason].count++;
+                manualStatsMap[reason].totalDiscount += allocatedDiscount;
+
+                // Track admin who gave the discount
+                if (!adminDiscountStatsMap[creatorName]) {
+                    adminDiscountStatsMap[creatorName] = { name: creatorName, count: 0, totalDiscount: 0 };
+                }
+                adminDiscountStatsMap[creatorName].count++;
+                adminDiscountStatsMap[creatorName].totalDiscount += allocatedDiscount;
+            }
+
+            discountedOrdersList.push({
+                id: orderId,
+                date: ord.date,
+                client: clientName,
+                originalTotal: originalTotalVal,
+                finalTotal: finalPaidVal,
+                couponCode: ord.applied_coupon_code || null,
+                couponDiscount,
+                manualDiscount,
+                productDiscount: itemDiscountsTotal,
+                totalDiscount: totalOrderDiscount,
+                reason: isCoupon ? 'كوبون تخفيض' : manualReasonStr,
+                admin: creatorName
+            });
+        }
+    });
+
+    const sortedCoupons = Object.values(couponStatsMap).sort((a, b) => b.totalDiscount - a.totalDiscount);
+    const sortedManualReasons = Object.values(manualStatsMap).sort((a, b) => b.totalDiscount - a.totalDiscount);
+    const sortedAdminDiscounts = Object.values(adminDiscountStatsMap).sort((a, b) => b.totalDiscount - a.totalDiscount);
+    const sortedDiscountedOrders = discountedOrdersList.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     return (
         <div id="reports-view" className="view-pane active">
@@ -886,6 +1015,472 @@ export default function ReportsView() {
                     </div>
                 );
             })()}
+
+            {/* Section: Discounts & Coupon Reports (User Requested) */}
+            <div className="glass-card" style={{ padding: '24px', marginBottom: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
+                    <div>
+                        <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <i className="fa-solid fa-tags" style={{ color: 'var(--gold-primary)' }}></i>
+                            تقرير وتحليلات الخصومات والعروض (Discounts & Coupons Report)
+                        </h3>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                            تحليل شامل لجميع الخصومات الممنوحة للعملاء بالتفصيل عبر الكوبونات، الخصومات اليدوية للأدمنز، والعروض الخاصة بالمنتجات
+                        </p>
+                    </div>
+                </div>
+
+                {/* Discount Metrics Sub-Grid */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                    {/* Discounted Orders Ratio */}
+                    <div style={{ padding: '16px', background: 'rgba(30, 144, 255, 0.05)', border: '1px solid rgba(30, 144, 255, 0.15)', borderRadius: '12px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 600 }}>نسبة الطلبات المخصومة</div>
+                        <div style={{ fontSize: '20px', fontWeight: '800', color: '#1e90ff' }}>
+                            {totalOrdersCount > 0 ? ((discountedOrdersCount / totalOrdersCount) * 100).toFixed(1) : 0}%
+                        </div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                            {discountedOrdersCount} من أصل {totalOrdersCount} طلبات
+                        </div>
+                    </div>
+
+                    {/* Coupons Total discount */}
+                    <div style={{ padding: '16px', background: 'rgba(46, 204, 113, 0.05)', border: '1px solid rgba(46, 204, 113, 0.15)', borderRadius: '12px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 600 }}>إجمالي خصومات الكوبونات</div>
+                        <div style={{ fontSize: '20px', fontWeight: '800', color: '#2ecc71' }}>
+                            {currency} {totalCouponDiscountsVal.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                        </div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                            {sortedCoupons.length} كوبونات مستخدمة
+                        </div>
+                    </div>
+
+                    {/* Manual Admin Discounts Total */}
+                    <div style={{ padding: '16px', background: 'rgba(234, 179, 8, 0.05)', border: '1px solid rgba(234, 179, 8, 0.15)', borderRadius: '12px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 600 }}>الخصومات اليدوية للأدمنز</div>
+                        <div style={{ fontSize: '20px', fontWeight: '800', color: '#eab308' }}>
+                            {currency} {totalManualDiscountsVal.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                        </div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                            ممنوحة بأمر المسؤول يدوياً
+                        </div>
+                    </div>
+
+                    {/* Product-level Discounts Total */}
+                    <div style={{ padding: '16px', background: 'rgba(160, 132, 220, 0.05)', border: '1px solid rgba(160, 132, 220, 0.15)', borderRadius: '12px', textAlign: 'center' }}>
+                        <div style={{ fontSize: '11px', color: 'var(--text-secondary)', marginBottom: '6px', fontWeight: 600 }}>إجمالي عروض المنتجات</div>
+                        <div style={{ fontSize: '20px', fontWeight: '800', color: '#a084dc' }}>
+                            {currency} {totalProductDiscountsVal.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                        </div>
+                        <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '4px' }}>
+                            فروق تسعير الأصناف الفردية
+                        </div>
+                    </div>
+                </div>
+
+                {/* Custom styling classes for the Discounts & Coupons reports */}
+                <style>{`
+                    .discount-report-subgrid {
+                        display: grid;
+                        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+                        gap: 20px;
+                        margin-bottom: 24px;
+                    }
+                    .discount-mini-card {
+                        padding: 18px;
+                        background: rgba(255, 255, 255, 0.015);
+                        border: 1px solid rgba(255, 255, 255, 0.04);
+                        border-radius: 14px;
+                        box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.02);
+                        transition: transform 0.2s, border-color 0.2s;
+                    }
+                    .discount-mini-card:hover {
+                        border-color: rgba(255, 255, 255, 0.08);
+                    }
+                    .discount-mini-title {
+                        font-size: 13px;
+                        font-weight: 700;
+                        color: var(--text-primary);
+                        margin: 0 0 14px 0;
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+                        padding-bottom: 8px;
+                    }
+                    .discount-mini-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        font-size: 11.5px;
+                    }
+                    .discount-mini-table th {
+                        color: var(--text-secondary);
+                        font-weight: 600;
+                        padding: 6px 8px;
+                        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+                    }
+                    .discount-mini-table td {
+                        padding: 8px;
+                        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+                        color: var(--text-secondary);
+                    }
+                    .discount-mini-table tr:hover td {
+                        color: var(--text-primary);
+                        background: rgba(255, 255, 255, 0.01);
+                    }
+                    .discount-detailed-section {
+                        border-top: 1px dashed var(--glass-border);
+                        padding-top: 20px;
+                    }
+                    .discount-detailed-title {
+                        font-size: 14px;
+                        font-weight: 700;
+                        color: var(--text-primary);
+                        margin: 0 0 16px 0;
+                        display: flex;
+                        align-items: center;
+                        gap: 8px;
+                    }
+                    .discount-main-table {
+                        width: 100%;
+                        border-collapse: collapse;
+                        font-size: 12px;
+                    }
+                    .discount-main-table th {
+                        color: var(--text-secondary);
+                        font-weight: 600;
+                        padding: 12px 10px;
+                        background: rgba(255, 255, 255, 0.01);
+                        border-bottom: 2px solid rgba(255, 255, 255, 0.08);
+                    }
+                    .discount-main-table td {
+                        padding: 12px 10px;
+                        border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+                        vertical-align: middle;
+                        color: var(--text-secondary);
+                    }
+                    .discount-main-table tr {
+                        transition: background-color 0.2s;
+                    }
+                    .discount-main-table tr:hover td {
+                        color: var(--text-primary);
+                        background: rgba(255, 255, 255, 0.015);
+                    }
+                    .badge-coupon-pill {
+                        background: rgba(46, 204, 113, 0.06);
+                        color: #2ecc71;
+                        border: 1px solid rgba(46, 204, 113, 0.15);
+                        padding: 3px 8px;
+                        border-radius: 6px;
+                        font-size: 10.5px;
+                        font-weight: 700;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 4px;
+                    }
+                    .badge-code-text {
+                        color: #2ecc71;
+                        font-size: 11px;
+                        font-weight: 700;
+                        font-family: monospace;
+                        background: rgba(46, 204, 113, 0.04);
+                        border: 1px dashed rgba(46, 204, 113, 0.25);
+                        padding: 2px 6px;
+                        border-radius: 4px;
+                    }
+                    .badge-manual-pill {
+                        background: rgba(245, 158, 11, 0.06);
+                        color: #fbbf24;
+                        border: 1px solid rgba(245, 158, 11, 0.15);
+                        padding: 3px 8px;
+                        border-radius: 6px;
+                        font-size: 10.5px;
+                        font-weight: 700;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 4px;
+                    }
+                    .badge-reason-text {
+                        background: rgba(245, 158, 11, 0.03);
+                        color: #fbbf24;
+                        border: 1px solid rgba(245, 158, 11, 0.12);
+                        padding: 2px 6px;
+                        border-radius: 5px;
+                        font-size: 11px;
+                        font-weight: 600;
+                    }
+                    .badge-details-text {
+                        color: rgba(255, 255, 255, 0.5);
+                        font-size: 10.5px;
+                        font-weight: 500;
+                        background: rgba(255, 255, 255, 0.02);
+                        border: 1px solid rgba(255, 255, 255, 0.05);
+                        padding: 2px 6px;
+                        border-radius: 5px;
+                    }
+                    .badge-product-pill {
+                        background: rgba(160, 132, 220, 0.08);
+                        color: #a084dc;
+                        border: 1px solid rgba(160, 132, 220, 0.2);
+                        padding: 3px 8px;
+                        border-radius: 6px;
+                        font-size: 10.5px;
+                        font-weight: 700;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 4px;
+                    }
+                    .tabular-amount {
+                        font-family: monospace;
+                        font-variant-numeric: tabular-nums;
+                        font-weight: 600;
+                    }
+                `}</style>
+
+                {/* Sub-tables: Coupons, Reasons & Admin metrics */}
+                <div className="discount-report-subgrid">
+                    {/* Top Coupons Table */}
+                    <div className="discount-mini-card">
+                        <h4 className="discount-mini-title">
+                            <i className="fa-solid fa-ticket" style={{ color: 'var(--gold-primary)' }}></i> الكوبونات الأكثر فاعلية
+                        </h4>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table className="discount-mini-table">
+                                <thead>
+                                    <tr>
+                                        <th style={{ textAlign: 'right' }}>رمز الكوبون</th>
+                                        <th style={{ textAlign: 'center' }}>الاستخدامات</th>
+                                        <th style={{ textAlign: 'left' }}>إجمالي التخفيض</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {sortedCoupons.length === 0 ? (
+                                        <tr><td colSpan="3" style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)' }}>لا توجد كوبونات مستخدمة</td></tr>
+                                    ) : (
+                                        sortedCoupons.slice(0, 5).map((cp, idx) => (
+                                            <tr key={idx}>
+                                                <td style={{ textAlign: 'right', fontWeight: 'bold' }}>
+                                                    <span className="badge-coupon-pill">
+                                                        <i className="fa-solid fa-ticket" style={{ fontSize: '9px' }}></i> {cp.code}
+                                                    </span>
+                                                </td>
+                                                <td style={{ textAlign: 'center', fontWeight: '500' }}>{cp.count} مرات</td>
+                                                <td style={{ textAlign: 'left', color: '#2ecc71' }} className="tabular-amount">
+                                                    {currency} {cp.totalDiscount.toLocaleString()}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+
+
+                    {/* Admin Discounts table */}
+                    <div className="discount-mini-card">
+                        <h4 className="discount-mini-title">
+                            <i className="fa-solid fa-user-shield" style={{ color: 'var(--gold-primary)' }}></i> الخصومات الممنوحة من الأدمنز
+                        </h4>
+                        <div style={{ overflowX: 'auto' }}>
+                            <table className="discount-mini-table">
+                                <thead>
+                                    <tr>
+                                        <th style={{ textAlign: 'right' }}>الأدمن المسؤول</th>
+                                        <th style={{ textAlign: 'center' }}>الأوردرات</th>
+                                        <th style={{ textAlign: 'left' }}>إجمالي الخصم</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {sortedAdminDiscounts.length === 0 ? (
+                                        <tr><td colSpan="3" style={{ textAlign: 'center', padding: '16px', color: 'var(--text-muted)' }}>لا توجد خصومات ممنوحة من الأدمنز</td></tr>
+                                    ) : (
+                                        sortedAdminDiscounts.slice(0, 5).map((ad, idx) => (
+                                            <tr key={idx}>
+                                                <td style={{ textAlign: 'right', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '6px', padding: '8px' }}>
+                                                    <i className="fa-regular fa-user" style={{ opacity: 0.5 }}></i> {ad.name}
+                                                </td>
+                                                <td style={{ textAlign: 'center', fontWeight: '500' }}>{ad.count} أوردرات</td>
+                                                <td style={{ textAlign: 'left', color: 'var(--text-primary)' }} className="tabular-amount">
+                                                    {currency} {ad.totalDiscount.toLocaleString()}
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                {/* Detailed Discounted Orders Table */}
+                {(() => {
+                    const discountItemsPerPage = 10;
+                    const totalDiscountPages = Math.ceil(sortedDiscountedOrders.length / discountItemsPerPage) || 1;
+                    const paginatedDiscountOrders = sortedDiscountedOrders.slice((discountPage - 1) * discountItemsPerPage, discountPage * discountItemsPerPage);
+
+                    return (
+                        <div className="discount-detailed-section">
+                            <h4 className="discount-detailed-title">
+                                <i className="fa-solid fa-list-check" style={{ color: 'var(--gold-primary)' }}></i> سجل تفاصيل الطلبات المخصومة ({sortedDiscountedOrders.length} طلب مخصوم)
+                            </h4>
+
+                            <div style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(0,0,0,0.1)' }}>
+                                <table className="discount-main-table">
+                                    <thead>
+                                        <tr>
+                                            <th style={{ textAlign: 'right', width: '90px' }}>
+                                                <i className="fa-solid fa-hashtag" style={{ marginLeft: '4px', opacity: 0.5 }}></i> رقم الأوردر
+                                            </th>
+                                            <th style={{ textAlign: 'right' }}>
+                                                <i className="fa-solid fa-user" style={{ marginLeft: '4px', opacity: 0.5 }}></i> العميل
+                                            </th>
+                                            <th style={{ textAlign: 'left' }}>
+                                                <i className="fa-solid fa-money-bill-wave" style={{ marginLeft: '4px', opacity: 0.5 }}></i> قبل الخصم
+                                            </th>
+                                            <th style={{ textAlign: 'left' }}>
+                                                <i className="fa-solid fa-percent" style={{ marginLeft: '4px', opacity: 0.5 }}></i> الخصم المطبق
+                                            </th>
+                                            <th style={{ textAlign: 'left' }}>
+                                                <i className="fa-solid fa-wallet" style={{ marginLeft: '4px', opacity: 0.5 }}></i> المبلغ الصافي
+                                            </th>
+                                            <th style={{ textAlign: 'right' }}>
+                                                <i className="fa-solid fa-tags" style={{ marginLeft: '4px', opacity: 0.5 }}></i> نوع وتفاصيل الخصم
+                                            </th>
+                                            <th style={{ textAlign: 'center', width: '130px' }}>
+                                                <i className="fa-solid fa-user-shield" style={{ marginLeft: '4px', opacity: 0.5 }}></i> الأدمن المسؤول
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {paginatedDiscountOrders.length === 0 ? (
+                                            <tr>
+                                                <td colSpan="7" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
+                                                    لا توجد طلبات مخصومة مسجلة في هذه الفترة
+                                                </td>
+                                            </tr>
+                                        ) : (
+                                            paginatedDiscountOrders.map((ord, idx) => {
+                                                const hasCoupon = !!ord.couponCode;
+                                                const hasManual = ord.manualDiscount > 0 || (ord.reason && ord.reason !== 'كوبون تخفيض' && ord.reason !== 'بدون سبب محدد');
+                                                const hasProduct = ord.productDiscount > 0 && !hasManual && !hasCoupon;
+                                                
+                                                // Create elegant badges representing type of discount
+                                                const discountTypeBadge = (() => {
+                                                    const badges = [];
+                                                    if (hasCoupon) {
+                                                        badges.push(
+                                                            <div key="cp" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                                                <span className="badge-coupon-pill">
+                                                                    <i className="fa-solid fa-ticket" style={{ fontSize: '9px' }}></i> كوبون
+                                                                </span>
+                                                                {ord.couponCode && (
+                                                                    <span className="badge-code-text">
+                                                                        {ord.couponCode}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    }
+                                                    if (hasManual) {
+                                                         const cleanReason = (ord.reason || '').replace(/\s*\((.*?)\)\s*/g, ' - $1');
+                                                         const parts = cleanReason.split(' - ');
+                                                         const main = parts[0] || 'خصم يدوي';
+                                                         const sub = parts.slice(1).join(' - ');
+
+                                                         badges.push(
+                                                             <div key="mn" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                                 <span className="badge-manual-pill">
+                                                                     <i className="fa-solid fa-user-pen" style={{ fontSize: '9px' }}></i> يدوي
+                                                                 </span>
+                                                                 {main && main !== 'بدون سبب محدد' && (
+                                                                     <span className="badge-reason-text">
+                                                                         {main}
+                                                                     </span>
+                                                                 )}
+                                                                 {sub && (
+                                                                     <span className="badge-details-text">
+                                                                         {sub}
+                                                                     </span>
+                                                                 )}
+                                                             </div>
+                                                         );
+                                                     }
+                                                    if (hasProduct) {
+                                                        badges.push(
+                                                            <span key="pd" className="badge-product-pill">
+                                                                <i className="fa-solid fa-box-open" style={{ fontSize: '9px' }}></i> عروض منتجات
+                                                            </span>
+                                                        );
+                                                    }
+                                                    return <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', justifyContent: 'flex-start', alignItems: 'center' }}>{badges}</div>;
+                                                })();
+
+                                                return (
+                                                    <tr key={idx}>
+                                                        <td style={{ fontWeight: '700', color: 'var(--gold-primary)', fontFamily: 'monospace' }}>{ord.id}</td>
+                                                        <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{ord.client}</td>
+                                                        <td style={{ textAlign: 'left' }} className="tabular-amount">
+                                                            {currency} {ord.originalTotal.toLocaleString('en-US', {maximumFractionDigits: 0})}
+                                                        </td>
+                                                        <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#ef4444' }} className="tabular-amount">
+                                                            -{currency} {ord.totalDiscount.toLocaleString('en-US', {maximumFractionDigits: 0})}
+                                                        </td>
+                                                        <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#2ecc71' }} className="tabular-amount">
+                                                            {currency} {ord.finalTotal.toLocaleString('en-US', {maximumFractionDigits: 0})}
+                                                        </td>
+                                                        <td style={{ textAlign: 'right' }}>{discountTypeBadge}</td>
+                                                        <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                                <i className="fa-regular fa-user" style={{ opacity: 0.4, fontSize: '10px' }}></i>
+                                                                {ord.admin}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })
+                                        )}
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            {/* Discount Pagination Controls */}
+                            {sortedDiscountedOrders.length > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', flexWrap: 'wrap', gap: '12px' }}>
+                                    <div style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>
+                                        عرض <strong>{((discountPage - 1) * discountItemsPerPage) + 1} - {Math.min(discountPage * discountItemsPerPage, sortedDiscountedOrders.length)}</strong> من أصل <strong>{sortedDiscountedOrders.length}</strong> طلب مخصوم
+                                    </div>
+
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <button
+                                            className="btn btn-secondary"
+                                            onClick={() => setDiscountPage(prev => Math.max(1, prev - 1))}
+                                            disabled={discountPage === 1}
+                                            style={{ padding: '4px 10px', fontSize: '11px', opacity: discountPage === 1 ? 0.4 : 1, cursor: discountPage === 1 ? 'not-allowed' : 'pointer' }}
+                                        >
+                                            <i className="fa-solid fa-chevron-right"></i> السابق
+                                        </button>
+
+                                        <span style={{ fontSize: '11px', fontWeight: '700', color: 'var(--gold-primary)', padding: '0 6px' }}>
+                                            {discountPage} / {totalDiscountPages}
+                                        </span>
+
+                                        <button
+                                            className="btn btn-secondary"
+                                            onClick={() => setDiscountPage(prev => Math.min(totalDiscountPages, prev + 1))}
+                                            disabled={discountPage >= totalDiscountPages}
+                                            style={{ padding: '4px 10px', fontSize: '11px', opacity: discountPage >= totalDiscountPages ? 0.4 : 1, cursor: discountPage >= totalDiscountPages ? 'not-allowed' : 'pointer' }}
+                                        >
+                                            التالي <i className="fa-solid fa-chevron-left"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
+
+            </div>
 
             {/* Modals for All Categories & All Products */}
             <Modal isOpen={isCatModalOpen} onClose={() => setIsCatModalOpen(false)} title="تقرير مبيعات الأقسام التفصيلي" width="600px">

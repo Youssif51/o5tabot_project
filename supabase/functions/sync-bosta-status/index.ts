@@ -278,9 +278,6 @@ Deno.serve(async (req) => {
       address: JSON.stringify(addressObj),
       status: newStatus
     };
-    if (newStatus === 'Completed') {
-      dbUpdate.deposit = order.total_value;
-    }
     await supabaseAdmin
       .from('orders')
       .update(dbUpdate)

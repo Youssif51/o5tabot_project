@@ -1,6 +1,6 @@
 import { formatProductDisplayName } from '../../utils/productUtils';
 import { getBostaDistrictDisplayName, filterAndSortBostaDistricts, autoParseAddressToBostaLocation, getBostaAddressSuggestions } from '../../utils/bostaUtils';
-import React, { useContext, useState, useEffect } from 'react';
+import React, { useContext, useState, useEffect, useMemo } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
@@ -81,6 +81,31 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const [secondPhone, setSecondPhone] = useState('');
     const [governorate, setGovernorate] = useState('');
     const [address, setAddress] = useState('');
+    const [localAddress, setLocalAddress] = useState('');
+
+    // Sync external address changes (like customer auto-fill or reset) into localAddress immediately
+    useEffect(() => {
+        setLocalAddress(address || '');
+    }, [address]);
+
+    // Debounce updating the heavy global address state
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            if (localAddress !== address) {
+                setAddress(localAddress);
+            }
+        }, 150); // 150ms is perfect: fast enough for UI updates, slow enough to debounce typing
+        return () => clearTimeout(handler);
+    }, [localAddress]);
+
+    const suggestions = useMemo(() => {
+        try {
+            return getBostaAddressSuggestions(address, bostaData.data) || [];
+        } catch (err) {
+            console.error("CRITICAL ERROR in suggestions useMemo:", err);
+            return [];
+        }
+    }, [address]);
     
     // Products Table
     const [initialItemQtyMap, setInitialItemQtyMap] = useState({});
@@ -312,8 +337,10 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
     // Reset all form state variables cleanly
     const resetFormState = () => {
-        const rand = Math.floor(1000 + Math.random() * 9000);
-        setOrderId(`ORD-2026-${rand}`);
+        const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+        let rand = '';
+        for (let i = 0; i < 7; i++) rand += chars[Math.floor(Math.random() * chars.length)];
+        setOrderId(`ORD-${rand}`);
         setStatus('Draft');
         setStep(1);
         setClient('');
@@ -1225,38 +1252,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     {/* STEP 1: CUSTOMER SECTION */}
                     {step === 1 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                            <div className="grid-responsive-2col">
-                                <div className="form-group">
-                                    <label className="form-label">اسم العميل *</label>
-                                    <input 
-                                        type="text" 
-                                        className="form-input" 
-                                        value={client}
-                                        onChange={(e) => { 
-                                            setClient(e.target.value); 
-                                            if (customerId) {
-                                                const currentCust = (state.customers || []).find(c => c.id === customerId);
-                                                if (currentCust && e.target.value !== currentCust.name) {
-                                                    setCustomerId(null);
-                                                }
-                                            }
-                                        }}
-                                        placeholder="اكتب اسم العميل..." 
-                                        required 
-                                    />
-                                </div>
-                                <div className="form-group">
-                                    <label className="form-label">كود العميل (تلقائي)</label>
-                                    <input 
-                                        type="text" 
-                                        className="form-input" 
-                                        value={customerCode} 
-                                        disabled 
-                                        style={{ background: 'var(--glass-bg-hover)', color: 'var(--text-secondary)', cursor: 'not-allowed' }}
-                                    />
-                                </div>
-                            </div>
-
+                            {/* Phone Numbers Row - FIRST */}
                             <div className="grid-responsive-2col">
                                 <div className="form-group" style={{ position: 'relative' }}>
                                     <label className="form-label">رقم الهاتف * (11 رقم)</label>
@@ -1275,19 +1271,13 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                 const currentCustPhone = currentCust ? cleanAndNormalizePhoneNumber(currentCust.phone) : '';
                                                 if (digits !== currentCustPhone) {
                                                     setCustomerId(null);
+                                                    setClient('');
                                                     setSecondPhone('');
                                                     setGovernorate('');
                                                     setAddress('');
                                                     setCitySelected(null);
                                                     setDistrictSelected(null);
                                                     setShippingFee(0);
-                                                }
-                                            }
-
-                                            if (digits.length === 11) {
-                                                const match = customerOptions.find(c => c.phone === digits);
-                                                if (match) {
-                                                    handleSelectCustomer(match);
                                                 }
                                             }
                                         }}
@@ -1311,6 +1301,10 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             padding: '6px',
                                             boxShadow: '0 8px 24px rgba(0,0,0,0.5)'
                                         }}>
+                                            <div style={{ padding: '4px 10px 8px', fontSize: '10px', color: 'var(--gold-primary)', borderBottom: '1px solid var(--glass-border)', marginBottom: '4px', fontWeight: 600 }}>
+                                                <i className="fa-solid fa-user-check" style={{ marginLeft: '4px' }}></i>
+                                                اختر عميل لملء البيانات تلقائياً:
+                                            </div>
                                             {filteredCustomersByPhone.map((cust, idx) => (
                                                 <div 
                                                     key={cust.id || cust.name || idx}
@@ -1427,21 +1421,53 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                 </div>
                             </div>
 
+                            {/* Client Name and Code Row - SECOND */}
+                            <div className="grid-responsive-2col">
+                                <div className="form-group">
+                                    <label className="form-label">اسم العميل *</label>
+                                    <input 
+                                        type="text" 
+                                        className="form-input" 
+                                        value={client}
+                                        onChange={(e) => { 
+                                            setClient(e.target.value); 
+                                            if (customerId) {
+                                                const currentCust = (state.customers || []).find(c => c.id === customerId);
+                                                if (currentCust && e.target.value !== currentCust.name) {
+                                                    setCustomerId(null);
+                                                }
+                                            }
+                                        }}
+                                        placeholder="اكتب اسم العميل..." 
+                                        required 
+                                    />
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">كود العميل (تلقائي)</label>
+                                    <input 
+                                        type="text" 
+                                        className="form-input" 
+                                        value={customerCode} 
+                                        disabled 
+                                        style={{ background: 'var(--glass-bg-hover)', color: 'var(--text-secondary)', cursor: 'not-allowed' }}
+                                    />
+                                </div>
+                            </div>
+
                             {/* Detail Address FIRST */}
                             <div className="form-group" style={{ marginBottom: '14px' }}>
                                 <label className="form-label">العنوان التفصيلي *</label>
                                 <input 
                                     type="text" 
                                     className="form-input" 
-                                    value={address}
-                                    onChange={(e) => setAddress(e.target.value)}
+                                    value={localAddress}
+                                    onChange={(e) => setLocalAddress(e.target.value)}
                                     placeholder="اسم الشارع / رقم العقار / علامة مميزة (مثال: الاسكندرية محمد نجيب)"
                                     required 
                                 />
 
                                 {/* Smart Suggestion Chips (Bosta Location Suggestions) */}
                                 {(() => {
-                                    const suggestions = getBostaAddressSuggestions(address, bostaData.data);
                                     if (suggestions.length === 0) return null;
 
                                     return (
@@ -2706,10 +2732,11 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             type="button" 
                             className="btn btn-secondary" 
                             onClick={() => handleSaveOrder(true)}
-                            style={{ borderColor: 'var(--gold-border)' }}
+                            disabled={isSubmitting}
+                            style={{ borderColor: 'var(--gold-border)', opacity: isSubmitting ? 0.5 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
                         >
-                            <i className="fa-regular fa-bookmark" style={{ marginLeft: '6px' }}></i>
-                            حفظ مسودة
+                            <i className={isSubmitting ? 'fa-solid fa-spinner fa-spin' : 'fa-regular fa-bookmark'} style={{ marginLeft: '6px' }}></i>
+                            {isSubmitting ? 'جاري الحفظ...' : 'حفظ مسودة'}
                         </button>
                     </div>
 
@@ -2758,10 +2785,11 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         type="button" 
                                         className="btn btn-primary" 
                                         onClick={() => handleSaveOrder(false)}
-                                        style={{ background: '#27AE60', borderColor: '#27AE60' }}
+                                        disabled={isSubmitting}
+                                        style={{ background: '#27AE60', borderColor: '#27AE60', opacity: isSubmitting ? 0.5 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
                                     >
-                                        <i className="fa-solid fa-floppy-disk" style={{ marginLeft: '6px' }}></i>
-                                        حفظ التعديلات
+                                        <i className={isSubmitting ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-floppy-disk'} style={{ marginLeft: '6px' }}></i>
+                                        {isSubmitting ? 'جاري الحفظ...' : 'حفظ التعديلات'}
                                     </button>
                                 )}
                             </>
@@ -2770,10 +2798,11 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                 type="button" 
                                 className="btn btn-primary" 
                                 onClick={() => handleSaveOrder(false)}
-                                style={{ background: '#27AE60', borderColor: '#27AE60' }}
+                                disabled={isSubmitting}
+                                style={{ background: '#27AE60', borderColor: '#27AE60', opacity: isSubmitting ? 0.5 : 1, cursor: isSubmitting ? 'not-allowed' : 'pointer' }}
                             >
-                                <i className="fa-solid fa-check" style={{ marginLeft: '6px' }}></i>
-                                {isEditMode ? 'حفظ التعديلات' : 'تأكيد الطلب'}
+                                <i className={isSubmitting ? 'fa-solid fa-spinner fa-spin' : 'fa-solid fa-check'} style={{ marginLeft: '6px' }}></i>
+                                {isSubmitting ? 'جاري الحفظ...' : (isEditMode ? 'حفظ التعديلات' : 'تأكيد الطلب')}
                             </button>
                         )}
                     </div>
