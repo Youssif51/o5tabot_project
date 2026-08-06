@@ -7,27 +7,22 @@ const isDateInPeriod = (dateStr, period) => {
     if (period === 'all') return true;
 
     try {
-        const orderDate = new Date(dateStr);
-        orderDate.setHours(0, 0, 0, 0);
+        const datePart = typeof dateStr === 'string' ? dateStr.split('T')[0] : '';
+        if (!datePart) return false;
 
+        const [y, m, d] = datePart.split('-').map(Number);
+        if (!y || !m || !d) return false;
+
+        const orderDate = new Date(y, m - 1, d);
         const today = new Date();
         today.setHours(0, 0, 0, 0);
 
-        const diffTime = today - orderDate;
-        const diffDays = diffTime / (1000 * 60 * 60 * 24);
+        const diffDays = Math.floor((today - orderDate) / (1000 * 60 * 60 * 24));
 
-        if (period === 'today') {
-            return diffDays === 0;
-        }
-        if (period === 'week') {
-            return diffDays >= 0 && diffDays < 7;
-        }
-        if (period === 'month') {
-            return diffDays >= 0 && diffDays < 30;
-        }
-        if (period === 'year') {
-            return diffDays >= 0 && diffDays < 365;
-        }
+        if (period === 'today') return diffDays === 0;
+        if (period === 'week') return diffDays >= 0 && diffDays < 7;
+        if (period === 'month') return diffDays >= 0 && diffDays < 30;
+        if (period === 'year') return diffDays >= 0 && diffDays < 365;
     } catch (e) {
         return false;
     }
@@ -36,7 +31,7 @@ const isDateInPeriod = (dateStr, period) => {
 
 
 export default function MetricsRow({ timeFilter = 'all' }) {
-    const { state, t, theme, language } = useContext(AppContext);
+    const { state, isDeductedStatus, t, theme, language } = useContext(AppContext);
     const currency = state.storeSettings.currency || '$';
 
     // 1. Sales Overview calculations
@@ -44,20 +39,21 @@ export default function MetricsRow({ timeFilter = 'all' }) {
     let salesRevenue = 0;
     let salesCost = 0;
     
-    state.orders.forEach(ord => {
-        if (ord.status !== "Cancelled" && ord.status !== "Draft") {
+    (state.orders || []).forEach(ord => {
+        if (isDeductedStatus(ord.status, ord)) {
             if (!isDateInPeriod(ord.date, timeFilter)) return;
             salesCount++;
-            salesRevenue += ord.totalValue;
-            ord.items.forEach(item => {
-                let cost = item.costAtTimeOfSale || 0;
+            salesRevenue += parseFloat(ord.totalValue || ord.total_value) || 0;
+            (ord.items || []).forEach(item => {
+                const itemSku = item.variantSku || item.variant_sku || item.sku;
+                let cost = parseFloat(item.costAtTimeOfSale || item.cost_at_time_of_sale) || 0;
                 if (!cost) {
-                    state.products.forEach(p => {
-                        let vr = p.variants.find(v => v.sku === item.variantSku);
-                        if (vr) cost = vr.wholesalePrice || 0;
+                    (state.products || []).forEach(p => {
+                        let vr = (p.variants || []).find(v => v.sku === itemSku);
+                        if (vr) cost = parseFloat(vr.averageCost || vr.average_cost || vr.wholesalePrice || vr.wholesale_price) || 0;
                     });
                 }
-                salesCost += item.quantity * cost;
+                salesCost += (parseInt(item.quantity) || 1) * cost;
             });
         }
     });
@@ -96,7 +92,7 @@ export default function MetricsRow({ timeFilter = 'all' }) {
     let purReturns = state.wastes.length;
 
     // 4. Product Summary calculations
-    let categories = [...new Set(state.products.map(p => p.category))];
+    let categories = [...new Set(state.products.map(p => p.category).filter(Boolean))];
 
     return (
         <>

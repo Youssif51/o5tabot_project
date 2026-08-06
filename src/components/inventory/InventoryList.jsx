@@ -120,10 +120,13 @@ export default function InventoryList({
     });
 
     let variantSales = {};
-    state.orders.forEach(ord => {
-        if (ord.status !== "Cancelled" && ord.status !== "Draft") {
-            ord.items.forEach(item => {
-                variantSales[item.variantSku] = (variantSales[item.variantSku] || 0) + item.quantity;
+    (state.orders || []).forEach(ord => {
+        if (ord.status !== "Cancelled" && ord.status !== "Rejected" && ord.status !== "Draft") {
+            (ord.items || []).forEach(item => {
+                const sku = item.variantSku || item.variant_sku || item.sku;
+                if (sku) {
+                    variantSales[sku] = (variantSales[sku] || 0) + (parseInt(item.quantity) || 1);
+                }
             });
         }
     });

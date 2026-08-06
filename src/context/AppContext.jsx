@@ -1820,10 +1820,40 @@ export const AppProvider = ({ children }) => {
             image: JSON.stringify(baseImages)
         };
 
-        setState(prev => ({
-            ...prev,
-            products: prev.products.map(p => p.id === updatedProduct.id ? enrichedProduct : p)
-        }));
+        setState(prev => {
+            const oldProduct = prev.products.find(p => p.id === updatedProduct.id);
+            let newLedger = [...(prev.stockLedger || [])];
+            const adminName = prev.currentUser?.name || 'الأدمن';
+
+            // Detect stock changes and record in ledger
+            if (oldProduct && enrichedProduct.variants) {
+                enrichedProduct.variants.forEach(newV => {
+                    const oldV = (oldProduct.variants || []).find(v => v.sku === newV.sku);
+                    const oldStock = oldV ? (oldV.stock?.Sulur || 0) : 0;
+                    const newStock = newV.stock?.Sulur || 0;
+                    const diff = newStock - oldStock;
+
+                    if (diff !== 0) {
+                        newLedger = [{
+                            date: new Date().toISOString(),
+                            productId: updatedProduct.id,
+                            variantSku: newV.sku,
+                            warehouse: 'Sulur',
+                            type: 'Correction',
+                            quantity: diff,
+                            balanceAfter: newStock,
+                            notes: `مُعدل بواسطة: ${adminName} (تعديل منتج)`
+                        }, ...newLedger];
+                    }
+                });
+            }
+
+            return {
+                ...prev,
+                products: prev.products.map(p => p.id === updatedProduct.id ? enrichedProduct : p),
+                stockLedger: newLedger
+            };
+        });
         logActivity("stock", `Product '${updatedProduct.name}' details were updated.`);
         showToast(`Product '${updatedProduct.name}' updated.`);
 
@@ -1849,8 +1879,12 @@ export const AppProvider = ({ children }) => {
                     if (updatedProduct.variants) {
                         // Clean up deleted variants from Supabase database
                         const newVariantSkus = updatedProduct.variants.map(v => v.sku);
-                        const { data: dbVars } = await supabase.from('product_variants').select('sku').eq('product_id', updatedProduct.id);
+                        const { data: dbVars } = await supabase.from('product_variants').select('sku, stock_sulur').eq('product_id', updatedProduct.id);
+                        
+                        // Save old stock for ledger comparison
+                        const oldStockMap = {};
                         if (dbVars) {
+                            dbVars.forEach(v => { oldStockMap[v.sku] = parseInt(v.stock_sulur) || 0; });
                             const dbSkus = dbVars.map(v => v.sku);
                             const skusToDelete = dbSkus.filter(sku => !newVariantSkus.includes(sku));
                             if (skusToDelete.length > 0) {
@@ -1872,6 +1906,30 @@ export const AppProvider = ({ children }) => {
                                 is_active: v.is_active !== false,
                                 shopify_id: v.is_active === false ? null : v.shopify_id
                             });
+                        }
+
+                        // Record stock changes in ledger
+                        const ledgerEntries = [];
+                        const adminName = state.currentUser?.name || 'الأدمن';
+                        updatedProduct.variants.forEach(v => {
+                            const oldStock = oldStockMap[v.sku] || 0;
+                            const newStock = v.stock?.Sulur || 0;
+                            const diff = newStock - oldStock;
+                            if (diff !== 0) {
+                                ledgerEntries.push({
+                                    date: new Date().toISOString(),
+                                    product_id: updatedProduct.id,
+                                    variant_sku: v.sku,
+                                    warehouse: 'Sulur',
+                                    type: 'Correction',
+                                    quantity: diff,
+                                    balance_after: newStock,
+                                    notes: `مُعدل بواسطة: ${adminName} (تعديل منتج)`
+                                });
+                            }
+                        });
+                        if (ledgerEntries.length > 0) {
+                            await supabase.from('stock_ledger').insert(ledgerEntries);
                         }
                     }
 
@@ -2145,7 +2203,7 @@ export const AppProvider = ({ children }) => {
     };
 
     const isDeductedStatus = (st, order = null) => {
-        if (!st || st === 'Draft' || st === 'Cancelled') return false;
+        if (!st || st === 'Draft' || st === 'Cancelled' || st === 'Rejected') return false;
         if (st === 'Shipped' || st === 'Completed' || st === 'Processing' || st === 'Delivered' || st === 'Out for Delivery' || st === 'Partially Delivered') return true;
         
         if (st === 'Pending') {
@@ -2563,16 +2621,25 @@ export const AppProvider = ({ children }) => {
                 stockLedger: newLedger,
                 orders: prev.orders.map(o => {
                     if (o.id === orderId) {
+                        const adminName = prev.currentUser?.name || 'الأدمن';
+                        const needsCreatorStamp = !o.createdBy || o.createdBy === 'Shopify Webhook';
                         const updatedOrder = { 
                             ...o, 
                             status: newStatus,
                             address: updatedAddressStr,
                             is_reviewed: o.is_reviewed || o.isReviewed || (o.source === 'shopify' ? true : o.is_reviewed),
-                            isReviewed: o.is_reviewed || o.isReviewed || (o.source === 'shopify' ? true : o.isReviewed)
+                            isReviewed: o.is_reviewed || o.isReviewed || (o.source === 'shopify' ? true : o.isReviewed),
+                            ...(needsCreatorStamp && { createdBy: adminName, created_by: adminName }),
+                            updatedBy: adminName,
+                            updated_by: adminName
                         };
+                        if (newStatus === 'Cancelled' || newStatus === 'Rejected') {
+                            updatedOrder.rejectedBy = prev.currentUser?.name || 'الأدمن';
+                            updatedOrder.rejected_by_name = prev.currentUser?.name || 'الأدمن';
+                        }
                         // Flag deposit refund needed if order was cancelled with a collected deposit
                         if (
-                            newStatus === 'Cancelled' &&
+                            (newStatus === 'Cancelled' || newStatus === 'Rejected') &&
                             (parseFloat(o.deposit) || 0) > 0 &&
                             o.depositReceiverId
                         ) {
@@ -2597,9 +2664,13 @@ export const AppProvider = ({ children }) => {
 
         if (supabase) {
             try {
+                const adminName = state.currentUser?.name || 'الأدمن';
+                const needsCreatorStamp = !order.createdBy || order.createdBy === 'Shopify Webhook';
                 const dbUpdate = { 
                     status: newStatus,
-                    address: updatedAddressStr
+                    address: updatedAddressStr,
+                    updated_by: adminName,
+                    ...(needsCreatorStamp && { created_by: adminName })
                 };
                 
                 // Flag deposit refund needed if order was cancelled with a collected deposit
@@ -2620,18 +2691,20 @@ export const AppProvider = ({ children }) => {
                 const { data: items } = await supabase.from('order_items').select('*').eq('order_id', orderId);
                 
                 if (orderData && items && items.length > 0) {
+                    const isShopifyOrder = orderData.source === 'shopify' || !!orderData.shopify_order_id || !!orderData.shopifyOrderId;
                     const wasDeducted = isDeductedStatus(oldStatus, { ...orderData, status: oldStatus });
                     const isDeducted = isDeductedStatus(newStatus, { ...orderData, status: newStatus });
+                    const isCancellation = newStatus === 'Cancelled' || newStatus === 'Rejected';
                     
-                    // 1. If cancelled, cancel order in Shopify first
-                    if (newStatus === 'Cancelled') {
+                    // 1. If cancelled or rejected, cancel order in Shopify first
+                    if (isCancellation) {
                         const curOrderInState = (state.orders || []).find(o => o.id === orderId);
                         const sOrderId = orderData?.shopify_order_id || orderData?.shopifyOrderId || curOrderInState?.shopify_order_id || curOrderInState?.shopifyOrderId;
                         if (sOrderId) {
                             try {
                                 console.log(`Triggering Shopify cancellation API for order ${sOrderId}...`);
                                 const cancelRes = await supabase.functions.invoke('swift-processor', {
-                                    body: { action: 'cancel_order', shopify_order_id: sOrderId }
+                                    body: { action: 'cancel_order', shopify_order_id: sOrderId, reason: 'customer' }
                                 });
                                 console.log("Shopify cancel API response:", cancelRes);
                             } catch (err) {
@@ -2681,7 +2754,7 @@ export const AppProvider = ({ children }) => {
                             }
                         }
                     } else if (wasDeducted && !isDeducted) {
-                        // Restore stock locally and push correct stock levels to Shopify for all cancellations
+                        // Order was previously deducted in system: restore stock in DB, local state & sync to Shopify
                         for (const item of items) {
                             const itemSku = item.variant_sku || item.variantSku || item.sku;
                             if (!itemSku) continue;
@@ -2701,7 +2774,6 @@ export const AppProvider = ({ children }) => {
                                     }))
                                 }));
                                 
-                                // Await the Shopify stock sync so it finishes before database or ledger updates!
                                 await syncVariantStockToShopify(itemSku);
                                 
                                 const uCost = item.cost_at_time_of_sale || item.costAtTimeOfSale || vData.average_cost || 0;
@@ -2719,6 +2791,14 @@ export const AppProvider = ({ children }) => {
                                     total_cost: tCost,
                                     balance_after: newStock
                                 }]);
+                            }
+                        }
+                    } else if (isCancellation && isShopifyOrder) {
+                        // Order was NOT deducted in system (unapproved pending Shopify order): DO NOT change system stock, but sync current DB stock to Shopify to restore Shopify inventory
+                        for (const item of items) {
+                            const itemSku = item.variant_sku || item.variantSku || item.sku;
+                            if (itemSku) {
+                                await syncVariantStockToShopify(itemSku);
                             }
                         }
                     }
@@ -2862,7 +2942,10 @@ export const AppProvider = ({ children }) => {
                     }
 
                     // Restore stock in DB & Shopify atomically if status was deducted
-                    if (isDeductedStatus(status, targetOrderObj) && dbOrderItems && dbOrderItems.length > 0) {
+                    const isShopifyOrder = targetOrderObj?.source === 'shopify' || !!targetOrderObj?.shopifyOrderId || !!targetOrderObj?.shopify_order_id;
+                    const wasDeducted = isDeductedStatus(status, targetOrderObj);
+
+                    if (wasDeducted && dbOrderItems && dbOrderItems.length > 0) {
                         for (const item of dbOrderItems) {
                             const itemSku = item.variantSku || item.variant_sku || item.sku;
                             const itemQty = Math.abs(parseInt(item.quantity) || 0);
@@ -2900,6 +2983,16 @@ export const AppProvider = ({ children }) => {
                                 }
                             } catch (ledgerErr) {
                                 console.error("Failed to insert stock ledger return on delete:", ledgerErr);
+                            }
+                        }
+                    } else if (isShopifyOrder && dbOrderItems && dbOrderItems.length > 0) {
+                        // Unapproved Shopify order deleted: do not increment DB stock, but sync DB stock to Shopify
+                        for (const item of dbOrderItems) {
+                            const itemSku = item.variantSku || item.variant_sku || item.sku;
+                            if (itemSku) {
+                                try {
+                                    syncVariantStockToShopify(itemSku);
+                                } catch (e) {}
                             }
                         }
                     }
@@ -3750,14 +3843,233 @@ export const AppProvider = ({ children }) => {
         }
     };
 
-    const restoreStoreData = (restoredState) => {
-        if (restoredState.products && restoredState.suppliers && restoredState.orders) {
-            setState(restoredState);
+    const restoreStoreData = async (restoredState) => {
+        if (!restoredState.products || !restoredState.suppliers || !restoredState.orders) {
+            showToast("Invalid backup file format.", "error");
+            return;
+        }
+
+        try {
+            showToast("Starting database restore... Please wait.", "info");
+
+            const tablesToClear = [
+                { name: 'order_items', col: 'order_id' },
+                { name: 'purchase_items', col: 'po_id' },
+                { name: 'stock_ledger', col: 'id' },
+                { name: 'wastes', col: 'id' },
+                { name: 'orders', col: 'id' },
+                { name: 'purchase_orders', col: 'id' },
+                { name: 'product_variants', col: 'product_id' },
+                { name: 'products', col: 'id' },
+                { name: 'suppliers', col: 'id' },
+                { name: 'customers', col: 'id' },
+                { name: 'coupons', col: 'id' },
+                { name: 'telegram_mappings', col: 'id' }
+            ];
+
+            for (const table of tablesToClear) {
+                await supabase.from(table.name).delete().not(table.col, 'is', null);
+            }
+
+            const batchInsert = async (table, data) => {
+                const batchSize = 500;
+                for (let i = 0; i < data.length; i += batchSize) {
+                    const batch = data.slice(i, i + batchSize);
+                    const { error } = await supabase.from(table).insert(batch);
+                    if (error) throw new Error(`Error inserting into ${table}: ${error.message}`);
+                }
+            };
+
+            const products = [];
+            const productVariants = [];
+            restoredState.products.forEach(p => {
+                products.push({
+                    id: p.id,
+                    name: p.name,
+                    category: p.category,
+                    unit: p.unit,
+                    image: p.image,
+                    created_date: p.createdDate,
+                    created_by: p.createdBy,
+                    description: p.description,
+                    shopify_id: p.shopify_id,
+                    shopify_collection_ids: p.shopifyCollectionIds,
+                    status: p.status
+                });
+                
+                if (p.variants) {
+                    p.variants.forEach(v => {
+                        productVariants.push({
+                            product_id: p.id,
+                            sku: v.sku,
+                            name: v.name,
+                            barcode: v.barcode,
+                            wholesale_price: v.wholesalePrice,
+                            retail_price: v.retailPrice,
+                            reorder_limit: v.reorderLimit,
+                            stock_sulur: v.stock?.Sulur || 0,
+                            shopify_id: v.shopify_id,
+                            average_cost: v.averageCost,
+                            is_active: v.is_active !== false
+                        });
+                    });
+                }
+            });
+
+            const suppliers = (restoredState.suppliers || []).map(s => ({
+                id: s.id,
+                name: s.name,
+                contact: s.contact,
+                phone: s.phone,
+                debt: s.debt,
+                paid: s.paid,
+                created_by: s.createdBy,
+                created_at: s.createdAt
+            }));
+
+            const customers = (restoredState.customers || []).map(c => ({
+                id: c.id,
+                name: c.name,
+                phone: c.phone,
+                email: c.email,
+                address: c.address,
+                governorate: c.governorate,
+                notes: c.notes,
+                is_spam: c.is_spam,
+                total_purchases: c.total_purchases,
+                orders_count: c.orders_count,
+                customer_type: c.customer_type,
+                created_at: c.created_at
+            }));
+
+            const coupons = (restoredState.coupons || []).map(c => ({
+                id: c.id,
+                code: c.code,
+                name: c.name,
+                discount_type: c.discount_type,
+                discount_value: c.discount_value,
+                is_active: c.is_active,
+                usage_limit: c.usage_limit,
+                min_order_value: c.min_order_value,
+                expiry_date: c.expiry_date,
+                created_at: c.created_at
+            }));
+
+            const orders = [];
+            const orderItems = [];
+            (restoredState.orders || []).forEach(o => {
+                orders.push({
+                    id: o.id,
+                    client: o.client,
+                    date: o.date,
+                    warehouse: o.warehouse,
+                    status: o.status,
+                    total_value: o.totalValue,
+                    address: o.address,
+                    governorate: o.governorate,
+                    deposit: o.deposit,
+                    deposit_receiver_id: o.depositReceiverId,
+                    deposit_status: o.depositStatus,
+                    deposit_refund_status: o.depositRefundStatus,
+                    deposit_refund_screenshot: o.depositRefundScreenshot,
+                    deposit_refund_proof_url: o.depositRefundScreenshot,
+                    shipping_fee: o.shipping_fee,
+                    created_by: o.createdBy,
+                    updated_by: o.updatedBy,
+                    shopify_order_id: o.shopifyOrderId,
+                    source: o.source,
+                    payment_method: o.paymentMethod,
+                    customer_id: o.customer_id,
+                    discount_type: o.discount_type,
+                    discount_value: o.discount_value,
+                    applied_coupon_code: o.applied_coupon_code,
+                    discount_reason: o.discount_reason,
+                    discount_reason_details: o.discount_reason_details,
+                    created_at: o.createdAt
+                });
+                if (o.items) {
+                    o.items.forEach(i => {
+                        orderItems.push({
+                            order_id: o.id,
+                            variant_sku: i.variantSku,
+                            quantity: i.quantity,
+                            price: i.price,
+                            cost_at_time_of_sale: i.costAtTimeOfSale,
+                            product_name: i.productName,
+                            variant_name: i.variantName
+                        });
+                    });
+                }
+            });
+
+            const purchaseOrders = [];
+            const purchaseItems = [];
+            (restoredState.purchaseOrders || []).forEach(po => {
+                purchaseOrders.push({
+                    id: po.id,
+                    supplier_id: po.supplierId,
+                    date: po.date,
+                    warehouse: po.warehouse,
+                    total_cost: po.totalCost,
+                    created_by: po.createdBy,
+                    created_at: po.createdAt
+                });
+                if (po.items) {
+                    po.items.forEach(i => {
+                        purchaseItems.push({
+                            po_id: po.id,
+                            variant_sku: i.variantSku,
+                            quantity: i.quantity,
+                            cost: i.cost
+                        });
+                    });
+                }
+            });
+
+            const stockLedger = (restoredState.stockLedger || []).map(l => ({
+                id: l.id,
+                date: l.date,
+                product_id: l.productId,
+                variant_sku: l.variantSku,
+                warehouse: l.warehouse,
+                type: l.type,
+                quantity: l.quantity,
+                balance_after: l.balanceAfter,
+                order_id: l.orderId,
+                unit_cost: l.unitCost,
+                total_cost: l.totalCost,
+                notes: l.notes,
+                created_at: l.created_at
+            }));
+
+            const wastes = (restoredState.wastes || []).map(w => ({
+                id: w.rawId || w.id,
+                date: w.date,
+                variant_sku: w.variantSku,
+                quantity: w.quantity,
+                created_at: w.createdAt
+            }));
+
+            if (products.length) await batchInsert('products', products);
+            if (productVariants.length) await batchInsert('product_variants', productVariants);
+            if (suppliers.length) await batchInsert('suppliers', suppliers);
+            if (customers.length) await batchInsert('customers', customers);
+            if (coupons.length) await batchInsert('coupons', coupons);
+            if (orders.length) await batchInsert('orders', orders);
+            if (orderItems.length) await batchInsert('order_items', orderItems);
+            if (purchaseOrders.length) await batchInsert('purchase_orders', purchaseOrders);
+            if (purchaseItems.length) await batchInsert('purchase_items', purchaseItems);
+            if (stockLedger.length) await batchInsert('stock_ledger', stockLedger);
+            if (wastes.length) await batchInsert('wastes', wastes);
+
+            await loadSupabaseData();
+            
             logActivity("auth", "Database restored from file backup.");
             showToast("Database restored successfully!");
             setCurrentView("dashboard");
-        } else {
-            showToast("Invalid backup file format.", "error");
+        } catch (error) {
+            console.error("Restore error:", error);
+            showToast(`Restore failed: ${error.message}`, "error");
         }
     };
 
@@ -3793,6 +4105,7 @@ export const AppProvider = ({ children }) => {
             if (prod) {
                 const vr = prod.variants.find(v => v.sku === variantSku);
                 const currentBal = vr ? (vr.stock[warehouse] || 0) : 0;
+                const adminName = prev.currentUser?.name || 'الأدمن';
                 newLedger = [{
                     date: new Date().toISOString(),
                     productId: prod.id,
@@ -3800,7 +4113,8 @@ export const AppProvider = ({ children }) => {
                     warehouse: warehouse,
                     type: "Correction",
                     quantity: type === 'increase' ? parseInt(quantity) : -parseInt(quantity),
-                    balanceAfter: currentBal
+                    balanceAfter: currentBal,
+                    notes: `مُعدل بواسطة: ${adminName}${reason ? ' - ' + reason : ''}`
                 }, ...newLedger];
             }
 
@@ -3825,7 +4139,8 @@ export const AppProvider = ({ children }) => {
                         warehouse: warehouse,
                         type: 'Correction',
                         quantity: delta,
-                        balance_after: newStock
+                        balance_after: newStock,
+                        notes: `مُعدل بواسطة: ${state.currentUser?.name || 'الأدمن'}${reason ? ' - ' + reason : ''}`
                     }]);
                 } catch (e) {
                     console.error("Supabase Error in recordStockAdjustment:", e);
@@ -5315,6 +5630,7 @@ export const AppProvider = ({ children }) => {
             logActivity,
             searchOrdersDatabase,
             searchCustomersDatabase,
+            isDeductedStatus,
             language,
             setLanguage,
             theme,

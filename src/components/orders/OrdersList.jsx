@@ -273,6 +273,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
             case 'Partially Delivered': return { label: 'تسليم جزئي', className: 'badge-gold' };
             case 'Completed': return { label: 'تم التسليم', className: 'badge-success' };
             case 'Cancelled': return { label: 'ملغي', className: 'badge-danger' };
+            case 'Rejected': return { label: 'تم رفضه', className: 'badge-danger' };
             default: return { label: ord.status, className: 'badge-grey' };
         }
     };
@@ -285,14 +286,15 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
             case 'Shipped': return 'تم الشحن';
             case 'Partially Delivered': return 'تسليم جزئي';
             case 'Completed': return 'تم التسليم';
-            case 'Cancelled': return 'ملغي / مرتجع';
+            case 'Cancelled': return 'ملغي';
+            case 'Rejected': return 'تم رفضه';
             default: return status;
         }
     };
 
     // Helper to calculate accurate remaining amount to collect
     const getRemainingToCollect = (ord) => {
-        if (ord.status === 'Cancelled') return 0;
+        if (ord.status === 'Cancelled' || ord.status === 'Rejected') return 0;
         const { bostaStateCode } = parseAddressData(ord.address);
         const isDelivered = ord.status === 'Completed' || Number(bostaStateCode) === 45 || Number(bostaStateCode) === 25;
         const tot = parseFloat(ord.totalValue) || 0;
@@ -1026,9 +1028,14 @@ ${followUpReason}
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', color: 'var(--text-primary)', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'center' }}>
                                                          <span>{ord.createdBy || 'الآدمن'}</span>
-                                                         {ord.updatedBy && ord.updatedBy !== ord.createdBy && (
+                                                         {ord.updatedBy && (
                                                              <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
                                                                  (مُعدل: {ord.updatedBy})
+                                                             </span>
+                                                         )}
+                                                         {(ord.rejectedBy || ord.rejected_by_name) && (ord.status === 'Cancelled' || ord.status === 'Rejected') && (
+                                                             <span style={{ fontSize: '11px', color: '#ef4444', fontWeight: 600 }}>
+                                                                 (تم رفضه بواسطة: {ord.rejectedBy || ord.rejected_by_name})
                                                              </span>
                                                          )}
                                                      </div>
@@ -1296,7 +1303,7 @@ ${followUpReason}
                                                                         <div><strong>تمت الموافقة بواسطة:</strong> <span style={{ color: 'var(--gold-primary)' }}>{ord.createdBy}</span></div>
                                                                     )}
                                                                     <div><strong>سجل الطلب بواسطة:</strong> <span style={{ color: ord.source === 'shopify' ? 'var(--text-secondary)' : 'var(--gold-primary)' }}>{ord.source === 'shopify' ? 'Shopify Webhook' : (ord.createdBy || 'الآدمن')}</span></div>
-                                                                    {ord.updatedBy && ord.updatedBy !== ord.createdBy && (ord.source !== 'shopify' || ord.updatedBy !== 'Shopify Webhook') && (
+                                                                    {ord.updatedBy && ord.updatedBy !== 'Shopify Webhook' && (
                                                                         <div><strong>تم التعديل بواسطة:</strong> <span style={{ color: 'var(--gold-primary)' }}>{ord.updatedBy}</span></div>
                                                                     )}
                                                                     {ord.discount_reason && (
@@ -1592,7 +1599,7 @@ ${followUpReason}
                                         <div style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>
                                             <span>بواسطة: </span>
                                             <strong style={{ color: 'var(--gold-primary)' }}>{ord.createdBy || 'الآدمن'}</strong>
-                                            {ord.updatedBy && ord.updatedBy !== ord.createdBy && (
+                                            {ord.updatedBy && (
                                                 <span style={{ fontSize: '10px', color: 'var(--text-muted)', marginRight: '4px' }}>
                                                     (مُعدل: {ord.updatedBy})
                                                 </span>

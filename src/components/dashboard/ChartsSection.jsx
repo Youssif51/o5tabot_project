@@ -37,7 +37,7 @@ const isDateInPeriod = (dateStr, period) => {
 
 
 export default function ChartsSection({ timeFilter = 'all' }) {
-    const { state, t } = useContext(AppContext);
+    const { state, isDeductedStatus, t } = useContext(AppContext);
     const currency = state.storeSettings.currency || '$';
 
     // Calculate last 6 days with activity, or fallback to calendar days
@@ -81,8 +81,8 @@ export default function ChartsSection({ timeFilter = 'all' }) {
     const salesData = last6Days.map(dateStr => {
         let sum = 0;
         (state.orders || []).forEach(ord => {
-            if (ord.date === dateStr && ord.status !== 'Cancelled' && ord.status !== 'Draft') {
-                sum += ord.totalValue;
+            if (ord.date === dateStr && isDeductedStatus(ord.status, ord)) {
+                sum += parseFloat(ord.totalValue || ord.total_value) || 0;
             }
         });
         return sum;
@@ -92,7 +92,7 @@ export default function ChartsSection({ timeFilter = 'all' }) {
         let sum = 0;
         (state.purchaseOrders || []).forEach(po => {
             if (po.date === dateStr) {
-                sum += po.totalCost;
+                sum += parseFloat(po.totalCost || po.total_cost) || 0;
             }
         });
         return sum;
@@ -121,11 +121,11 @@ export default function ChartsSection({ timeFilter = 'all' }) {
 
     // 2. Order Summary Line Chart Data
     const orderedData = last6Days.map(dateStr => {
-        return (state.orders || []).filter(ord => ord.date === dateStr && ord.status !== 'Cancelled').length;
+        return (state.orders || []).filter(ord => ord.date === dateStr && isDeductedStatus(ord.status, ord)).length;
     });
 
     const deliveredData = last6Days.map(dateStr => {
-        return (state.orders || []).filter(ord => ord.date === dateStr && (ord.status === 'Completed' || ord.status === 'Partially Delivered')).length;
+        return (state.orders || []).filter(ord => ord.date === dateStr && (ord.status === 'Completed' || ord.status === 'Partially Delivered' || ord.status === 'Delivered')).length;
     });
     
     const maxOrdered = Math.max(...orderedData);

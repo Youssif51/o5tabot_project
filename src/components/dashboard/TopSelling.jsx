@@ -4,15 +4,18 @@ import { formatProductDisplayName } from '../../utils/productUtils';
 import Modal from '../common/Modal';
 
 export default function TopSelling() {
-    const { state, t } = useContext(AppContext);
+    const { state, isDeductedStatus, t } = useContext(AppContext);
     const currency = state.storeSettings.currency || '$';
     const [isModalOpen, setIsModalOpen] = useState(false);
 
     let variantSales = {};
-    state.orders.forEach(ord => {
-        if (ord.status !== "Cancelled" && ord.status !== "Draft") {
-            ord.items.forEach(item => {
-                variantSales[item.variantSku] = (variantSales[item.variantSku] || 0) + item.quantity;
+    (state.orders || []).forEach(ord => {
+        if (isDeductedStatus(ord.status, ord)) {
+            (ord.items || []).forEach(item => {
+                const sku = item.variantSku || item.variant_sku || item.sku;
+                if (sku) {
+                    variantSales[sku] = (variantSales[sku] || 0) + (parseInt(item.quantity) || 1);
+                }
             });
         }
     });

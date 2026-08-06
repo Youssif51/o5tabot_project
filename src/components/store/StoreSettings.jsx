@@ -8,7 +8,6 @@ export default function StoreSettings() {
     
     const [storeName, setStoreName] = useState(state.storeSettings.name || 'Octabot Retail Ltd');
     const [storeAddress, setStoreAddress] = useState(state.storeSettings.address || '');
-    const [currency, setCurrency] = useState(state.storeSettings.currency || '$');
     
     const currentUserAvatar = state.userAvatars?.[state.currentUser?.id] || state.currentUser?.avatar || state.storeSettings.adminAvatar || '';
     const [userAvatar, setUserAvatar] = useState(currentUserAvatar);
@@ -96,7 +95,7 @@ export default function StoreSettings() {
         e.preventDefault();
         saveUserAvatar(state.currentUser.id, userAvatar);
         if (state.currentUser?.role === 'SuperAdmin') {
-            saveStoreConfig(storeName, storeAddress, currency, userAvatar);
+            saveStoreConfig(storeName, storeAddress, 'EGP', userAvatar);
         }
         setIsDirty(false);
         showToast("Profile image saved successfully!");
@@ -104,7 +103,7 @@ export default function StoreSettings() {
 
     const handleSave = (e) => {
         e.preventDefault();
-        saveStoreConfig(storeName, storeAddress, currency, state.currentUser?.role === 'SuperAdmin' ? userAvatar : undefined);
+        saveStoreConfig(storeName, storeAddress, 'EGP', state.currentUser?.role === 'SuperAdmin' ? userAvatar : undefined);
     };
 
     const handleExportBackup = () => {
@@ -119,12 +118,17 @@ export default function StoreSettings() {
     const handleRestoreBackup = (e) => {
         const file = e.target.files[0];
         if (!file) return;
+
+        if (!window.confirm("⚠️ تحذير مهم!\n\nالاستعادة هتمسح كل البيانات الحالية في النظام وترجعها لتاريخ النسخة الاحتياطية.\n\nأي طلبات أو تحركات مخزون أو بيانات عملاء تمت بعد تاريخ النسخة الاحتياطية هتضيع نهائياً.\n\nهل أنت متأكد؟")) {
+            e.target.value = null;
+            return;
+        }
         
         const reader = new FileReader();
-        reader.onload = (event) => {
+        reader.onload = async (event) => {
             try {
                 const restoredState = JSON.parse(event.target.result);
-                restoreStoreData(restoredState);
+                await restoreStoreData(restoredState);
             } catch (err) {
                 showToast("Failed to parse JSON backup file.", "error");
             }
@@ -308,18 +312,12 @@ export default function StoreSettings() {
                             </div>
                             <div className="form-group">
                                 <label className="form-label">{t('currency')}</label>
-                                <select 
-                                    className="form-select" 
-                                    value={currency}
-                                    onChange={(e) => setCurrency(e.target.value)}
-                                    required
-                                >
-                                    <option value="$">USD ($)</option>
-                                    <option value="EGP">EGP (ج.م)</option>
-                                    <option value="INR">INR (₹)</option>
-                                    <option value="€">EUR (€)</option>
-                                    <option value="A£">GBP (A£)</option>
-                                </select>
+                                <input 
+                                    className="form-input" 
+                                    value="EGP (ج.م)"
+                                    disabled
+                                    style={{ opacity: 0.7, cursor: 'not-allowed' }}
+                                />
                             </div>
                             <button type="submit" className="btn btn-primary" style={{ marginTop: '12px' }}>
                                 {t('saveSettings')}

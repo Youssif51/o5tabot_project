@@ -64,6 +64,7 @@ export default function ShopifyPendingList() {
     const [customDeposits, setCustomDeposits] = useState({}); // { [orderId]: string/number }
     const [allowToOpenMap, setAllowToOpenMap] = useState({}); // { [orderId]: boolean }
     const [depositReceivers, setDepositReceivers] = useState({}); // { [orderId]: string }
+    const [depositConfirmMap, setDepositConfirmMap] = useState({}); // { [orderId]: boolean }
     const [bostaSyncMap, setBostaSyncMap] = useState({}); // { [orderId]: boolean } (default true)
     
     // Dropdowns UI search states
@@ -307,16 +308,27 @@ ${itemsList}
 
         const depositAmount = customDeposits[ordId] !== undefined ? (parseFloat(customDeposits[ordId]) || 0) : (pendingOrders.find(o => o.id === ordId)?.deposit || 0);
         const allowToOpen = allowToOpenMap[ordId] !== undefined ? allowToOpenMap[ordId] : false;
-        const receiverId = depositReceivers[ordId] || state.currentUser?.id || null;
+        const receiverId = depositReceivers[ordId] !== undefined ? depositReceivers[ordId] : (pendingOrders.find(o => o.id === ordId)?.depositReceiverId || state.currentUser?.id || null);
+        const isAssignedToMe = receiverId === state.currentUser?.id;
+        const isConfirmedByCheck = depositConfirmMap[ordId] === true;
 
         if (depositAmount > 0 && !receiverId) {
             showToast('يرجى تحديد الأدمن المستلم للعربون للمتابعة', 'warning');
             return;
         }
 
+        if (depositAmount > 0 && isAssignedToMe && !isConfirmedByCheck) {
+            showToast('عفواً! لا يمكن اعتماد الطلب قبل الإقرار باستلام مبلغ العربون وتحديد علامة الصح أولاً.', 'error');
+            return;
+        }
+
         let depositStatus = 'confirmed';
-        if (depositAmount > 0 && receiverId !== state.currentUser?.id) {
-            depositStatus = 'pending';
+        if (depositAmount > 0) {
+            if (isAssignedToMe) {
+                depositStatus = isConfirmedByCheck ? 'confirmed' : 'pending';
+            } else {
+                depositStatus = 'pending';
+            }
         }
 
         const confirmMsg = !isBostaEnabled 
@@ -478,10 +490,10 @@ ${itemsList}
     // Cancel Action
     const handleCancel = (e, ordId) => {
         e.stopPropagation();
-        showConfirm('هل أنت متأكد من رفض وإلغاء هذا الطلب؟', (flagAsSpam) => {
-            updateOrderStatus(ordId, 'Cancelled');
+        showConfirm('هل أنت متأكد من رفض هذا الطلب؟', (flagAsSpam) => {
+            updateOrderStatus(ordId, 'Rejected');
             setExpandedOrderIds(prev => ({ ...prev, [ordId]: false }));
-            showToast('تم إلغاء الطلب بنجاح', 'warning');
+            showToast('تم رفض الطلب بنجاح', 'warning');
             if (flagAsSpam) {
                 console.log('🚨 Spam flag enabled for Shopify order', ordId);
                 const ord = state.orders.find(o => o.id === ordId);
@@ -903,75 +915,167 @@ ${itemsList}
                                                                             <span>مصاريف الشحن شوبيفاي:</span>
                                                                             <span>+{currency} {(ord.shipping_fee || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                         </div>
+                                                                        {/* Financial Summary & Deposit Confirmation Card */}
                                                                         {(() => {
-                                                                            const receiverAdmin = (state.users || []).find(u => u.id === (depositReceivers[ord.id] || ord.depositReceiverId));
-                                                                            const depositLabel = receiverAdmin ? `العربون (${receiverAdmin.name})` : 'العربون (Deposit)';
-                                                                            const editLabel = receiverAdmin ? `تعديل العربون المدفوع (${receiverAdmin.name})` : 'تعديل العربون المدفوع (Deposit)';
+                                                                            const depVal = customDeposits[ord.id] !== undefined ? (parseFloat(customDeposits[ord.id]) || 0) : (ord.deposit || 0);
+                                                                            const currentReceiverId = depositReceivers[ord.id] !== undefined ? depositReceivers[ord.id] : (ord.depositReceiverId || state.currentUser?.id || '');
+                                                                            const isAssignedToMe = currentReceiverId === state.currentUser?.id;
+                                                                            const receiverAdmin = (state.users || []).find(u => u.id === currentReceiverId);
+                                                                            const receiverDisplayName = receiverAdmin ? receiverAdmin.name : 'أنت';
+                                                                            const depositLabel = `العربون (${receiverDisplayName})`;
+                                                                            const editLabel = `تعديل العربون المدفوع (${receiverDisplayName})`;
+                                                                            const isConfirmedByCheck = !!depositConfirmMap[ord.id];
+
                                                                             return (
-                                                                                <>
-                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71', fontWeight: 500 }}>
+                                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '12px' }}>
+                                                                                    {/* Deposit Line in Summary */}
+                                                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: isAssignedToMe ? '#2ecc71' : '#ff4d4d', fontWeight: 600, fontSize: '13px' }}>
                                                                                         <span>{depositLabel}:</span>
-                                                                                        <span>-{currency} {(customDeposits[ord.id] !== undefined ? (parseFloat(customDeposits[ord.id]) || 0) : (ord.deposit || 0)).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                        <span>-{currency} {depVal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                                     </div>
-                                                                                    
-                                                                                    {/* Editable Deposit Input */}
-                                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', borderTop: '1px solid var(--glass-border)', paddingTop: '8px', marginTop: '4px' }}>
-                                                                                        <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{editLabel}:</label>
-                                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                                                            <input 
-                                                                                                type="text"
-                                                                                                inputMode="decimal"
-                                                                                                value={customDeposits[ord.id] !== undefined ? customDeposits[ord.id] : (ord.deposit || 0)}
-                                                                                                onChange={(e) => {
-                                                                                                    const val = e.target.value;
-                                                                                                    if (val === '' || /^\d*\.?\d*$/.test(val)) {
-                                                                                                        setCustomDeposits({ ...customDeposits, [ord.id]: val });
-                                                                                                    }
-                                                                                                }}
-                                                                                                style={{
-                                                                                                    background: 'rgba(0,0,0,0.2)',
-                                                                                                    border: '1px solid var(--glass-border)',
-                                                                                                    color: 'var(--text-primary)',
-                                                                                                    borderRadius: '4px',
-                                                                                                    padding: '4px 8px',
-                                                                                                    width: '100px',
-                                                                                                    fontSize: '12px'
-                                                                                                }}
-                                                                                            />
-                                                                                            <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{currency}</span>
+
+                                                                                    {/* Editable Deposit Input & Receiver Select */}
+                                                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', borderTop: '1px solid var(--glass-border)', paddingTop: '10px' }}>
+                                                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                                            <label style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>{editLabel}:</label>
+                                                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                                <input 
+                                                                                                    type="text"
+                                                                                                    inputMode="decimal"
+                                                                                                    value={customDeposits[ord.id] !== undefined ? customDeposits[ord.id] : (ord.deposit || 0)}
+                                                                                                    onChange={(e) => {
+                                                                                                        const val = e.target.value;
+                                                                                                        if (val === '' || /^\d*\.?\d*$/.test(val)) {
+                                                                                                            setCustomDeposits({ ...customDeposits, [ord.id]: val });
+                                                                                                        }
+                                                                                                    }}
+                                                                                                    style={{
+                                                                                                        background: 'rgba(0,0,0,0.3)',
+                                                                                                        border: '1px solid var(--glass-border)',
+                                                                                                        color: 'var(--text-primary)',
+                                                                                                        borderRadius: '6px',
+                                                                                                        padding: '4px 8px',
+                                                                                                        width: '90px',
+                                                                                                        fontSize: '12px',
+                                                                                                        textAlign: 'center'
+                                                                                                    }}
+                                                                                                />
+                                                                                                <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>{currency}</span>
+                                                                                            </div>
                                                                                         </div>
+
+                                                                                        {depVal > 0 && (
+                                                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                                                                <label style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>الأدمن المستلم للعربون:</label>
+                                                                                                <select
+                                                                                                    value={currentReceiverId}
+                                                                                                    onChange={(e) => setDepositReceivers({ ...depositReceivers, [ord.id]: e.target.value })}
+                                                                                                    style={{
+                                                                                                        background: 'rgba(0,0,0,0.3)',
+                                                                                                        border: '1px solid var(--glass-border)',
+                                                                                                        color: 'var(--text-primary)',
+                                                                                                        borderRadius: '6px',
+                                                                                                        padding: '4px 8px',
+                                                                                                        fontSize: '12px',
+                                                                                                        width: '170px',
+                                                                                                        outline: 'none'
+                                                                                                    }}
+                                                                                                >
+                                                                                                    {(state.users || []).filter(u => u.is_active).map(u => (
+                                                                                                        <option key={u.id} value={u.id} style={{ background: '#121216' }}>
+                                                                                                            {u.name} {u.id === state.currentUser?.id ? ' (أنت)' : ''}
+                                                                                                        </option>
+                                                                                                    ))}
+                                                                                                </select>
+                                                                                            </div>
+                                                                                        )}
                                                                                     </div>
-                                                                                </>
+
+                                                                                    {/* Deposit Confirmation Card */}
+                                                                                    {depVal > 0 && (
+                                                                                        <div style={{
+                                                                                            padding: '14px',
+                                                                                            background: 'linear-gradient(135deg, rgba(22, 20, 12, 0.95), rgba(14, 14, 18, 0.98))',
+                                                                                            border: '1px solid rgba(241, 196, 15, 0.35)',
+                                                                                            borderRadius: '10px',
+                                                                                            boxShadow: '0 4px 15px rgba(0, 0, 0, 0.4)',
+                                                                                            marginTop: '4px'
+                                                                                        }}>
+                                                                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid rgba(241, 196, 15, 0.15)', paddingBottom: '6px' }}>
+                                                                                                <h4 style={{ fontSize: '13px', color: '#f1c40f', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
+                                                                                                    <img src="/icons/warning-alert.png" alt="Warning" style={{ width: '24px', height: '24px', objectFit: 'contain' }} />
+                                                                                                    إقرار عُهدة العربون
+                                                                                                </h4>
+                                                                                                <span style={{
+                                                                                                    fontSize: '10.5px',
+                                                                                                    padding: '2px 8px',
+                                                                                                    borderRadius: '4px',
+                                                                                                    background: isConfirmedByCheck && isAssignedToMe ? 'rgba(46, 204, 113, 0.15)' : 'rgba(241, 196, 15, 0.15)',
+                                                                                                    color: isConfirmedByCheck && isAssignedToMe ? '#2ecc71' : '#f1c40f',
+                                                                                                    border: `1px solid ${isConfirmedByCheck && isAssignedToMe ? 'rgba(46, 204, 113, 0.3)' : 'rgba(241, 196, 15, 0.3)'}`,
+                                                                                                    fontWeight: 700
+                                                                                                }}>
+                                                                                                    {isConfirmedByCheck && isAssignedToMe ? 'عُهدة مؤكدة' : 'بانتظار التأكيد'}
+                                                                                                </span>
+                                                                                            </div>
+
+                                                                                            <div style={{ fontSize: '12.5px', display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '10px' }}>
+                                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                                    <span style={{ color: 'var(--text-secondary)' }}>مبلغ العربون:</span>
+                                                                                                    <strong style={{ color: isAssignedToMe ? '#2ecc71' : '#ff4d4d', fontSize: '13px', fontFamily: 'monospace' }}>
+                                                                                                        {currency} {depVal.toLocaleString('en-US', {maximumFractionDigits: 2})}
+                                                                                                    </strong>
+                                                                                                </div>
+                                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                                    <span style={{ color: 'var(--text-secondary)' }}>المستلم المحدد:</span>
+                                                                                                    <strong style={{ color: 'var(--text-primary)' }}>{receiverDisplayName}</strong>
+                                                                                                </div>
+                                                                                            </div>
+
+                                                                                            {isAssignedToMe ? (
+                                                                                                <label style={{
+                                                                                                    display: 'flex',
+                                                                                                    alignItems: 'center',
+                                                                                                    gap: '10px',
+                                                                                                    padding: '10px 12px',
+                                                                                                    background: isConfirmedByCheck ? 'rgba(46, 204, 113, 0.1)' : 'rgba(0, 0, 0, 0.4)',
+                                                                                                    borderRadius: '8px',
+                                                                                                    cursor: 'pointer',
+                                                                                                    border: `1px solid ${isConfirmedByCheck ? 'rgba(46, 204, 113, 0.4)' : 'rgba(241, 196, 15, 0.3)'}`
+                                                                                                }}>
+                                                                                                    <input 
+                                                                                                        type="checkbox"
+                                                                                                        checked={isConfirmedByCheck}
+                                                                                                        onChange={(e) => setDepositConfirmMap({ ...depositConfirmMap, [ord.id]: e.target.checked })}
+                                                                                                        style={{ width: '18px', height: '18px', accentColor: '#2ecc71', cursor: 'pointer' }}
+                                                                                                    />
+                                                                                                    <span style={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 600 }}>
+                                                                                                        أُقر باستلام مبلغ العربون ({currency} {depVal}) وتأكيد تسجيله على عُهدتي
+                                                                                                    </span>
+                                                                                                </label>
+                                                                                            ) : (
+                                                                                                <div style={{ 
+                                                                                                    fontSize: '12px', 
+                                                                                                    color: '#f1c40f', 
+                                                                                                    background: 'rgba(0, 0, 0, 0.45)', 
+                                                                                                    padding: '10px 12px', 
+                                                                                                    borderRadius: '8px',
+                                                                                                    border: '1px dashed rgba(241, 196, 15, 0.3)',
+                                                                                                    display: 'flex',
+                                                                                                    alignItems: 'center',
+                                                                                                    gap: '8px'
+                                                                                                }}>
+                                                                                                    <img src="/icons/warning-alert.png" alt="Notice" style={{ width: '20px', height: '20px', objectFit: 'contain', flexShrink: 0 }} />
+                                                                                                    <div>
+                                                                                                        العربون مسجل على الأدمن <strong style={{ color: '#fff' }}>{receiverDisplayName}</strong>. سيظل في حالة "معلق" حتى يقوم بتأكيد استلامه بنفسه.
+                                                                                                    </div>
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    )}
+                                                                                </div>
                                                                             );
                                                                         })()}
-
-                                                                        {/* Deposit Receiver Selector */}
-                                                                        {((customDeposits[ord.id] !== undefined ? parseFloat(customDeposits[ord.id]) : (ord.deposit || 0)) > 0) && (
-                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', marginTop: '8px' }}>
-                                                                                <label style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>الأدمن المستلم للعربون:</label>
-                                                                                <select
-                                                                                    value={depositReceivers[ord.id] || ''}
-                                                                                    onChange={(e) => setDepositReceivers({ ...depositReceivers, [ord.id]: e.target.value })}
-                                                                                    style={{
-                                                                                        background: 'rgba(0,0,0,0.2)',
-                                                                                        border: '1px solid var(--glass-border)',
-                                                                                        color: 'var(--text-primary)',
-                                                                                        borderRadius: '4px',
-                                                                                        padding: '4px 8px',
-                                                                                        fontSize: '12px',
-                                                                                        width: '100%',
-                                                                                        outline: 'none'
-                                                                                    }}
-                                                                                >
-                                                                                    <option value="" style={{ background: '#121216' }}>-- اختر الأدمن --</option>
-                                                                                    {(state.users || []).filter(u => u.is_active).map(u => (
-                                                                                        <option key={u.id} value={u.id} style={{ background: '#121216' }}>
-                                                                                            {u.name} {u.id === state.currentUser?.id ? ' (أنت)' : ''}
-                                                                                        </option>
-                                                                                    ))}
-                                                                                </select>
-                                                                            </div>
-                                                                        )}
 
                                                                         <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', color: 'var(--gold-primary)', borderTop: '1px dashed var(--glass-border-hover)', paddingTop: '6px', marginTop: '4px' }}>
                                                                             <span>المتبقي للتحصيل:</span>

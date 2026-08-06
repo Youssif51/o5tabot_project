@@ -5,7 +5,7 @@ import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
 
 export default function ReportsView() {
-    const { state, t } = useContext(AppContext);
+    const { state, isDeductedStatus, t } = useContext(AppContext);
     const currency = state.storeSettings.currency || 'EGP';
 
     // Time filter state: 'today', 'week', 'month', 'all'
@@ -16,17 +16,23 @@ export default function ReportsView() {
     const [isProdModalOpen, setIsProdModalOpen] = useState(false);
 
     // Helper date matcher
+    // Helper date matcher
     const isDateInPeriod = (dateStr, period) => {
         if (!dateStr) return false;
         if (period === 'all') return true;
 
         try {
-            const orderDate = new Date(dateStr);
-            orderDate.setHours(0, 0, 0, 0);
+            const datePart = typeof dateStr === 'string' ? dateStr.split('T')[0] : '';
+            if (!datePart) return false;
+
+            const [y, m, d] = datePart.split('-').map(Number);
+            if (!y || !m || !d) return false;
+
+            const orderDate = new Date(y, m - 1, d);
             const today = new Date();
             today.setHours(0, 0, 0, 0);
 
-            const diffDays = (today - orderDate) / (1000 * 60 * 60 * 24);
+            const diffDays = Math.floor((today - orderDate) / (1000 * 60 * 60 * 24));
 
             if (period === 'today') return diffDays === 0;
             if (period === 'week') return diffDays >= 0 && diffDays < 7;
@@ -59,20 +65,25 @@ export default function ReportsView() {
             const qty = parseInt(item.quantity) || 1;
             grossValue += rawPrice * qty;
 
-            let itemCost = item.costAtTimeOfSale || 0;
+            const itemSku = item.variantSku || item.variant_sku || item.sku;
+            let itemCost = parseFloat(item.costAtTimeOfSale || item.cost_at_time_of_sale) || 0;
             if (!itemCost) {
-                state.products.forEach(p => {
-                    let vr = (p.variants || []).find(v => v.sku === item.variantSku);
-                    if (vr) itemCost = vr.averageCost || vr.wholesalePrice || 0;
+                (state.products || []).forEach(p => {
+                    let vr = (p.variants || []).find(v => v.sku === itemSku);
+                    if (vr) itemCost = parseFloat(vr.averageCost || vr.average_cost || vr.wholesalePrice || vr.wholesale_price) || 0;
                 });
             }
             cogs += qty * itemCost;
         });
 
-        const hasTotalValue = ord.totalValue !== undefined && ord.totalValue !== null;
-        const netRevenue = hasTotalValue ? ord.totalValue : Math.max(0, grossValue - (parseFloat(ord.discount_value) || 0));
+        const ordTotal = ord.totalValue !== undefined && ord.totalValue !== null 
+            ? parseFloat(ord.totalValue) 
+            : (parseFloat(ord.total_value) || 0);
+
+        const hasTotalValue = ordTotal > 0;
+        const netRevenue = hasTotalValue ? ordTotal : Math.max(0, grossValue - (parseFloat(ord.discount_value) || 0));
         const originalTotal = grossValue + (parseFloat(ord.shipping_fee) || 0);
-        const discount = hasTotalValue ? Math.max(0, originalTotal - ord.totalValue) : (parseFloat(ord.discount_value) || 0);
+        const discount = hasTotalValue ? Math.max(0, originalTotal - ordTotal) : (parseFloat(ord.discount_value) || 0);
         const netProfit = netRevenue - cogs;
 
         return { grossValue, discount, cogs, netRevenue, netProfit };
@@ -86,7 +97,7 @@ export default function ReportsView() {
     let totalOrdersCount = 0;
 
     (state.orders || []).forEach(ord => {
-        if (ord.status !== 'Cancelled' && ord.status !== 'Draft') {
+        if (isDeductedStatus(ord.status, ord)) {
             if (!isDateInPeriod(ord.date, timeFilter)) return;
             totalOrdersCount++;
             const details = getOrderProfitDetails(ord);
@@ -114,7 +125,7 @@ export default function ReportsView() {
         let dayOrders = 0;
 
         (state.orders || []).forEach(ord => {
-            if (ord.date === dateStr && ord.status !== 'Cancelled' && ord.status !== 'Draft') {
+            if (ord.date === dateStr && isDeductedStatus(ord.status, ord)) {
                 dayOrders++;
                 const details = getOrderProfitDetails(ord);
                 dayRevenue += details.netRevenue;
@@ -165,14 +176,15 @@ export default function ReportsView() {
     // 3. Category Breakdown (Real Data - mapped to Shopify Collections)
     const categoryStats = {};
     (state.orders || []).forEach(ord => {
-        if (ord.status !== 'Cancelled' && ord.status !== 'Draft') {
+        if (isDeductedStatus(ord.status, ord)) {
             if (!isDateInPeriod(ord.date, timeFilter)) return;
             const ordDetails = getOrderProfitDetails(ord);
             const ordSubtotal = ordDetails.grossValue || 1;
             const ordDiscount = ordDetails.discount || 0;
 
             (ord.items || []).forEach(item => {
-                const prod = (state.products || []).find(p => (p.variants || []).some(v => v.sku === item.variantSku));
+                const itemSku = item.variantSku || item.variant_sku || item.sku;
+                const prod = (state.products || []).find(p => (p.variants || []).some(v => v.sku === itemSku));
                 const itemRawTotal = (parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1);
                 const itemNetShare = Math.max(0, itemRawTotal - ((itemRawTotal / ordSubtotal) * ordDiscount));
                 const qty = parseInt(item.quantity) || 1;
@@ -205,19 +217,19 @@ export default function ReportsView() {
     // 4. Product Profitability Breakdown (Real Data)
     const productStats = {};
     (state.orders || []).forEach(ord => {
-        if (ord.status !== 'Cancelled' && ord.status !== 'Draft') {
+        if (isDeductedStatus(ord.status, ord)) {
             if (!isDateInPeriod(ord.date, timeFilter)) return;
             const ordDetails = getOrderProfitDetails(ord);
             const ordSubtotal = ordDetails.grossValue || 1;
             const ordDiscount = ordDetails.discount || 0;
 
             (ord.items || []).forEach(item => {
-                const sku = item.variantSku;
+                const sku = item.variantSku || item.variant_sku || item.sku;
                 let prodName = sku;
                 let catName = 'عام';
-                let unitCost = item.costAtTimeOfSale || 0;
+                let unitCost = parseFloat(item.costAtTimeOfSale || item.cost_at_time_of_sale) || 0;
 
-                 state.products.forEach(p => {
+                (state.products || []).forEach(p => {
                     const vr = (p.variants || []).find(v => v.sku === sku);
                     if (vr) {
                         prodName = formatProductDisplayName(p.name, vr.name);
@@ -233,7 +245,7 @@ export default function ReportsView() {
                             catName = 'عام';
                         }
                         
-                        if (!unitCost) unitCost = vr.averageCost || vr.wholesalePrice || 0;
+                        if (!unitCost) unitCost = parseFloat(vr.averageCost || vr.average_cost || vr.wholesalePrice || vr.wholesale_price) || 0;
                     }
                 });
 
@@ -266,6 +278,60 @@ export default function ReportsView() {
         const marginPct = p.netRevenue > 0 ? ((p.netProfit / p.netRevenue) * 100).toFixed(1) : '0.0';
         return { ...p, marginPct: parseFloat(marginPct) };
     }).sort((a, b) => b.netProfit - a.netProfit);
+
+    // 5. Admins & Staff Performance Breakdown
+    const adminStats = {};
+    (state.users || []).forEach(u => {
+        const name = u.name || u.username || u.email;
+        if (name) {
+            adminStats[name] = {
+                name,
+                role: u.role === 'SuperAdmin' ? 'سوبر أدمن' : u.role === 'Admin' ? 'أدمن' : (u.role || 'مسؤول'),
+                registeredCount: 0,
+                approvedCount: 0,
+                rejectedCount: 0,
+                totalValue: 0
+            };
+        }
+    });
+
+    (state.orders || []).forEach(ord => {
+        if (!isDateInPeriod(ord.date, timeFilter)) return;
+        if (ord.status === 'Draft') return;
+
+        const rawCreator = ord.createdBy || ord.created_by;
+        const rawUpdater = ord.updatedBy || ord.updated_by;
+        const rawRejector = ord.rejectedBy || ord.rejected_by_name;
+        const isShopify = ord.source === 'shopify' || !!ord.shopify_order_id || !!ord.shopifyOrderId;
+        const val = parseFloat(ord.totalValue || ord.total_value) || 0;
+
+        // Resolve admin: created_by → updated_by → 'غير محدد'
+        const resolvedCreator = (rawCreator && rawCreator !== 'Shopify Webhook') ? rawCreator
+            : (rawUpdater && rawUpdater !== 'Shopify Webhook') ? rawUpdater
+            : 'غير محدد';
+        const creator = resolvedCreator;
+        const rejector = (rawRejector && rawRejector !== 'Shopify Webhook') ? rawRejector : null;
+
+        if (ord.status === 'Rejected' || ord.status === 'Cancelled') {
+            const rejKey = rejector || creator;
+            if (!adminStats[rejKey]) {
+                adminStats[rejKey] = { name: rejKey, role: rejKey === 'غير محدد' ? 'غير محدد' : 'أدمن', registeredCount: 0, approvedCount: 0, rejectedCount: 0, totalValue: 0 };
+            }
+            adminStats[rejKey].rejectedCount++;
+        } else {
+            if (!adminStats[creator]) {
+                adminStats[creator] = { name: creator, role: creator === 'غير محدد' ? 'غير محدد' : 'أدمن', registeredCount: 0, approvedCount: 0, rejectedCount: 0, totalValue: 0 };
+            }
+            if (isShopify) {
+                adminStats[creator].approvedCount++;
+            } else {
+                adminStats[creator].registeredCount++;
+            }
+            adminStats[creator].totalValue += val;
+        }
+    });
+
+    const sortedAdmins = Object.values(adminStats).filter(a => a.name !== 'غير محدد').sort((a, b) => (b.registeredCount + b.approvedCount) - (a.registeredCount + a.approvedCount));
 
     return (
         <div id="reports-view" className="view-pane active">
@@ -580,6 +646,106 @@ export default function ReportsView() {
                     </div>
                 </div>
 
+            </div>
+
+            {/* Admins & Staff Performance Breakdown Section */}
+            <div className="glass-card" style={{ padding: '24px', marginBottom: '24px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
+                    <div>
+                        <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <i className="fa-solid fa-user-shield" style={{ color: 'var(--gold-primary)' }}></i>
+                            تقرير أداء فريق الأدمن والموظفين (Admin Performance)
+                        </h3>
+                        <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
+                            تفاصيل الأوردرات المسجلة والمقبولة والمرفوضة حسب كل أدمن خلال الفترة المحددة
+                        </p>
+                    </div>
+                </div>
+
+                <div className="table-wrapper reports-desktop-only" style={{ overflowX: 'auto' }}>
+                    <table className="custom-table" style={{ fontSize: '0.88rem', whiteSpace: 'nowrap' }}>
+                        <thead>
+                            <tr>
+                                <th style={{ textAlign: 'right' }}>الأدمن / المسؤول</th>
+                                <th style={{ textAlign: 'center' }}>أوردرات مسجلة (يدوياً)</th>
+                                <th style={{ textAlign: 'center' }}>أوردرات مقبولة (شوبيفاي)</th>
+                                <th style={{ textAlign: 'center' }}>إجمالي المقبول والمُسجل</th>
+                                <th style={{ textAlign: 'center' }}>أوردرات مرفوضة</th>
+                                <th style={{ textAlign: 'center' }}>إجمالي قيمة الأوردرات</th>
+                                <th style={{ textAlign: 'center' }}>الحصة من العمل</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sortedAdmins.length === 0 ? (
+                                <tr>
+                                    <td colSpan="7" style={{ textAlign: 'center', padding: '28px', color: 'var(--text-muted)' }}>
+                                        لا توجد بيانات أداء مسجلة للأدمنز في هذه الفترة
+                                    </td>
+                                </tr>
+                            ) : (
+                                sortedAdmins.map((adm, idx) => {
+                                    const totalHandled = adm.registeredCount + adm.approvedCount;
+                                    const sharePct = totalOrdersCount > 0 ? ((totalHandled / totalOrdersCount) * 100).toFixed(1) : '0.0';
+                                    return (
+                                        <tr key={`adm-perf-${idx}`}>
+                                            <td style={{ fontWeight: '600', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{ width: '28px', height: '28px', borderRadius: '50%', background: 'var(--gold-border-focus)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
+                                                    {adm.name.charAt(0).toUpperCase()}
+                                                </span>
+                                                <div>
+                                                    <div>{adm.name}</div>
+                                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 'normal' }}>{adm.role}</div>
+                                                </div>
+                                            </td>
+                                            <td style={{ textAlign: 'center', fontWeight: '700', color: '#1e90ff' }}>
+                                                {adm.registeredCount} أوردر
+                                            </td>
+                                            <td style={{ textAlign: 'center', fontWeight: '700', color: '#2ed573' }}>
+                                                {adm.approvedCount} أوردر
+                                            </td>
+                                            <td style={{ textAlign: 'center', fontWeight: '800', color: 'var(--gold-primary)' }}>
+                                                {totalHandled} أوردر
+                                            </td>
+                                            <td style={{ textAlign: 'center', fontWeight: '600', color: adm.rejectedCount > 0 ? '#ef4444' : 'var(--text-muted)' }}>
+                                                {adm.rejectedCount} أوردر
+                                            </td>
+                                            <td style={{ textAlign: 'center', fontWeight: '700', color: 'var(--text-primary)' }}>
+                                                {currency} {adm.totalValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}
+                                            </td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                <span className="badge badge-gold" style={{ fontSize: '11px' }}>
+                                                    {sharePct}%
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Mobile view cards for Admin Performance */}
+                <div className="reports-mobile-cards" style={{ display: 'none', flexDirection: 'column', gap: '12px' }}>
+                    {sortedAdmins.map((adm, idx) => {
+                        const totalHandled = adm.registeredCount + adm.approvedCount;
+                        const sharePct = totalOrdersCount > 0 ? ((totalHandled / totalOrdersCount) * 100).toFixed(1) : '0.0';
+                        return (
+                            <div key={`adm-perf-mob-${idx}`} className="sa-mobile-card" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '8px', fontSize: '12px' }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <strong style={{ color: 'var(--text-primary)', fontSize: '13px' }}>{adm.name} ({adm.role})</strong>
+                                    <span className="badge badge-gold" style={{ fontSize: '10.5px' }}>{sharePct}% حصة</span>
+                                </div>
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', padding: '8px', background: 'rgba(255,255,255,0.01)', borderRadius: '4px', fontSize: '11.5px', marginTop: '4px' }}>
+                                    <div>أوردرات مسجلة: <strong style={{ color: '#1e90ff' }}>{adm.registeredCount}</strong></div>
+                                    <div>أوردرات مقبولة: <strong style={{ color: '#2ed573' }}>{adm.approvedCount}</strong></div>
+                                    <div>أوردرات مرفوضة: <strong style={{ color: '#ef4444' }}>{adm.rejectedCount}</strong></div>
+                                    <div>إجمالي القيمة: <strong style={{ color: 'var(--gold-primary)' }}>{currency} {adm.totalValue.toLocaleString()}</strong></div>
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
             </div>
 
             {/* Bottom Table: Real Product Profitability Breakdown */}

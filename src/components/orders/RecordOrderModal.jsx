@@ -101,6 +101,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const [deposit, setDeposit] = useState('');
     const [depositReceiverId, setDepositReceiverId] = useState(() => state.currentUser?.id || '');
     const [depositStatus, setDepositStatus] = useState('confirmed');
+    const [depositConfirmChecked, setDepositConfirmChecked] = useState(true);
     
     const currency = state.storeSettings.currency || '$';
     
@@ -916,6 +917,12 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 return;
             }
 
+            if (!isDraftSave && depositVal > 0 && depositReceiverId === state.currentUser?.id && !depositConfirmChecked) {
+                showToast("عفواً! لا يمكن تأكيد الطلب قبل الإقرار باستلام مبلغ العربون وتحديد علامة الصح أولاً.", "error");
+                setStep(4);
+                return;
+            }
+
             const proceedSave = async () => {
                 const orderItems = items.map(item => ({
                     variantSku: item.variantSku,
@@ -968,7 +975,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     governorate: governorate,
                     deposit: depositVal,
                     depositReceiverId: depositVal > 0 ? (depositReceiverId || state.currentUser?.id || null) : null,
-                    depositStatus: depositVal > 0 ? (depositReceiverId === state.currentUser?.id ? 'confirmed' : (depositStatus || 'pending')) : 'confirmed',
+                    depositStatus: depositVal > 0 ? (depositReceiverId === state.currentUser?.id ? (depositConfirmChecked ? 'confirmed' : 'pending') : (depositStatus || 'pending')) : 'confirmed',
                     shipping_fee: shippingFeeVal,
                     createdBy: editOrderId ? (originalOrder?.createdBy || originalOrder?.created_by || 'sfsf') : (state.currentUser ? state.currentUser.name : 'sfsf'),
                     shopifyOrderId: editOrderId ? (originalOrder?.shopifyOrderId || originalOrder?.shopify_order_id || null) : null,
@@ -2423,6 +2430,98 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Deposit Confirmation Card */}
+                            {depositVal > 0 && (() => {
+                                const isAssignedToMe = depositReceiverId === state.currentUser?.id;
+                                const receiverName = (state.users || []).find(u => u.id === depositReceiverId)?.name || 'الآدمن';
+
+                                return (
+                                    <div className="glass-card" style={{
+                                        padding: '16px',
+                                        background: 'linear-gradient(135deg, rgba(22, 20, 12, 0.95), rgba(14, 14, 18, 0.98))',
+                                        border: '1px solid rgba(241, 196, 15, 0.35)',
+                                        borderRadius: '12px',
+                                        boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
+                                        transition: 'all 0.3s ease'
+                                    }}>
+                                        {/* Header: Warning Icon + Title */}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid rgba(241, 196, 15, 0.15)', paddingBottom: '8px' }}>
+                                            <h4 style={{ fontSize: '14px', color: '#f1c40f', margin: 0, display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 'bold' }}>
+                                                <img src="/icons/warning-alert.png" alt="Warning" style={{ width: '28px', height: '28px', objectFit: 'contain' }} />
+                                                مراجعة وإقرار العُهدة والعربون
+                                            </h4>
+                                            <span style={{
+                                                fontSize: '11px',
+                                                padding: '3px 10px',
+                                                borderRadius: '6px',
+                                                background: depositConfirmChecked && isAssignedToMe ? 'rgba(46, 204, 113, 0.15)' : 'rgba(241, 196, 15, 0.15)',
+                                                color: depositConfirmChecked && isAssignedToMe ? '#2ecc71' : '#f1c40f',
+                                                border: `1px solid ${depositConfirmChecked && isAssignedToMe ? 'rgba(46, 204, 113, 0.3)' : 'rgba(241, 196, 15, 0.3)'}`,
+                                                fontWeight: 700
+                                            }}>
+                                                {depositConfirmChecked && isAssignedToMe ? 'عُهدة مؤكدة فورية' : 'بانتظار التأكيد لاحقاً'}
+                                            </span>
+                                        </div>
+
+                                        {/* Deposit Info Details */}
+                                        <div style={{ fontSize: '13px', display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{ color: 'var(--text-secondary)' }}>مبلغ العربون:</span>
+                                                <strong style={{ color: isAssignedToMe ? '#2ecc71' : '#ff4d4d', fontSize: '14px', fontFamily: 'monospace' }}>
+                                                    {currency} {depositVal.toLocaleString('en-US', {maximumFractionDigits: 2})}
+                                                </strong>
+                                            </div>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                <span style={{ color: 'var(--text-secondary)' }}>المستلم المحدد للعربون:</span>
+                                                <strong style={{ color: 'var(--text-primary)' }}>{receiverName} {isAssignedToMe ? ' (أنت)' : ''}</strong>
+                                            </div>
+                                        </div>
+
+                                        {/* Interactive Checkbox (If Assigned To Me) OR Warning Notice (If Assigned To Another Admin) */}
+                                        {isAssignedToMe ? (
+                                            <label style={{
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '12px',
+                                                padding: '12px 14px',
+                                                background: depositConfirmChecked ? 'rgba(46, 204, 113, 0.1)' : 'rgba(0, 0, 0, 0.4)',
+                                                borderRadius: '8px',
+                                                cursor: 'pointer',
+                                                border: `1px solid ${depositConfirmChecked ? 'rgba(46, 204, 113, 0.4)' : 'rgba(241, 196, 15, 0.3)'}`,
+                                                transition: 'all 0.2s ease'
+                                            }}>
+                                                <input 
+                                                    type="checkbox"
+                                                    checked={depositConfirmChecked}
+                                                    onChange={(e) => setDepositConfirmChecked(e.target.checked)}
+                                                    style={{ width: '20px', height: '20px', accentColor: '#2ecc71', cursor: 'pointer' }}
+                                                />
+                                                <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600 }}>
+                                                    أُقر باستلام مبلغ العربون ({currency} {depositVal}) على محفظتي وتأكيد تسجيله على عُهدتي
+                                                </span>
+                                            </label>
+                                        ) : (
+                                            <div style={{ 
+                                                fontSize: '12.5px', 
+                                                color: '#f1c40f', 
+                                                background: 'rgba(0, 0, 0, 0.45)', 
+                                                padding: '12px 14px', 
+                                                borderRadius: '8px',
+                                                border: '1px dashed rgba(241, 196, 15, 0.3)',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '10px'
+                                            }}>
+                                                <img src="/icons/warning-alert.png" alt="Notice" style={{ width: '24px', height: '24px', objectFit: 'contain', flexShrink: 0 }} />
+                                                <div>
+                                                    العربون مسجل على الأدمن <strong style={{ color: '#fff' }}>{receiverName}</strong>. سيظل في حالة "معلق" حتى يقوم بتأكيد استلامه بنفسه في شاشة العرابين.
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })()}
 
                             {/* Products Review List */}
                             <div className="glass-card" style={{ padding: '16px', background: 'rgba(0,0,0,0.1)', maxHeight: '180px', overflowY: 'auto' }}>
