@@ -267,12 +267,12 @@ Deno.serve(async (req) => {
         packageType: "Small",
         packageDetails: {
           itemsCount: totalQty,
-          description: itemsDescription.substring(0, 120)
+          description: itemsDescription.substring(0, 500)
         }
       },
       goodsInfo: {
         amount: productValueAmount,
-        notes: itemsDescription.substring(0, 120)
+        notes: itemsDescription.substring(0, 500)
       },
       cod: codAmount,
       allowToOpenPackage: bostaMetadata.allowToOpenPackage !== undefined ? bostaMetadata.allowToOpenPackage : true,
