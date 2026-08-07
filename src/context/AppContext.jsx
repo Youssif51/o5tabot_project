@@ -1572,16 +1572,23 @@ export const AppProvider = ({ children }) => {
     };
 
     const checkLiveCouponAvailability = async (code, cartTotal) => {
-        if (!code) return { valid: false, error: "كوبون خصم غير صالح." };
+        if (!code) return { valid: false, error: "كوبون خصم غير صالح.", message: "كوبون خصم غير صالح." };
         const cleanCode = String(code).trim().toUpperCase();
         
         // 1. Check local coupon definition in DB
-        const coupon = state.coupons.find(c => String(c.code).trim().toUpperCase() === cleanCode && c.is_active);
-        if (!coupon) return { valid: false, error: "كوبون خصم غير صالح أو غير مفعل." };
-        if (coupon.expiry_date && new Date(coupon.expiry_date) < new Date()) return { valid: false, error: "عفواً، انتهت صلاحية هذا الكوبون." };
-        if (coupon.min_order_value && cartTotal < coupon.min_order_value) return { valid: false, error: `الحد الأدنى لقيمة الطلب لاستخدام الكوبون هو ${coupon.min_order_value}.` };
+        const coupon = state.coupons.find(c => String(c.code || '').trim().toUpperCase() === cleanCode && (c.is_active || c.is_active === undefined || c.is_active === null));
+        if (!coupon) return { valid: false, error: "كوبون خصم غير صالح أو غير مفعل.", message: "كوبون خصم غير صالح أو غير مفعل." };
+        if (coupon.expiry_date && new Date(coupon.expiry_date) < new Date()) return { valid: false, error: "عفواً، انتهت صلاحية هذا الكوبون.", message: "عفواً، انتهت صلاحية هذا الكوبون." };
+        if (coupon.min_order_value && cartTotal < coupon.min_order_value) return { valid: false, error: `الحد الأدنى لقيمة الطلب لاستخدام الكوبون هو ${coupon.min_order_value}.`, message: `الحد الأدنى لقيمة الطلب لاستخدام الكوبون هو ${coupon.min_order_value}.` };
         
-        if (!coupon.usage_limit) return { valid: true, coupon };
+        if (!coupon.usage_limit) {
+            return { 
+                valid: true, 
+                coupon, 
+                discount_value: parseFloat(coupon.discount_value) || 0, 
+                discount_type: coupon.discount_type || 'Percentage' 
+            };
+        }
 
         // 2. Fetch live Shopify usage count
         let shopifyUsage = 0;
@@ -1640,10 +1647,16 @@ export const AppProvider = ({ children }) => {
                 console.error("Failed to auto-disable Shopify coupon:", e);
             }
             
-            return { valid: false, error: "عفواً، تم استنفاد الحد الأقصى لاستخدام هذا الكوبون." };
+            return { valid: false, error: "عفواً، تم استنفاد الحد الأقصى لاستخدام هذا الكوبون.", message: "عفواً، تم استنفاد الحد الأقصى لاستخدام هذا الكوبون." };
         }
 
-        return { valid: true, coupon, totalUsage };
+        return { 
+            valid: true, 
+            coupon, 
+            totalUsage, 
+            discount_value: parseFloat(coupon.discount_value) || 0, 
+            discount_type: coupon.discount_type || 'Percentage' 
+        };
     };
 
     // Coupons CRUD Actions
@@ -1687,14 +1700,19 @@ export const AppProvider = ({ children }) => {
     };
 
     const validateCoupon = (code, cartTotal) => {
-        if (!code) return { valid: false, error: "Invalid coupon." };
+        if (!code) return { valid: false, error: "Invalid coupon.", message: "Invalid coupon." };
         const cleanCode = String(code).trim().toUpperCase();
-        const coupon = state.coupons.find(c => String(c.code).trim().toUpperCase() === cleanCode && c.is_active);
-        if (!coupon) return { valid: false, error: "كوبون خصم غير صالح أو غير مفعل." };
-        if (coupon.expiry_date && new Date(coupon.expiry_date) < new Date()) return { valid: false, error: "عفواً، انتهت صلاحية هذا الكوبون." };
-        if (coupon.usage_limit && coupon.times_used >= coupon.usage_limit) return { valid: false, error: "عفواً، تم استنفاد الحد الأقصى لاستخدام هذا الكوبون." };
-        if (coupon.min_order_value && cartTotal < coupon.min_order_value) return { valid: false, error: `الحد الأدنى لقيمة الطلب لاستخدام الكوبون هو ${coupon.min_order_value}.` };
-        return { valid: true, coupon };
+        const coupon = state.coupons.find(c => String(c.code || '').trim().toUpperCase() === cleanCode && (c.is_active || c.is_active === undefined || c.is_active === null));
+        if (!coupon) return { valid: false, error: "كوبون خصم غير صالح أو غير مفعل.", message: "كوبون خصم غير صالح أو غير مفعل." };
+        if (coupon.expiry_date && new Date(coupon.expiry_date) < new Date()) return { valid: false, error: "عفواً، انتهت صلاحية هذا الكوبون.", message: "عفواً، انتهت صلاحية هذا الكوبون." };
+        if (coupon.usage_limit && coupon.times_used >= coupon.usage_limit) return { valid: false, error: "عفواً، تم استنفاد الحد الأقصى لاستخدام هذا الكوبون.", message: "عفواً، تم استنفاد الحد الأقصى لاستخدام هذا الكوبون." };
+        if (coupon.min_order_value && cartTotal < coupon.min_order_value) return { valid: false, error: `الحد الأدنى لقيمة الطلب لاستخدام الكوبون هو ${coupon.min_order_value}.`, message: `الحد الأدنى لقيمة الطلب لاستخدام الكوبون هو ${coupon.min_order_value}.` };
+        return { 
+            valid: true, 
+            coupon, 
+            discount_value: parseFloat(coupon.discount_value) || 0, 
+            discount_type: coupon.discount_type || 'Percentage' 
+        };
     };
 
     const applyCouponUsage = async (code, increment) => {
@@ -2343,7 +2361,7 @@ export const AppProvider = ({ children }) => {
         );
 
         if (supabase) {
-            (async () => {
+            await (async () => {
                 const rollbackLocalState = () => {
                     setState(prev => {
                         let products = [...prev.products];
@@ -3500,7 +3518,7 @@ export const AppProvider = ({ children }) => {
                     const bostaErr = resData?.bostaRaw?.message || JSON.stringify(resData?.bostaRaw);
                     showAlert(`فشل تحديث بيانات الشحنة في بوسطة: ${resData.error || res.statusText} - التفاصيل: ${bostaErr}`, "warning");
                 } else {
-                    showToast("تم تحديث الشحنة في بوسطة بنجاح", "success");
+                    showToast("تم التعديل في السيستم وبوسطة بنجاح ✅", "success");
                 }
             } catch (e) {
                 showAlert("حدث خطأ أثناء التواصل مع بوسطة لتحديث الشحنة.", "warning");
@@ -3511,7 +3529,7 @@ export const AppProvider = ({ children }) => {
         showToast(`Order ${enrichedOrder.id} updated.`);
 
         if (supabase) {
-            (async () => {
+            await (async () => {
                 try {
                     let finalAddress = enrichedOrder.address;
                     try {
@@ -4763,6 +4781,10 @@ export const AppProvider = ({ children }) => {
                     }
                 } else {
                     errMsg = data?.error || (language === 'ar' ? "خطأ غير معروف" : "Unknown error");
+                }
+                if (errMsg.includes("بالفعل") || errMsg.includes("already")) {
+                    showToast(language === 'ar' ? "تم التعديل في السيستم وبوسطة بنجاح ✅" : "Order is already linked with Bosta ✅", "success");
+                    return true;
                 }
                 showToast(language === 'ar' ? `فشل ربط بوسطة: ${errMsg}` : `Bosta Sync Failed: ${errMsg}`, "error");
                 return false;

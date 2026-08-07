@@ -867,40 +867,55 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
     const isStep3Valid = shippingFee !== '' && shippingFee !== null && !isNaN(shippingFee) && parseFloat(shippingFee) > 0 && depositVal >= 0 && depositVal <= finalOrderTotal && (depositVal === 0 || !!depositReceiverId) && isDiscountInfoValid;
 
-    // Check if the current order is a potential duplicate of another existing order
+    // Check if the current order is a potential duplicate of another existing order within the last 48 hours
     const isPotentialDuplicate = React.useMemo(() => {
         if (editOrderId) return false;
         
-        const normalizedPhone = phone.trim();
+        const normalizedPhone = cleanAndNormalizePhoneNumber(phone);
         if (!normalizedPhone || normalizedPhone.length < 8) return false;
 
-        const validItems = items.filter(it => it.variantSku && it.quantity > 0);
+        const validItems = items.filter(it => (it.variantSku || it.variant_sku) && it.quantity > 0);
         if (validItems.length === 0) return false;
 
         const currentItemsKey = validItems
-            .map(it => `${it.variantSku}:${it.quantity}`)
+            .map(it => `${String(it.variantSku || it.variant_sku).trim().toUpperCase()}:${it.quantity}`)
             .sort()
             .join('|');
+
+        // Only check recent active orders created in the last 48 hours to avoid false alerts on repeat customers
+        const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000);
 
         return (state.orders || []).some(o => {
             if (o.status === 'Cancelled' || o.status === 'Draft') return false;
 
+            const oDateStr = o.createdAt || o.created_at || o.date;
+            if (oDateStr) {
+                const oDate = new Date(oDateStr);
+                if (!isNaN(oDate.getTime()) && oDate < fortyEightHoursAgo) {
+                    return false;
+                }
+            }
+
             let oPhone = '';
-            if (o.address && o.address.startsWith('{')) {
+            if (o.address && typeof o.address === 'string' && o.address.startsWith('{')) {
                 try {
                     const parsed = JSON.parse(o.address);
                     oPhone = parsed.phone || '';
                 } catch (e) {}
+            } else if (typeof o.address === 'object' && o.address) {
+                oPhone = o.address.phone || '';
             } else {
                 oPhone = o.address || '';
             }
-            oPhone = oPhone.trim();
+            const cleanOPhone = cleanAndNormalizePhoneNumber(oPhone);
 
-            if (oPhone !== normalizedPhone) return false;
+            if (!cleanOPhone || cleanOPhone !== normalizedPhone) return false;
 
-            const oValidItems = (o.items || []).filter(it => it.variantSku && it.quantity > 0);
+            const oValidItems = (o.items || []).filter(it => (it.variantSku || it.variant_sku) && it.quantity > 0);
+            if (oValidItems.length === 0) return false;
+
             const oItemsKey = oValidItems
-                .map(it => `${it.variantSku}:${it.quantity}`)
+                .map(it => `${String(it.variantSku || it.variant_sku).trim().toUpperCase()}:${it.quantity}`)
                 .sort()
                 .join('|');
 
@@ -1034,7 +1049,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
                 if (editOrderId) {
                     await editOrder(newOrderObj);
-                    showToast(isDraftSave ? "تم تعديل الطلب كمسودة بنجاح" : "تم تعديل واعتماد الطلب بنجاح", "success");
+                    showToast(isDraftSave ? "تم تعديل الطلب كمسودة بنجاح" : "تم التعديل في السيستم وبوسطة بنجاح ✅", "success");
 
                     // Auto-sync to Bosta if sync is now enabled, not draft, deposit is confirmed, and waybill did not exist before
                     const hadBostaId = originalOrder?.address && parseAddressData(originalOrder.address)?.bostaDeliveryId;
@@ -2154,13 +2169,15 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                 const res = await validateCoupon(couponCode, totalProductsSubtotal);
                                                 if (res.valid) {
                                                     setCouponValid(true);
-                                                    setCouponDiscountValue(res.discount_value);
-                                                    setCouponDiscountType(res.discount_type);
+                                                    const val = res.discount_value !== undefined ? res.discount_value : (parseFloat(res.coupon?.discount_value) || 0);
+                                                    const type = res.discount_type || res.coupon?.discount_type || 'Percentage';
+                                                    setCouponDiscountValue(val);
+                                                    setCouponDiscountType(type);
                                                     showToast("تم تطبيق الكوبون بنجاح", "success");
                                                 } else {
                                                     setCouponValid(false);
                                                     setCouponDiscountValue(0);
-                                                    showToast(res.message || "كوبون غير صالح", "error");
+                                                    showToast(res.error || res.message || "كوبون غير صالح", "error");
                                                 }
                                             }}
                                         >
