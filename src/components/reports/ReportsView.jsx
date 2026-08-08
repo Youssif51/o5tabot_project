@@ -3,58 +3,46 @@ import { getLocalDateString } from '../../utils/dateUtils';
 import { formatProductDisplayName } from '../../utils/productUtils';
 import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
+import SmartDateFilter from '../common/SmartDateFilter';
+import { isDateMatchingFilter } from '../../utils/smartDateMatcher';
 
 export default function ReportsView() {
     const { state, isDeductedStatus, t } = useContext(AppContext);
     const currency = state.storeSettings.currency || 'EGP';
 
-    // Time filter state: 'today', 'week', 'month', 'all'
-    const [timeFilter, setTimeFilter] = useState('month');
+    // Time filter state
+    const [timeFilter, setTimeFilter] = useState({ type: 'preset', preset: 'month' });
     const [prodPage, setProdPage] = useState(1);
     const [hoveredDayIdx, setHoveredDayIdx] = useState(6);
     const [isCatModalOpen, setIsCatModalOpen] = useState(false);
     const [isProdModalOpen, setIsProdModalOpen] = useState(false);
     const [discountPage, setDiscountPage] = useState(1);
 
-    // Helper date matcher
-    // Helper date matcher
-    const isDateInPeriod = (dateStr, period) => {
-        if (!dateStr) return false;
-        if (period === 'all') return true;
+    // Calculate 7-day timeline ending on the filter's target date
+    const get7DaysForFilter = () => {
+        let endDate = new Date();
+        const filterType = typeof timeFilter === 'string' ? 'preset' : (timeFilter?.type || 'preset');
+        const preset = typeof timeFilter === 'string' ? timeFilter : (timeFilter?.preset || 'all');
 
-        try {
-            const datePart = typeof dateStr === 'string' ? dateStr.split('T')[0] : '';
-            if (!datePart) return false;
-
-            const [y, m, d] = datePart.split('-').map(Number);
-            if (!y || !m || !d) return false;
-
-            const orderDate = new Date(y, m - 1, d);
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            const diffDays = Math.floor((today - orderDate) / (1000 * 60 * 60 * 24));
-
-            if (period === 'today') return diffDays === 0;
-            if (period === 'week') return diffDays >= 0 && diffDays < 7;
-            if (period === 'month') return diffDays >= 0 && diffDays < 30;
-        } catch (e) {
-            return false;
+        if (filterType === 'single' && timeFilter?.date) {
+            const [y, m, d] = timeFilter.date.split('-').map(Number);
+            endDate = new Date(y, m - 1, d);
+        } else if (filterType === 'range' && timeFilter?.endDate) {
+            const [y, m, d] = timeFilter.endDate.split('-').map(Number);
+            endDate = new Date(y, m - 1, d);
+        } else if (preset === 'yesterday') {
+            endDate.setDate(endDate.getDate() - 1);
         }
-        return true;
-    };
 
-    // Calculate last 7 days for the interactive trend chart
-    const getDaysList = () => {
-        const list = [];
+        const dates = [];
         for (let i = 6; i >= 0; i--) {
-            const d = new Date();
+            const d = new Date(endDate);
             d.setDate(d.getDate() - i);
-            list.push(getLocalDateString(d));
+            dates.push(getLocalDateString(d));
         }
-        return list;
+        return dates;
     };
-    const last7Days = getDaysList();
+    const last7Days = get7DaysForFilter();
 
     // Calculate order profit with pro-rata discount consideration
     const getOrderProfitDetails = (ord) => {
@@ -99,7 +87,7 @@ export default function ReportsView() {
 
     (state.orders || []).forEach(ord => {
         if (isDeductedStatus(ord.status, ord)) {
-            if (!isDateInPeriod(ord.date, timeFilter)) return;
+            if (!isDateMatchingFilter(ord.date, timeFilter)) return;
             totalOrdersCount++;
             const details = getOrderProfitDetails(ord);
             totalGrossSales += details.grossValue;
@@ -112,21 +100,23 @@ export default function ReportsView() {
     // Calculate Waste Cost for the period
     let totalWasteCost = 0;
     (state.wastes || []).forEach(w => {
-        if (!isDateInPeriod(w.date, timeFilter)) return;
+        if (!isDateMatchingFilter(w.date, timeFilter)) return;
         totalWasteCost += (w.totalCost || w.cost || ((w.quantity || 1) * (w.unitCost || w.costPrice || 0)) || 0);
     });
 
     const netRealizedProfit = totalNetRevenue - totalCOGS - totalWasteCost;
     const profitMarginPercent = totalNetRevenue > 0 ? ((netRealizedProfit / totalNetRevenue) * 100).toFixed(1) : '0.0';
 
-    // 2. Chart Data (Last 7 Days)
+    // 2. Chart Data (7-Day Period Ending on Target Filter Date)
     const chartRawData = last7Days.map(dateStr => {
         let dayRevenue = 0;
         let dayProfit = 0;
         let dayOrders = 0;
 
         (state.orders || []).forEach(ord => {
-            if (ord.date === dateStr && isDeductedStatus(ord.status, ord)) {
+            if (!ord.date) return;
+            const ordLocalDate = getLocalDateString(new Date(ord.date));
+            if (ordLocalDate === dateStr && isDeductedStatus(ord.status, ord)) {
                 dayOrders++;
                 const details = getOrderProfitDetails(ord);
                 dayRevenue += details.netRevenue;
@@ -142,8 +132,8 @@ export default function ReportsView() {
     const paddingY = 30;
     const spacingX = graphWidth / (last7Days.length - 1);
 
-    const maxRev = Math.max(...chartRawData.map(d => d.dayRevenue));
-    const maxProf = Math.max(...chartRawData.map(d => d.dayProfit));
+    const maxRev = Math.max(0, ...chartRawData.map(d => d.dayRevenue));
+    const maxProf = Math.max(0, ...chartRawData.map(d => d.dayProfit));
     const maxVal = Math.max(100, maxRev, maxProf);
     const scaleMax = Math.ceil(maxVal / 100) * 100;
 
@@ -165,7 +155,8 @@ export default function ReportsView() {
         };
     });
 
-    const hoveredData = chartNodes[hoveredDayIdx] || chartNodes[chartNodes.length - 1];
+    const safeHoverIdx = hoveredDayIdx !== null && hoveredDayIdx < chartNodes.length ? hoveredDayIdx : Math.max(0, chartNodes.length - 1);
+    const hoveredData = chartNodes[safeHoverIdx] || chartNodes[chartNodes.length - 1];
 
     // SVG Line paths
     const revLinePath = chartNodes.map((d, idx) => `${idx === 0 ? 'M' : 'L'} ${d.x} ${d.revY}`).join(' ');
@@ -178,7 +169,7 @@ export default function ReportsView() {
     const categoryStats = {};
     (state.orders || []).forEach(ord => {
         if (isDeductedStatus(ord.status, ord)) {
-            if (!isDateInPeriod(ord.date, timeFilter)) return;
+            if (!isDateMatchingFilter(ord.date, timeFilter)) return;
             const ordDetails = getOrderProfitDetails(ord);
             const ordSubtotal = ordDetails.grossValue || 1;
             const ordDiscount = ordDetails.discount || 0;
@@ -219,7 +210,7 @@ export default function ReportsView() {
     const productStats = {};
     (state.orders || []).forEach(ord => {
         if (isDeductedStatus(ord.status, ord)) {
-            if (!isDateInPeriod(ord.date, timeFilter)) return;
+            if (!isDateMatchingFilter(ord.date, timeFilter)) return;
             const ordDetails = getOrderProfitDetails(ord);
             const ordSubtotal = ordDetails.grossValue || 1;
             const ordDiscount = ordDetails.discount || 0;
@@ -297,7 +288,7 @@ export default function ReportsView() {
     });
 
     (state.orders || []).forEach(ord => {
-        if (!isDateInPeriod(ord.date, timeFilter)) return;
+        if (!isDateMatchingFilter(ord.date, timeFilter)) return;
         if (ord.status === 'Draft') return;
 
         const rawCreator = ord.createdBy || ord.created_by;
@@ -347,7 +338,7 @@ export default function ReportsView() {
 
     (state.orders || []).forEach(ord => {
         if (!isDeductedStatus(ord.status, ord)) return;
-        if (!isDateInPeriod(ord.date, timeFilter)) return;
+        if (!isDateMatchingFilter(ord.date, timeFilter)) return;
 
         const ordDetails = getOrderProfitDetails(ord);
         const orderId = ord.id;
@@ -474,27 +465,9 @@ export default function ReportsView() {
                     </p>
                 </div>
 
-                {/* Time Range Filter Pills */}
-                <div style={{ display: 'flex', gap: '8px', background: 'var(--glass-bg)', padding: '4px 6px', borderRadius: 'var(--radius-xl)', border: '1px solid var(--glass-border)' }}>
-                    {[
-                        { id: 'today', label: 'اليوم' },
-                        { id: 'week', label: 'هذا الأسبوع' },
-                        { id: 'month', label: 'هذا الشهر' },
-                        { id: 'all', label: 'كل الأوقات' }
-                    ].map(btn => (
-                        <button
-                            key={btn.id}
-                            onClick={() => { setTimeFilter(btn.id); setProdPage(1); }}
-                            className={`btn ${timeFilter === btn.id ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{
-                                padding: '6px 14px',
-                                fontSize: '0.82rem',
-                                borderRadius: 'var(--radius-lg)'
-                            }}
-                        >
-                            {btn.label}
-                        </button>
-                    ))}
+                {/* Smart Date Filter Header Component */}
+                <div style={{ marginRight: 'auto', marginLeft: 0 }}>
+                    <SmartDateFilter filterConfig={timeFilter} setFilterConfig={(cfg) => { setTimeFilter(cfg); setProdPage(1); setDiscountPage(1); }} />
                 </div>
             </div>
 
@@ -613,9 +586,9 @@ export default function ReportsView() {
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
                         <div>
                             <h3 style={{ fontSize: '1.05rem', fontWeight: '700', color: 'var(--text-primary)', margin: 0 }}>
-                                حركة المبيعات وصافي الأرباح اليومية (آخر 7 أيام)
+                                حركة المبيعات وصافي الأرباح اليومية
                             </h3>
-                            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>مرر المؤشر فوق النودز لعرض التفاصيل اليومية</span>
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>تتفاعل تلقائياً مع الفلتر المالي المحدد • مرر المؤشر فوق النقاط للتفاصيل</span>
                         </div>
                     </div>
 
@@ -649,19 +622,19 @@ export default function ReportsView() {
                             <path d={profLinePath} fill="none" stroke="var(--color-success)" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
 
                             {/* Active Hover Guide Line & Circles */}
-                            {hoveredDayIdx !== null && chartNodes[hoveredDayIdx] && (
+                            {chartNodes[safeHoverIdx] && (
                                 <>
                                     <line
-                                        x1={chartNodes[hoveredDayIdx].x}
+                                        x1={chartNodes[safeHoverIdx].x}
                                         y1={30}
-                                        x2={chartNodes[hoveredDayIdx].x}
+                                        x2={chartNodes[safeHoverIdx].x}
                                         y2={195}
                                         stroke="var(--gold-primary)"
                                         strokeWidth="1.5"
                                         strokeDasharray="4 4"
                                     />
-                                    <circle cx={chartNodes[hoveredDayIdx].x} cy={chartNodes[hoveredDayIdx].revY} r="6" fill="var(--color-info)" stroke="#fff" strokeWidth="2.5" />
-                                    <circle cx={chartNodes[hoveredDayIdx].x} cy={chartNodes[hoveredDayIdx].profY} r="6" fill="var(--color-success)" stroke="#fff" strokeWidth="2.5" />
+                                    <circle cx={chartNodes[safeHoverIdx].x} cy={chartNodes[safeHoverIdx].revY} r="6" fill="var(--color-info)" stroke="#fff" strokeWidth="2.5" />
+                                    <circle cx={chartNodes[safeHoverIdx].x} cy={chartNodes[safeHoverIdx].profY} r="6" fill="var(--color-success)" stroke="#fff" strokeWidth="2.5" />
                                 </>
                             )}
 
@@ -671,9 +644,9 @@ export default function ReportsView() {
                                     <text
                                         x={m.x}
                                         y="215"
-                                        fill={hoveredDayIdx === idx ? "var(--gold-primary)" : "var(--text-muted)"}
+                                        fill={safeHoverIdx === idx ? "var(--gold-primary)" : "var(--text-muted)"}
                                         fontSize="11"
-                                        fontWeight={hoveredDayIdx === idx ? "700" : "400"}
+                                        fontWeight={safeHoverIdx === idx ? "700" : "400"}
                                         textAnchor="middle"
                                     >
                                         {m.name}
@@ -777,6 +750,9 @@ export default function ReportsView() {
 
             </div>
 
+            {/* Elegant Divider between stacked report tables */}
+            <div className="report-table-divider"></div>
+
             {/* Admins & Staff Performance Breakdown Section */}
             <div className="glass-card" style={{ padding: '24px', marginBottom: '24px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px' }}>
@@ -876,6 +852,9 @@ export default function ReportsView() {
                     })}
                 </div>
             </div>
+
+            {/* Elegant Divider between stacked report tables */}
+            <div className="report-table-divider"></div>
 
             {/* Bottom Table: Real Product Profitability Breakdown */}
             {(() => {
@@ -1015,6 +994,9 @@ export default function ReportsView() {
                     </div>
                 );
             })()}
+
+            {/* Elegant Divider between Product Profitability & Discounts Report */}
+            <div className="report-table-divider"></div>
 
             {/* Section: Discounts & Coupon Reports (User Requested) */}
             <div className="glass-card" style={{ padding: '24px', marginBottom: '24px' }}>
@@ -1234,6 +1216,31 @@ export default function ReportsView() {
                         font-variant-numeric: tabular-nums;
                         font-weight: 600;
                     }
+                    .report-table-divider {
+                        position: relative;
+                        height: 1px;
+                        margin: 32px 0;
+                        background: linear-gradient(90deg, 
+                            rgba(255, 255, 255, 0) 0%, 
+                            rgba(212, 175, 55, 0.2) 20%, 
+                            rgba(212, 175, 55, 0.75) 50%, 
+                            rgba(212, 175, 55, 0.2) 80%, 
+                            rgba(255, 255, 255, 0) 100%
+                        );
+                        box-shadow: 0 0 12px rgba(212, 175, 55, 0.25);
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                    }
+                    .report-table-divider::after {
+                        content: '◆';
+                        background: #0f1218;
+                        color: var(--gold-primary);
+                        padding: 0 12px;
+                        font-size: 9px;
+                        letter-spacing: 2px;
+                        border-radius: 4px;
+                    }
                 `}</style>
 
                 {/* Sub-tables: Coupons, Reasons & Admin metrics */}
@@ -1312,6 +1319,9 @@ export default function ReportsView() {
                         </div>
                     </div>
                 </div>
+
+                {/* Elegant Divider between stacked report tables */}
+                <div className="report-table-divider"></div>
 
                 {/* Detailed Discounted Orders Table */}
                 {(() => {

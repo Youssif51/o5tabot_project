@@ -49,6 +49,10 @@ export default function InventoryList({
     const [currentPage, setCurrentPage] = useState(1);
     const pageSize = 10;
 
+    // Stock Ledger Pagination (15 items per page)
+    const [ledgerPage, setLedgerPage] = useState(1);
+    const ledgerPageSize = 15;
+
     const currency = state.storeSettings.currency || '$';
     const activeSearch = globalSearch || '';
 
@@ -722,20 +726,29 @@ export default function InventoryList({
                                     <th>{t('products')}</th>
                                     <th>{t('orderId')}</th>
                                     <th>{t('stockLocations')}</th>
-                                    <th>{t('status')}</th>
+                                    <th>نوع الحركة</th>
                                     <th>{t('quantity')}</th>
                                     <th>{t('remainingQuantity')}</th>
+                                    <th>ملاحظات</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {!state.stockLedger || state.stockLedger.length === 0 ? (
                                     <tr>
-                                        <td colSpan="7" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
+                                        <td colSpan="8" style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)' }}>
                                             {t('noRecords')}
                                         </td>
                                     </tr>
-                                ) : (
-                                    state.stockLedger.map((entry, idx) => {
+                                ) : (() => {
+                                    const allLedger = state.stockLedger || [];
+                                    const ledgerTotalEntries = allLedger.length;
+                                    const ledgerTotalPages = Math.ceil(ledgerTotalEntries / ledgerPageSize) || 1;
+                                    const activeLedgerPage = Math.min(ledgerPage, ledgerTotalPages);
+                                    const ledgerStartIdx = (activeLedgerPage - 1) * ledgerPageSize;
+                                    const ledgerEndIdx = Math.min(ledgerStartIdx + ledgerPageSize, ledgerTotalEntries);
+                                    const paginatedLedger = allLedger.slice(ledgerStartIdx, ledgerEndIdx);
+
+                                    return paginatedLedger.map((entry, idx) => {
                                         const prod = state.products.find(p => p.id === entry.productId);
                                         const prodName = prod ? deduplicateProductName(prod.name) : entry.productId;
 
@@ -794,10 +807,28 @@ export default function InventoryList({
                                                     {entry.quantity > 0 ? `+${entry.quantity}` : entry.quantity}
                                                 </td>
                                                 <td style={{ fontWeight: 600 }}>{entry.balanceAfter}</td>
+                                                <td style={{ fontSize: '11.5px', color: 'var(--text-secondary)' }}>
+                                                    {(() => {
+                                                        let notes = entry.notes || entry.remarks || '';
+                                                        const orderId = entry.orderId || entry.order_id;
+                                                        if (orderId) {
+                                                            const ord = (state.orders || []).find(o => o.id === orderId) || (state.deletedOrdersWithDeposits || []).find(o => o.id === orderId);
+                                                            if (ord && (ord.cancellationReason || ord.cancellation_reason)) {
+                                                                const cancelReason = ord.cancellationReason || ord.cancellation_reason;
+                                                                notes = notes ? `سبب الإلغاء: ${cancelReason} (${notes})` : `سبب الإلغاء: ${cancelReason}`;
+                                                            }
+                                                        }
+                                                        return notes ? (
+                                                            <span style={{ color: notes.includes('سبب الإلغاء') ? '#ef4444' : 'var(--text-secondary)', fontWeight: notes.includes('سبب الإلغاء') ? '600' : 'normal' }}>
+                                                                {notes}
+                                                            </span>
+                                                        ) : '-';
+                                                    })()}
+                                                </td>
                                             </tr>
                                         );
-                                    })
-                                )}
+                                    });
+                                })()}
                             </tbody>
                         </table>
                     </div>
@@ -808,8 +839,16 @@ export default function InventoryList({
                             <div style={{ textAlign: 'center', padding: '24px', color: 'var(--text-muted)', background: 'var(--glass-bg)', borderRadius: '12px', border: '1px solid var(--glass-border)' }}>
                                 {t('noRecords')}
                             </div>
-                        ) : (
-                            state.stockLedger.map((entry, idx) => {
+                        ) : (() => {
+                            const allLedger = state.stockLedger || [];
+                            const ledgerTotalEntries = allLedger.length;
+                            const ledgerTotalPages = Math.ceil(ledgerTotalEntries / ledgerPageSize) || 1;
+                            const activeLedgerPage = Math.min(ledgerPage, ledgerTotalPages);
+                            const ledgerStartIdx = (activeLedgerPage - 1) * ledgerPageSize;
+                            const ledgerEndIdx = Math.min(ledgerStartIdx + ledgerPageSize, ledgerTotalEntries);
+                            const paginatedLedger = allLedger.slice(ledgerStartIdx, ledgerEndIdx);
+
+                            return paginatedLedger.map((entry, idx) => {
                                 const prod = state.products.find(p => p.id === entry.productId);
                                 const prodName = prod ? deduplicateProductName(prod.name) : entry.productId;
 
@@ -905,9 +944,51 @@ export default function InventoryList({
                                         </div>
                                     </div>
                                 );
-                            })
-                        )}
+                            });
+                        })()}
                     </div>
+
+                    {/* Stock Ledger Pagination Controls (15 items per page) */}
+                    {(() => {
+                        const allLedger = state.stockLedger || [];
+                        const ledgerTotalEntries = allLedger.length;
+                        if (ledgerTotalEntries === 0) return null;
+                        const ledgerTotalPages = Math.ceil(ledgerTotalEntries / ledgerPageSize) || 1;
+                        const activeLedgerPage = Math.min(ledgerPage, ledgerTotalPages);
+                        const ledgerStartIdx = (activeLedgerPage - 1) * ledgerPageSize;
+                        const ledgerEndIdx = Math.min(ledgerStartIdx + ledgerPageSize, ledgerTotalEntries);
+
+                        return (
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--glass-border)', flexWrap: 'wrap', gap: '12px' }}>
+                                <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                                    عرض {ledgerStartIdx + 1} إلى {ledgerEndIdx} من أصل {ledgerTotalEntries} حركة مخزنية
+                                </div>
+                                <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        disabled={activeLedgerPage <= 1}
+                                        onClick={() => setLedgerPage(p => Math.max(1, p - 1))}
+                                        style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '8px', opacity: activeLedgerPage <= 1 ? 0.5 : 1, cursor: activeLedgerPage <= 1 ? 'not-allowed' : 'pointer' }}
+                                    >
+                                        <i className="fa-solid fa-chevron-right" style={{ marginLeft: '4px' }}></i> السابق
+                                    </button>
+                                    <span style={{ fontSize: '0.82rem', padding: '0 8px', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
+                                        صفحة {activeLedgerPage} من {ledgerTotalPages}
+                                    </span>
+                                    <button
+                                        type="button"
+                                        className="btn btn-secondary"
+                                        disabled={activeLedgerPage >= ledgerTotalPages}
+                                        onClick={() => setLedgerPage(p => Math.min(ledgerTotalPages, p + 1))}
+                                        style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '8px', opacity: activeLedgerPage >= ledgerTotalPages ? 0.5 : 1, cursor: activeLedgerPage >= ledgerTotalPages ? 'not-allowed' : 'pointer' }}
+                                    >
+                                        التالي <i className="fa-solid fa-chevron-left" style={{ marginRight: '4px' }}></i>
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                    })()}
                 </div>
             )}
 

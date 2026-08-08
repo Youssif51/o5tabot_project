@@ -6,6 +6,7 @@ import { AppContext } from './context/AppContext';
 import Sidebar from './components/common/Sidebar';
 import Topbar from './components/common/Topbar';
 import Modal from './components/common/Modal';
+import SmartDateFilter from './components/common/SmartDateFilter';
 
 // Dashboard components
 import MetricsRow from './components/dashboard/MetricsRow';
@@ -81,7 +82,7 @@ export default function App() {
     const [editProductId, setEditProductId] = useState(null);
     const [isAddOrderOpen, setIsAddOrderOpen] = useState(false);
     const [editOrderId, setEditOrderId] = useState(null);
-    const [dashTimeFilter, setDashTimeFilter] = useState('all');
+    const [dashTimeFilter, setDashTimeFilter] = useState({ type: 'preset', preset: 'all' });
 
     // Barcode scanner simulation state
     const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -341,27 +342,15 @@ export default function App() {
                                         مرحباً بك مجدداً يا رئيس! إليك نظرة شاملة على مؤشرات الأداء ومستوى المخزون لمتجرك <strong style={{ color: 'var(--gold-primary)' }}>{state.storeSettings?.storeName || 'a5tabot'}</strong>.
                                     </p>
                                 </div>
-                                <div className="page-actions" style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                                    <span style={{ fontSize: '12.5px', color: 'rgba(255,255,255,0.6)', fontWeight: '500' }}>تصفية الفترة الزمنية:</span>
-                                    <select 
-                                        className="form-select" 
-                                        value={dashTimeFilter} 
-                                        onChange={(e) => setDashTimeFilter(e.target.value)}
-                                        style={{ width: '180px', backgroundColor: 'rgba(30,30,40,0.6)', color: '#fff', border: '1px solid rgba(212,175,55,0.2)', borderRadius: '8px', padding: '8px 12px', outline: 'none', transition: 'border-color 0.2s', cursor: 'pointer', fontWeight: '600' }}
-                                    >
-                                        <option value="all" style={{ background: '#1a1a1a' }}>كل الأوقات</option>
-                                        <option value="today" style={{ background: '#1a1a1a' }}>اليوم</option>
-                                        <option value="week" style={{ background: '#1a1a1a' }}>آخر 7 أيام (أسبوع)</option>
-                                        <option value="month" style={{ background: '#1a1a1a' }}>آخر 30 يوماً (شهر)</option>
-                                        <option value="year" style={{ background: '#1a1a1a' }}>آخر 365 يوماً (سنة)</option>
-                                    </select>
+                                <div className="page-actions" style={{ marginRight: 'auto', marginLeft: 0 }}>
+                                    <SmartDateFilter filterConfig={dashTimeFilter} setFilterConfig={setDashTimeFilter} />
                                 </div>
                             </div>
 
                             <MetricsRow timeFilter={dashTimeFilter} />
                             <ChartsSection timeFilter={dashTimeFilter} />
                             <div className="dashboard-grid" style={{ marginTop: '24px' }}>
-                                <TopSelling />
+                                <TopSelling timeFilter={dashTimeFilter} />
                                 <LowQuantity />
                             </div>
                         </div>

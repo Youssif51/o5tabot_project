@@ -1,9 +1,10 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 
 export default function Modal({ isOpen, onClose, title, children, width = '760px', closeOnBackdropClick = true }) {
     if (!isOpen) return null;
 
-    return (
+    return ReactDOM.createPortal(
         <div 
             className="modal-overlay active" 
             onClick={(e) => {
@@ -27,6 +28,7 @@ export default function Modal({ isOpen, onClose, title, children, width = '760px
                     {children}
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 }

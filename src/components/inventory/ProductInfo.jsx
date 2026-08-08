@@ -7,6 +7,8 @@ import RestockModal from './RestockModal';
 export default function ProductInfo({ productId, onBack, onEditProduct }) {
     const { state, recordStockAdjustment, showToast, language, t } = useContext(AppContext);
     const [activeTab, setActiveTab] = useState('Overview');
+    const [ledgerPage, setLedgerPage] = useState(1);
+    const ledgerPageSize = 15;
 
     const formatLedgerDateTime = (dateVal) => {
         if (!dateVal) return { dateStr: '-', timeStr: '' };
@@ -788,6 +790,13 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                 return (b.id || 0) - (a.id || 0);
                             });
 
+                            const ledgerTotalEntries = processedLogs.length;
+                            const ledgerTotalPages = Math.ceil(ledgerTotalEntries / ledgerPageSize) || 1;
+                            const activeLedgerPage = Math.min(ledgerPage, ledgerTotalPages);
+                            const ledgerStartIdx = (activeLedgerPage - 1) * ledgerPageSize;
+                            const ledgerEndIdx = Math.min(ledgerStartIdx + ledgerPageSize, ledgerTotalEntries);
+                            const paginatedProcessedLogs = processedLogs.slice(ledgerStartIdx, ledgerEndIdx);
+
                             return (
                                 <>
                                     <div className="table-wrapper inspect-desktop-only">
@@ -813,7 +822,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                         </td>
                                                     </tr>
                                                 ) : (
-                                                    processedLogs.map((log, idx) => {
+                                                    paginatedProcessedLogs.map((log, idx) => {
                                                         const qty = log.quantity || 0;
                                                         const uCost = log.unit_cost || log.unitCost || 0;
                                                         const tCost = log.total_cost || log.totalCost || 0;
@@ -881,7 +890,24 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                                                 <td>{uCost !== undefined && uCost !== null ? `${parseFloat(uCost).toFixed(2)} ج.م.` : '0.00 ج.م.'}</td>
                                                                 <td>{tCost !== undefined && tCost !== null ? `${parseFloat(tCost).toFixed(2)} ج.م.` : '0.00 ج.م.'}</td>
                                                                 <td style={{ fontWeight: 'bold' }}>{log.calculated_balance_after}</td>
-                                                                <td style={{ color: '#aaa' }}>{log.notes || '-'}</td>
+                                                                <td style={{ color: '#aaa', fontSize: '11.5px' }}>
+                                                                     {(() => {
+                                                                         let notes = log.notes || log.remarks || '';
+                                                                         const orderId = log.orderId || log.order_id;
+                                                                         if (orderId) {
+                                                                             const ord = (state.orders || []).find(o => o.id === orderId) || (state.deletedOrdersWithDeposits || []).find(o => o.id === orderId);
+                                                                             if (ord && (ord.cancellationReason || ord.cancellation_reason)) {
+                                                                                 const cancelReason = ord.cancellationReason || ord.cancellation_reason;
+                                                                                 notes = notes ? `سبب الإلغاء: ${cancelReason} (${notes})` : `سبب الإلغاء: ${cancelReason}`;
+                                                                             }
+                                                                         }
+                                                                         return notes ? (
+                                                                             <span style={{ color: notes.includes('سبب الإلغاء') ? '#ef4444' : 'var(--text-secondary)', fontWeight: notes.includes('سبب الإلغاء') ? '600' : 'normal' }}>
+                                                                                 {notes}
+                                                                             </span>
+                                                                         ) : '-';
+                                                                     })()}
+                                                                 </td>
                                                             </tr>
                                                         );
                                                     })
@@ -985,6 +1011,38 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                             })
                                         )}
                                     </div>
+
+                                    {/* Pagination Bar */}
+                                    {ledgerTotalEntries > 0 && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', paddingTop: '16px', borderTop: '1px solid var(--glass-border)', flexWrap: 'wrap', gap: '12px' }}>
+                                            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                                                عرض {ledgerStartIdx + 1} إلى {ledgerEndIdx} من أصل {ledgerTotalEntries} حركة مخزنية
+                                            </div>
+                                            <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary"
+                                                    disabled={activeLedgerPage <= 1}
+                                                    onClick={() => setLedgerPage(p => Math.max(1, p - 1))}
+                                                    style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '8px', opacity: activeLedgerPage <= 1 ? 0.5 : 1, cursor: activeLedgerPage <= 1 ? 'not-allowed' : 'pointer' }}
+                                                >
+                                                    <i className="fa-solid fa-chevron-right" style={{ marginLeft: '4px' }}></i> السابق
+                                                </button>
+                                                <span style={{ fontSize: '0.82rem', padding: '0 8px', fontWeight: 'bold', color: 'var(--gold-primary)' }}>
+                                                    صفحة {activeLedgerPage} من {ledgerTotalPages}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    className="btn btn-secondary"
+                                                    disabled={activeLedgerPage >= ledgerTotalPages}
+                                                    onClick={() => setLedgerPage(p => Math.min(ledgerTotalPages, p + 1))}
+                                                    style={{ padding: '6px 12px', fontSize: '0.8rem', borderRadius: '8px', opacity: activeLedgerPage >= ledgerTotalPages ? 0.5 : 1, cursor: activeLedgerPage >= ledgerTotalPages ? 'not-allowed' : 'pointer' }}
+                                                >
+                                                    التالي <i className="fa-solid fa-chevron-left" style={{ marginRight: '4px' }}></i>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
                                 </>
                             );
                         })()}

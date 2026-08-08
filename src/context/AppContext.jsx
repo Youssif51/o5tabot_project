@@ -2529,7 +2529,7 @@ export const AppProvider = ({ children }) => {
         }
     };
 
-    const updateOrderStatus = async (orderId, newStatus, newAddress = null) => {
+    const updateOrderStatus = async (orderId, newStatus, newAddress = null, explicitReason = null) => {
         const order = state.orders.find(o => o.id === orderId);
         if (!order) return;
         
@@ -2861,8 +2861,10 @@ export const AppProvider = ({ children }) => {
                                 
                                 const uCost = item.cost_at_time_of_sale || item.costAtTimeOfSale || vData.average_cost || 0;
                                 const tCost = uCost * Math.abs(item.quantity);
+                                const cancelReasonText = explicitReason || order.cancellationReason || order.cancellation_reason || (state.orders || []).find(o => o.id === orderId)?.cancellationReason;
+                                const entryNotes = cancelReasonText ? `سبب الإلغاء: ${cancelReasonText}` : null;
 
-                                await supabase.from('stock_ledger').insert([{
+                                const ledgerEntryObj = {
                                     order_id: orderId,
                                     date: new Date().toISOString(),
                                     product_id: vData.product_id,
@@ -2872,8 +2874,39 @@ export const AppProvider = ({ children }) => {
                                     quantity: item.quantity,
                                     unit_cost: uCost,
                                     total_cost: tCost,
-                                    balance_after: newStock
-                                }]);
+                                    balance_after: newStock,
+                                    notes: entryNotes
+                                };
+
+                                await supabase.from('stock_ledger').insert([ledgerEntryObj]);
+
+                                setState(prev => ({
+                                    ...prev,
+                                    stockLedger: [
+                                        {
+                                            id: Date.now() + Math.random(),
+                                            orderId: orderId,
+                                            order_id: orderId,
+                                            date: ledgerEntryObj.date,
+                                            created_at: ledgerEntryObj.date,
+                                            productId: vData.product_id,
+                                            product_id: vData.product_id,
+                                            variantSku: itemSku,
+                                            variant_sku: itemSku,
+                                            warehouse: ledgerEntryObj.warehouse,
+                                            type: 'Return',
+                                            quantity: item.quantity,
+                                            unitCost: uCost,
+                                            unit_cost: uCost,
+                                            totalCost: tCost,
+                                            total_cost: tCost,
+                                            balanceAfter: newStock,
+                                            balance_after: newStock,
+                                            notes: entryNotes
+                                        },
+                                        ...(prev.stockLedger || [])
+                                    ]
+                                }));
                                 
                                 await syncVariantStockToShopify(itemSku);
                             }

@@ -5,6 +5,9 @@ import { getLocalDateString } from '../../utils/dateUtils';
 import { formatProductDisplayName } from '../../utils/productUtils';
 import { getBostaDistrictDisplayName, filterAndSortBostaDistricts, getBostaAddressSuggestions } from '../../utils/bostaUtils';
 import bostaData from '../../../محافظات/المناطق التابعه لكل محافظة.json';
+import SmartDateFilter from '../common/SmartDateFilter';
+import { isDateMatchingFilter } from '../../utils/smartDateMatcher';
+import CancellationReasonModal from '../common/CancellationReasonModal';
 
 import { supabase } from '../../utils/supabase';
 
@@ -19,6 +22,8 @@ export default function ShopifyPendingList() {
         }
     }, [location.state]);
     const [expandedOrderIds, setExpandedOrderIds] = useState({});
+    const [timeFilter, setTimeFilter] = useState({ type: 'preset', preset: 'all' });
+    const [cancelModalData, setCancelModalData] = useState(null);
     
     // Auto-fetch missing items for pending orders
     useEffect(() => {
@@ -150,6 +155,9 @@ export default function ShopifyPendingList() {
         }
         if (ord.status !== 'Pending' || ord.source !== 'shopify' || isReviewed) return false;
         
+        // Date filter
+        if (!isDateMatchingFilter(ord.date, timeFilter)) return false;
+
         // Search filter
         if (globalSearch.trim() !== '') {
             const query = globalSearch.toLowerCase();
@@ -490,39 +498,49 @@ ${itemsList}
     // Cancel Action
     const handleCancel = (e, ordId) => {
         e.stopPropagation();
-        showConfirm('هل أنت متأكد من رفض هذا الطلب؟', (flagAsSpam) => {
-            updateOrderStatus(ordId, 'Rejected');
-            setExpandedOrderIds(prev => ({ ...prev, [ordId]: false }));
-            showToast('تم رفض الطلب بنجاح', 'warning');
-            if (flagAsSpam) {
-                console.log('🚨 Spam flag enabled for Shopify order', ordId);
-                const ord = state.orders.find(o => o.id === ordId);
-                if (ord) {
-                    const { phone } = parseAddressData(ord.address);
-                    const normPhone = normalizePhoneNumber(phone);
-                    const cust = (state.customers || []).find(c => c.id === ord.customer_id || (normPhone && normalizePhoneNumber(c.phone) === normPhone));
-                    if (cust) {
-                        console.log('🔍 Found existing customer:', cust.id, cust.name);
-                        setCustomerSpam(cust.id, true);
-                        logActivity("customer", `Flagged customer ${cust.name} as spam upon order rejection.`);
-                    } else {
-                        console.log('➕ Creating new spam customer for:', ord.client, normPhone);
-                        const newCust = {
-                            id: crypto.randomUUID(),
-                            name: ord.client || "عميل شوبيفاي جديد",
-                            phone: normPhone || "00000000000",
-                            governorate: ord.governorate || "",
-                            customer_type: 'Regular',
-                            total_purchases: 0,
-                            orders_count: 0,
-                            is_spam: true
-                        };
-                        addCustomer(newCust);
-                        logActivity("customer", `Created spam customer profile for ${newCust.name} (${newCust.phone}) upon order rejection.`);
-                    }
+        setCancelModalData({ orderId: ordId, newStatus: 'Rejected' });
+    };
+
+    const handleConfirmShopifyCancellation = async (reason, flagAsSpam) => {
+        if (!cancelModalData) return;
+        const { orderId, newStatus } = cancelModalData;
+        setCancelModalData(null);
+
+        updateOrderProperties(orderId, {
+            cancellationReason: reason,
+            cancelledBy: state.currentUser?.name || 'الأدمن',
+            cancelledAt: new Date().toISOString()
+        });
+        logActivity("order", `تم رفض طلب شوبيفاي #${orderId}. سبب الإلغاء: "${reason}".`);
+        await updateOrderStatus(orderId, newStatus, null, reason);
+        setExpandedOrderIds(prev => ({ ...prev, [orderId]: false }));
+        showToast('تم رفض الطلب وتسجيل سبب الإلغاء بنجاح', 'warning');
+
+        if (flagAsSpam) {
+            const ord = state.orders.find(o => o.id === orderId);
+            if (ord) {
+                const { phone } = parseAddressData(ord.address);
+                const normPhone = normalizePhoneNumber(phone);
+                const cust = (state.customers || []).find(c => c.id === ord.customer_id || (normPhone && normalizePhoneNumber(c.phone) === normPhone));
+                if (cust) {
+                    setCustomerSpam(cust.id, true);
+                    logActivity("customer", `Flagged customer ${cust.name} as spam upon order rejection.`);
+                } else {
+                    const newCust = {
+                        id: crypto.randomUUID(),
+                        name: ord.client || "عميل شوبيفاي جديد",
+                        phone: normPhone || "00000000000",
+                        governorate: ord.governorate || "",
+                        customer_type: 'Regular',
+                        total_purchases: 0,
+                        orders_count: 0,
+                        is_spam: true
+                    };
+                    addCustomer(newCust);
+                    logActivity("customer", `Created spam customer profile for ${newCust.name} (${newCust.phone}) upon order rejection.`);
                 }
             }
-        }, null, { showSpamToggle: true });
+        }
     };
 
 
@@ -1157,7 +1175,7 @@ ${itemsList}
         <div id="shopify-pending-view" className="view-pane active" dir="rtl" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
             
             {/* Header */}
-            <div className="page-header" style={{ marginBottom: '24px' }}>
+            <div className="page-header" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                 <div className="page-title-group" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     <div style={{
                         width: '38px',
@@ -1177,6 +1195,11 @@ ${itemsList}
                         <h2 style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>طلبات شوبيفاي المعلقة للمراجعة</h2>
                         <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>مراجعة وتأكيد الطلبات القادمة من المتجر الإلكتروني وتنسيقها مع أكواد بوسطة</span>
                     </div>
+                </div>
+
+                {/* Smart Date Filter Header Component at Extreme Left */}
+                <div style={{ marginRight: 'auto', marginLeft: 0 }}>
+                    <SmartDateFilter filterConfig={timeFilter} setFilterConfig={setTimeFilter} />
                 </div>
             </div>
 
@@ -1594,6 +1617,14 @@ ${itemsList}
                     </div>
                 )}
             </div>
+            {/* Cancellation Reason Modal */}
+            <CancellationReasonModal 
+                isOpen={!!cancelModalData}
+                onClose={() => setCancelModalData(null)}
+                orderId={cancelModalData?.orderId}
+                onConfirm={handleConfirmShopifyCancellation}
+                showSpamCheckbox={true}
+            />
         </div>
     );
 }

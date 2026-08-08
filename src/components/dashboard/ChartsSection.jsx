@@ -1,74 +1,37 @@
 import React, { useState, useContext } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
-
-
-const isDateInPeriod = (dateStr, period) => {
-    if (!dateStr) return false;
-    if (period === 'all') return true;
-
-    try {
-        const orderDate = new Date(dateStr);
-        orderDate.setHours(0, 0, 0, 0);
-
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const diffTime = today - orderDate;
-        const diffDays = diffTime / (1000 * 60 * 60 * 24);
-
-        if (period === 'today') {
-            return diffDays === 0;
-        }
-        if (period === 'week') {
-            return diffDays >= 0 && diffDays < 7;
-        }
-        if (period === 'month') {
-            return diffDays >= 0 && diffDays < 30;
-        }
-        if (period === 'year') {
-            return diffDays >= 0 && diffDays < 365;
-        }
-    } catch (e) {
-        return false;
-    }
-    return true;
-};
-
+import { isDateMatchingFilter } from '../../utils/smartDateMatcher';
 
 export default function ChartsSection({ timeFilter = 'all' }) {
     const { state, isDeductedStatus, t } = useContext(AppContext);
     const currency = state.storeSettings.currency || '$';
 
-    // Calculate last 6 days with activity, or fallback to calendar days
+    // Calculate fixed 7-day timeline ending on the target filter date
     const getDays = () => {
-        const dates = new Set();
-        (state.orders || []).forEach(o => {
-            if (o.date && isDateInPeriod(o.date, timeFilter)) dates.add(o.date);
-        });
-        (state.purchaseOrders || []).forEach(po => {
-            if (po.date && isDateInPeriod(po.date, timeFilter)) dates.add(po.date);
-        });
+        let endDate = new Date();
+        const filterType = typeof timeFilter === 'string' ? 'preset' : (timeFilter?.type || 'preset');
+        const preset = typeof timeFilter === 'string' ? timeFilter : (timeFilter?.preset || 'all');
 
-        let sortedActiveDates = Array.from(dates).sort((a, b) => new Date(a) - new Date(b));
-
-        if (timeFilter === 'today') {
-            return [getLocalDateString()];
+        if (filterType === 'single' && timeFilter?.date) {
+            const [y, m, d] = timeFilter.date.split('-').map(Number);
+            endDate = new Date(y, m - 1, d);
+        } else if (filterType === 'range' && timeFilter?.endDate) {
+            const [y, m, d] = timeFilter.endDate.split('-').map(Number);
+            endDate = new Date(y, m - 1, d);
+        } else if (preset === 'yesterday') {
+            endDate.setDate(endDate.getDate() - 1);
         }
 
-        const today = new Date();
-        const limitDays = timeFilter === 'week' ? 7 : (timeFilter === 'month' ? 30 : 365);
-        for (let i = 0; i < limitDays; i++) {
-            if (sortedActiveDates.length >= 6) break;
-            const dStr = getLocalDateString(today);
-            if (!sortedActiveDates.includes(dStr)) {
-                sortedActiveDates.unshift(dStr);
-            }
-            today.setDate(today.getDate() - 1);
+        const dates = [];
+        for (let i = 6; i >= 0; i--) {
+            const d = new Date(endDate);
+            d.setDate(d.getDate() - i);
+            dates.push(getLocalDateString(d));
         }
-
-        return sortedActiveDates.sort((a, b) => new Date(a) - new Date(b)).slice(-6);
+        return dates;
     };
+
     const last6Days = getDays();
     
     // Labels for display format (MM-DD)
@@ -81,7 +44,9 @@ export default function ChartsSection({ timeFilter = 'all' }) {
     const salesData = last6Days.map(dateStr => {
         let sum = 0;
         (state.orders || []).forEach(ord => {
-            if (ord.date === dateStr && isDeductedStatus(ord.status, ord)) {
+            if (!ord.date) return;
+            const ordLocalDate = getLocalDateString(new Date(ord.date));
+            if (ordLocalDate === dateStr && isDeductedStatus(ord.status, ord)) {
                 sum += parseFloat(ord.totalValue || ord.total_value) || 0;
             }
         });
@@ -91,7 +56,9 @@ export default function ChartsSection({ timeFilter = 'all' }) {
     const purchaseData = last6Days.map(dateStr => {
         let sum = 0;
         (state.purchaseOrders || []).forEach(po => {
-            if (po.date === dateStr) {
+            if (!po.date) return;
+            const poLocalDate = getLocalDateString(new Date(po.date));
+            if (poLocalDate === dateStr) {
                 sum += parseFloat(po.totalCost || po.total_cost) || 0;
             }
         });
@@ -121,11 +88,17 @@ export default function ChartsSection({ timeFilter = 'all' }) {
 
     // 2. Order Summary Line Chart Data
     const orderedData = last6Days.map(dateStr => {
-        return (state.orders || []).filter(ord => ord.date === dateStr && isDeductedStatus(ord.status, ord)).length;
+        return (state.orders || []).filter(ord => {
+            const ordDateStr = ord.date ? ord.date.split('T')[0] : '';
+            return ordDateStr === dateStr && isDeductedStatus(ord.status, ord);
+        }).length;
     });
 
     const deliveredData = last6Days.map(dateStr => {
-        return (state.orders || []).filter(ord => ord.date === dateStr && (ord.status === 'Completed' || ord.status === 'Partially Delivered' || ord.status === 'Delivered')).length;
+        return (state.orders || []).filter(ord => {
+            const ordDateStr = ord.date ? ord.date.split('T')[0] : '';
+            return ordDateStr === dateStr && (ord.status === 'Completed' || ord.status === 'Partially Delivered' || ord.status === 'Delivered');
+        }).length;
     });
     
     const maxOrdered = Math.max(...orderedData);
@@ -133,16 +106,16 @@ export default function ChartsSection({ timeFilter = 'all' }) {
     const maxLine = Math.max(5, maxOrdered, maxDelivered);
     const maxValLine = Math.ceil(maxLine / 5) * 5;
 
-    const spacingX = labels.length > 1 ? graphWidth / (labels.length - 1) : graphWidth;
+    const spacingX = labels.length > 1 ? graphWidth / (labels.length - 1) : graphWidth / 2;
 
     // Coordinate conversion
     const orderedCoords = labels.map((_, idx) => ({
-        x: paddingX + idx * spacingX,
+        x: labels.length === 1 ? paddingX + graphWidth / 2 : paddingX + idx * spacingX,
         y: paddingY + graphHeight - (orderedData[idx] / maxValLine) * graphHeight
     }));
 
     const deliveredCoords = labels.map((_, idx) => ({
-        x: paddingX + idx * spacingX,
+        x: labels.length === 1 ? paddingX + graphWidth / 2 : paddingX + idx * spacingX,
         y: paddingY + graphHeight - (deliveredData[idx] / maxValLine) * graphHeight
     }));
 

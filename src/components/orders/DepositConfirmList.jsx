@@ -2,6 +2,8 @@ import React, { useContext, useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { AppContext } from '../../context/AppContext';
 import { formatProductDisplayName } from '../../utils/productUtils';
+import SmartDateFilter from '../common/SmartDateFilter';
+import { isDateMatchingFilter } from '../../utils/smartDateMatcher';
 
 // Helper to parse address JSON structure safely (handles Object or String)
 const parseAddressData = (addressData) => {
@@ -95,6 +97,7 @@ export default function DepositConfirmList() {
     const [customSettleAmount, setCustomSettleAmount] = useState('');
     const [selectedSettleOrderIds, setSelectedSettleOrderIds] = useState([]);
     const [amountError, setAmountError] = useState('');
+    const [timeFilter, setTimeFilter] = useState({ type: 'preset', preset: 'all' });
     const location = useLocation();
 
     useEffect(() => {
@@ -210,7 +213,8 @@ export default function DepositConfirmList() {
         o.depositReceiverId === state.currentUser?.id &&
         o.status === 'Cancelled' &&
         (parseFloat(o.deposit) || 0) > 0 &&
-        o.depositRefundStatus === 'awaiting_return'
+        o.depositRefundStatus === 'awaiting_return' &&
+        isDateMatchingFilter(o.date, timeFilter)
     );
     const [historySearch, setHistorySearch] = useState('');
     const [historyAdminFilter, setHistoryAdminFilter] = useState('');
@@ -271,7 +275,8 @@ export default function DepositConfirmList() {
     const myPendingDeposits = (allOrdersForDeposits || []).filter(o => 
         o.depositReceiverId === state.currentUser?.id && 
         o.depositStatus === 'pending' &&
-        (parseFloat(o.deposit) || 0) > 0
+        (parseFloat(o.deposit) || 0) > 0 &&
+        isDateMatchingFilter(o.date, timeFilter)
     );
 
 
@@ -285,6 +290,7 @@ export default function DepositConfirmList() {
 
         (allOrdersForDeposits || []).forEach(o => {
             if (o.deposit > 0 && o.depositReceiverId && o.depositRefundStatus !== 'returned' && o.depositStatus !== 'settled') {
+                if (!isDateMatchingFilter(o.date, timeFilter)) return;
                 if (!custodyMap[o.depositReceiverId]) {
                     custodyMap[o.depositReceiverId] = { name: 'أدمن غير معروف', role: '', confirmed: 0, pending: 0, orderIds: [], ordersList: [] };
                 }
@@ -318,7 +324,8 @@ export default function DepositConfirmList() {
         const matchSearch = o.id.toLowerCase().includes(historySearch.toLowerCase()) || 
                             o.client.toLowerCase().includes(historySearch.toLowerCase());
         const matchAdmin = historyAdminFilter ? o.depositReceiverId === historyAdminFilter : true;
-        return matchSearch && matchAdmin;
+        const matchDate = isDateMatchingFilter(o.date, timeFilter);
+        return matchSearch && matchAdmin && matchDate;
     });
 
     const getAdminName = (id) => {
@@ -367,18 +374,22 @@ export default function DepositConfirmList() {
                         </p>
                     </div>
 
-                    {/* My Custody Summary Badge */}
-                    {(() => {
-                        const myId = state.currentUser?.id;
-                        if (!myId) return null;
-                        let myConfirmed = 0;
-                        (allOrdersForDeposits || []).forEach(o => {
-                            if (o.depositReceiverId === myId && (parseFloat(o.deposit) || 0) > 0 && o.depositRefundStatus !== 'returned' && o.depositStatus !== 'settled') {
-                                if (o.depositStatus === 'confirmed') myConfirmed += (parseFloat(o.deposit) || 0);
-                            }
-                        });
-                        return (
-                            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <div style={{ marginRight: 'auto', marginLeft: 0, display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+                        {/* Smart Date Filter Header Component at Extreme Left */}
+                        <SmartDateFilter filterConfig={timeFilter} setFilterConfig={setTimeFilter} />
+
+                        {/* My Custody Summary Badge */}
+                        {(() => {
+                            const myId = state.currentUser?.id;
+                            if (!myId) return null;
+                            let myConfirmed = 0;
+                            (allOrdersForDeposits || []).forEach(o => {
+                                if (o.depositReceiverId === myId && (parseFloat(o.deposit) || 0) > 0 && o.depositRefundStatus !== 'returned' && o.depositStatus !== 'settled') {
+                                    if (!isDateMatchingFilter(o.date, timeFilter)) return;
+                                    if (o.depositStatus === 'confirmed') myConfirmed += (parseFloat(o.deposit) || 0);
+                                }
+                            });
+                            return (
                                 <div style={{
                                     display: 'flex', alignItems: 'center', gap: '10px',
                                     background: 'linear-gradient(135deg, rgba(46,204,113,0.12) 0%, rgba(46,204,113,0.04) 100%)',
@@ -395,9 +406,9 @@ export default function DepositConfirmList() {
                                         </div>
                                     </div>
                                 </div>
-                            </div>
-                        );
-                    })()}
+                            );
+                        })()}
+                    </div>
                 </div>
             </div>
 
@@ -1490,7 +1501,8 @@ export default function DepositConfirmList() {
                 const cancelledOrReturnedDeposits = (allOrdersForDeposits || []).filter(o => 
                     o.status === 'Cancelled' && 
                     (parseFloat(o.deposit) || 0) > 0 &&
-                    o.depositRefundStatus !== 'returned'
+                    o.depositRefundStatus !== 'returned' &&
+                    isDateMatchingFilter(o.date, timeFilter)
                 );
 
                 const getOrderClass = (ord) => {

@@ -3,6 +3,9 @@ import React, { useContext, useState, useEffect } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
 import { useNavigate } from 'react-router-dom';
+import SmartDateFilter from '../common/SmartDateFilter';
+import { isDateMatchingFilter } from '../../utils/smartDateMatcher';
+import CancellationReasonModal from '../common/CancellationReasonModal';
 
 export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrder, onOpenEditOrder }) {
     const { state, updateOrderStatus, deleteOrder, showToast, logActivity, setCurrentView, t, showConfirm, addCustomer, setCustomerSpam, syncBostaStatus, updateDepositStatus, updateOrderProperties, settleAdminsCustody, fetchMissingOrderItems, approveOrderWithBosta, searchOrdersDatabase } = useContext(AppContext);
@@ -37,10 +40,12 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
     const [warehouseFilter, setWarehouseFilter] = useState('all');
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
+    const [timeFilter, setTimeFilter] = useState({ type: 'preset', preset: 'all' });
 
     // Status inline dropdown open state
     const [activeDropdownOrderId, setActiveDropdownOrderId] = useState(null);
     const [updatingOrdersMap, setUpdatingOrdersMap] = useState({});
+    const [cancelModalData, setCancelModalData] = useState(null);
 
     // Helper to parse address JSON structure safely (handles Object or String)
     const parseAddressData = (addressData) => {
@@ -118,28 +123,8 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
     const handleStatusChange = async (orderId, newStatus, bostaTrackingNumber) => {
         if (updatingOrdersMap[orderId]) return;
 
-        if (newStatus === 'Cancelled') {
-            showConfirm(
-                "هل أنت متأكد من إلغاء هذا الطلب؟ سيتم إرجاع الكميات المباعة إلى المخزون تلقائياً وإلغاء الأوردر في شوبيفاي.",
-                async () => {
-                    setUpdatingOrdersMap(prev => ({ ...prev, [orderId]: true }));
-                    try {
-                        await updateOrderStatus(orderId, newStatus);
-                        showToast("تم إلغاء الطلب وإعادة الكميات للمخزون بنجاح", "warning");
-                        if (bostaTrackingNumber) {
-                            setTimeout(() => {
-                                syncBostaStatus(orderId, bostaTrackingNumber);
-                            }, 2000);
-                        }
-                    } finally {
-                        setUpdatingOrdersMap(prev => {
-                            const next = { ...prev };
-                            delete next[orderId];
-                            return next;
-                        });
-                    }
-                }
-            );
+        if (newStatus === 'Cancelled' || newStatus === 'Rejected') {
+            setCancelModalData({ orderId, newStatus, bostaTrackingNumber });
             return;
         }
 
@@ -147,6 +132,34 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         try {
             await updateOrderStatus(orderId, newStatus);
             showToast("تم تحديث حالة الطلب بنجاح", "success");
+            if (bostaTrackingNumber) {
+                setTimeout(() => {
+                    syncBostaStatus(orderId, bostaTrackingNumber);
+                }, 2000);
+            }
+        } finally {
+            setUpdatingOrdersMap(prev => {
+                const next = { ...prev };
+                delete next[orderId];
+                return next;
+            });
+        }
+    };
+
+    const handleConfirmCancellation = async (reason) => {
+        if (!cancelModalData) return;
+        const { orderId, newStatus, bostaTrackingNumber } = cancelModalData;
+        setCancelModalData(null);
+        setUpdatingOrdersMap(prev => ({ ...prev, [orderId]: true }));
+        try {
+            updateOrderProperties(orderId, {
+                cancellationReason: reason,
+                cancelledBy: state.currentUser?.name || 'الأدمن',
+                cancelledAt: new Date().toISOString()
+            });
+            logActivity("order", `تم إلغاء الطلب #${orderId}. سبب الإلغاء: "${reason}".`);
+            await updateOrderStatus(orderId, newStatus, null, reason);
+            showToast("تم إلغاء الطلب وتسجيل سبب الإلغاء بنجاح", "warning");
             if (bostaTrackingNumber) {
                 setTimeout(() => {
                     syncBostaStatus(orderId, bostaTrackingNumber);
@@ -380,6 +393,9 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         // 5. Date Range (from startDate to endDate)
         if (startDate && ord.date < startDate) return false;
         if (endDate && ord.date > endDate) return false;
+
+        // 6. Smart Date Filter
+        if (!isDateMatchingFilter(ord.date, timeFilter)) return false;
 
         return true;
     });
@@ -651,14 +667,17 @@ ${followUpReason}
                 );
             })()}
             {/* Header */}
-            <div className="page-header" style={{ marginBottom: '24px' }}>
-                <div className="page-title-group">
-                    <h2 style={{ fontSize: '22px', fontWeight: 'bold' }}>إدارة طلبات المبيعات</h2>
-                </div>
-                <div className="page-actions">
-                    <button className="btn btn-primary" onClick={onOpenAddOrder} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--gold-primary)', color: '#000', border: 'none', fontWeight: 600 }}>
+            <div className="page-header" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+                <div className="page-title-group" style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+                    <h2 style={{ fontSize: '22px', fontWeight: 'bold', margin: 0 }}>إدارة طلبات المبيعات</h2>
+                    <button className="btn btn-primary" onClick={onOpenAddOrder} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'var(--gold-primary)', color: '#000', border: 'none', fontWeight: 600, padding: '8px 16px', borderRadius: '8px' }}>
                         <i className="fa-solid fa-plus"></i> تسجيل طلب جديد
                     </button>
+                </div>
+
+                {/* Smart Date Filter Header Component at Extreme Left */}
+                <div style={{ marginRight: 'auto', marginLeft: 0 }}>
+                    <SmartDateFilter filterConfig={timeFilter} setFilterConfig={setTimeFilter} />
                 </div>
             </div>
 
@@ -1316,6 +1335,12 @@ ${followUpReason}
                                                                             <strong>تفاصيل الخصم:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ord.discount_reason_details}</span>
                                                                         </div>
                                                                     )}
+                                                                    {(ord.cancellationReason || ord.cancellation_reason) && (
+                                                                        <div style={{ marginTop: '6px', borderTop: '1px dashed rgba(239,68,68,0.3)', paddingTop: '6px', color: '#ef4444' }}>
+                                                                            <strong>سبب إلغاء الطلب:</strong> <span style={{ fontWeight: 'bold' }}>{ord.cancellationReason || ord.cancellation_reason}</span>
+                                                                            {ord.cancelledBy && <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>تم الإلغاء بواسطة: {ord.cancelledBy}</div>}
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             </div>
 
@@ -1930,6 +1955,13 @@ ${followUpReason}
                 </button>
             </div>
 
+            {/* Cancellation Reason Modal */}
+            <CancellationReasonModal 
+                isOpen={!!cancelModalData}
+                onClose={() => setCancelModalData(null)}
+                orderId={cancelModalData?.orderId}
+                onConfirm={handleConfirmCancellation}
+            />
         </div>
     );
 }

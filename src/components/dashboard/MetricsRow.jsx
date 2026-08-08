@@ -1,34 +1,6 @@
 import React, { useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
-
-
-const isDateInPeriod = (dateStr, period) => {
-    if (!dateStr) return false;
-    if (period === 'all') return true;
-
-    try {
-        const datePart = typeof dateStr === 'string' ? dateStr.split('T')[0] : '';
-        if (!datePart) return false;
-
-        const [y, m, d] = datePart.split('-').map(Number);
-        if (!y || !m || !d) return false;
-
-        const orderDate = new Date(y, m - 1, d);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        const diffDays = Math.floor((today - orderDate) / (1000 * 60 * 60 * 24));
-
-        if (period === 'today') return diffDays === 0;
-        if (period === 'week') return diffDays >= 0 && diffDays < 7;
-        if (period === 'month') return diffDays >= 0 && diffDays < 30;
-        if (period === 'year') return diffDays >= 0 && diffDays < 365;
-    } catch (e) {
-        return false;
-    }
-    return true;
-};
-
+import { isDateMatchingFilter } from '../../utils/smartDateMatcher';
 
 export default function MetricsRow({ timeFilter = 'all' }) {
     const { state, isDeductedStatus, t, theme, language } = useContext(AppContext);
@@ -41,7 +13,7 @@ export default function MetricsRow({ timeFilter = 'all' }) {
     
     (state.orders || []).forEach(ord => {
         if (isDeductedStatus(ord.status, ord)) {
-            if (!isDateInPeriod(ord.date, timeFilter)) return;
+            if (!isDateMatchingFilter(ord.date, timeFilter)) return;
             salesCount++;
             salesRevenue += parseFloat(ord.totalValue || ord.total_value) || 0;
             (ord.items || []).forEach(item => {
@@ -60,7 +32,7 @@ export default function MetricsRow({ timeFilter = 'all' }) {
 
     let wasteCost = 0;
     (state.wastes || []).forEach(w => {
-        if (!isDateInPeriod(w.date, timeFilter)) return;
+        if (!isDateMatchingFilter(w.date, timeFilter)) return;
         wasteCost += (w.totalCost || w.cost || (w.quantity * (w.unitCost || w.costPrice || 0)) || 0);
     });
 
@@ -69,9 +41,23 @@ export default function MetricsRow({ timeFilter = 'all' }) {
     // 2. Inventory Summary calculations
     let invQty = 0;
     let lowStockCount = 0;
-    state.products.forEach(prod => {
-        prod.variants.forEach(vr => {
-            const totalQty = (vr.stock.Sulur || 0);
+    (state.products || []).forEach(prod => {
+        (prod.variants || []).forEach(vr => {
+            let totalQty = 0;
+            if (vr.stock && typeof vr.stock === 'object') {
+                if (vr.stock.Sulur !== undefined) {
+                    totalQty = parseInt(vr.stock.Sulur) || 0;
+                } else {
+                    totalQty = Object.values(vr.stock).reduce((acc, val) => acc + (parseInt(val) || 0), 0);
+                }
+            } else if (vr.stock_sulur !== undefined) {
+                totalQty = parseInt(vr.stock_sulur) || 0;
+            } else if (typeof vr.stock === 'number') {
+                totalQty = vr.stock;
+            } else if (typeof vr.stock === 'string') {
+                totalQty = parseInt(vr.stock) || 0;
+            }
+
             invQty += totalQty;
             const limit = vr.reorderLimit || 5;
             if (totalQty <= limit) {
@@ -80,16 +66,26 @@ export default function MetricsRow({ timeFilter = 'all' }) {
         });
     });
 
+    let periodItemsSold = 0;
+    (state.orders || []).forEach(ord => {
+        if (isDeductedStatus(ord.status, ord) && isDateMatchingFilter(ord.date, timeFilter)) {
+            (ord.items || []).forEach(i => {
+                periodItemsSold += (parseInt(i.quantity) || 1);
+            });
+        }
+    });
+
     // 3. Purchase Overview calculations
     let purCount = 0;
     let purCost = 0;
     (state.purchaseOrders || []).forEach(po => {
-        if (!isDateInPeriod(po.date, timeFilter)) return;
+        if (!isDateMatchingFilter(po.date, timeFilter)) return;
         purCount++;
         purCost += po.totalCost || 0;
     });
-    let purCancelled = state.orders.filter(o => o.status === "Cancelled").length;
-    let purReturns = state.wastes.length;
+
+    let purCancelled = (state.orders || []).filter(o => o.status === "Cancelled" && isDateMatchingFilter(o.date, timeFilter)).length;
+    let purReturns = (state.wastes || []).filter(w => isDateMatchingFilter(w.date, timeFilter)).length;
 
     // 4. Product Summary calculations
     let categories = [...new Set(state.products.map(p => p.category).filter(Boolean))];
