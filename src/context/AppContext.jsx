@@ -144,14 +144,7 @@ export const AppProvider = ({ children }) => {
                     parsed.storeSettings) {
                     return {
                         ...parsed,
-                        shippingFees: (function() {
-                            try {
-                                const savedFees = localStorage.getItem('octabot_shipping_fees_v2');
-                                return savedFees ? JSON.parse(savedFees) : DEFAULT_SHIPPING_FEES;
-                            } catch(e) {
-                                return DEFAULT_SHIPPING_FEES;
-                            }
-                        })()
+                        shippingFees: DEFAULT_SHIPPING_FEES
                     };
                 }
             }
@@ -523,24 +516,26 @@ export const AppProvider = ({ children }) => {
                     return dateB.localeCompare(dateA);
                 });
 
-                const sysShippingFeeProfile = (users || []).find(u => u.id === 'system_shipping_fees');
                 let dbShippingFees = null;
-                if (sysShippingFeeProfile && sysShippingFeeProfile.avatar) {
-                    try {
-                        const parsed = JSON.parse(sysShippingFeeProfile.avatar);
-                        if (parsed && typeof parsed === 'object') {
-                            dbShippingFees = parsed;
-                            localStorage.setItem('octabot_shipping_fees_v2', JSON.stringify(parsed));
-                        }
-                    } catch (e) {}
-                }
-
-                const actualStaffUsers = (sortedUsers || []).filter(u => u.id !== 'system_shipping_fees');
-
                 const loadedUserAvatars = {};
+
                 (users || []).forEach(u => {
-                    if (u.avatar && u.id !== 'system_shipping_fees') {
-                        loadedUserAvatars[u.id] = u.avatar;
+                    if (u.avatar) {
+                        if (typeof u.avatar === 'string' && u.avatar.includes('shippingFees')) {
+                            try {
+                                const parsedObj = JSON.parse(u.avatar);
+                                if (parsedObj.shippingFees && typeof parsedObj.shippingFees === 'object') {
+                                    dbShippingFees = { ...DEFAULT_SHIPPING_FEES, ...parsedObj.shippingFees };
+                                }
+                                if (parsedObj.realAvatar) {
+                                    loadedUserAvatars[u.id] = parsedObj.realAvatar;
+                                }
+                            } catch(e) {
+                                loadedUserAvatars[u.id] = u.avatar;
+                            }
+                        } else {
+                            loadedUserAvatars[u.id] = u.avatar;
+                        }
                     }
                 });
 
@@ -565,7 +560,7 @@ export const AppProvider = ({ children }) => {
                         minOrderValue: c.min_order_value || null,
                         createdAt: c.created_at
                     })),
-                    users: (actualStaffUsers).map(u => {
+                    users: (sortedUsers).map(u => {
                         const tm = (telegramMappings || []).find(m => m.user_id === u.id);
                         return { ...u, telegram_chat_id: tm ? tm.telegram_chat_id : '' };
                     }),
@@ -1164,13 +1159,13 @@ export const AppProvider = ({ children }) => {
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'user_profiles' },
                 (payload) => {
-                    if (payload.new && payload.new.id === 'system_shipping_fees' && payload.new.avatar) {
+                    if (payload.new && payload.new.avatar && typeof payload.new.avatar === 'string' && payload.new.avatar.includes('shippingFees')) {
                         try {
-                            const freshFees = JSON.parse(payload.new.avatar);
-                            if (freshFees && typeof freshFees === 'object') {
-                                localStorage.setItem('octabot_shipping_fees_v2', JSON.stringify(freshFees));
+                            const parsedObj = JSON.parse(payload.new.avatar);
+                            if (parsedObj.shippingFees && typeof parsedObj.shippingFees === 'object') {
+                                const freshFees = { ...DEFAULT_SHIPPING_FEES, ...parsedObj.shippingFees };
                                 setState(curr => ({ ...curr, shippingFees: freshFees }));
-                                console.log("Realtime shipping fees synced across all admins!");
+                                console.log("Realtime shipping fees synced across all admins from Supabase DB!");
                             }
                         } catch(e) {}
                     }
@@ -6026,27 +6021,39 @@ export const AppProvider = ({ children }) => {
     }, []);
 
     const saveShippingFees = async (newFees) => {
-        try {
-            localStorage.setItem('octabot_shipping_fees_v2', JSON.stringify(newFees));
-        } catch(e) {}
-        setState(prev => ({ ...prev, shippingFees: newFees }));
+        const fullFees = { ...DEFAULT_SHIPPING_FEES, ...newFees };
+        setState(prev => ({ ...prev, shippingFees: fullFees }));
 
         if (supabase) {
             try {
-                await supabase
-                    .from('user_profiles')
-                    .upsert({ 
-                        id: 'system_shipping_fees', 
-                        name: 'System Shipping Fees Config',
-                        role: 'SystemConfig',
-                        avatar: JSON.stringify(newFees)
-                    }, { onConflict: 'id' });
+                const { data: userProfiles } = await supabase.from('user_profiles').select('id, avatar');
+                if (userProfiles && userProfiles.length > 0) {
+                    for (const uProf of userProfiles) {
+                        let realAvatar = '';
+                        if (uProf.avatar && typeof uProf.avatar === 'string') {
+                            if (uProf.avatar.includes('shippingFees')) {
+                                try {
+                                    const pObj = JSON.parse(uProf.avatar);
+                                    realAvatar = pObj.realAvatar || '';
+                                } catch(e) {}
+                            } else {
+                                realAvatar = uProf.avatar;
+                            }
+                        }
+                        const payloadStr = JSON.stringify({
+                            shippingFees: fullFees,
+                            realAvatar
+                        });
+                        await supabase.from('user_profiles').update({ avatar: payloadStr }).eq('id', uProf.id);
+                    }
+                    console.log("Successfully saved and synced shipping fees across ALL user profiles in Supabase DB!");
+                }
             } catch (err) {
                 console.error("Error saving shipping fees to Supabase DB:", err);
             }
         }
 
-        showToast("تم حفظ وتعميم أسعار الشحن للمحافظات بنجاح على جميع الأدمنز ✅", "success");
+        showToast("تم حفظ وتعميم أسعار الشحن للمحافظات بنجاح في الداتابيز وعلى جميع الأدمنز ✅", "success");
     };
 
     return (
