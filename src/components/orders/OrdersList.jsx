@@ -341,14 +341,27 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
 
     // Filter Logic
     const filteredOrders = (state.orders || []).filter(ord => {
-        // 1. Search
-        const clientMatches = (ord.client || '').toLowerCase().includes(activeSearch.toLowerCase());
-        const idMatches = (ord.id || '').toLowerCase().includes(activeSearch.toLowerCase());
-        const { phone, bostaTrackingNumber } = parseAddressData(ord.address);
-        const phoneMatches = (phone || '').includes(activeSearch);
-        const trackingMatches = (bostaTrackingNumber || '').toLowerCase().includes(activeSearch.toLowerCase());
-        
-        if (!clientMatches && !idMatches && !phoneMatches && !trackingMatches) return false;
+        // 1. Search Filter
+        const searchRaw = (activeSearch || '').trim();
+        if (searchRaw) {
+            const query = searchRaw.toLowerCase();
+            const cleanQuery = query.replace(/^#/, '').trim();
+            
+            const clientMatches = (ord.client || '').toLowerCase().includes(query);
+            const idMatches = (ord.id || '').toLowerCase().includes(query) || (ord.id || '').toLowerCase().includes(cleanQuery);
+            
+            const shopifyId = String(ord.shopifyOrderId || ord.shopify_order_id || '');
+            const shopifyMatches = shopifyId ? (shopifyId.toLowerCase().includes(query) || shopifyId.toLowerCase().includes(cleanQuery)) : false;
+            
+            const { phone, bostaTrackingNumber, customerCode } = parseAddressData(ord.address);
+            const phoneMatches = (phone || '').includes(cleanQuery) || (phone || '').includes(query);
+            const trackingMatches = (bostaTrackingNumber || '').toLowerCase().includes(query) || (bostaTrackingNumber || '').toLowerCase().includes(cleanQuery);
+            const codeMatches = (customerCode || '').toLowerCase().includes(query);
+
+            if (!clientMatches && !idMatches && !shopifyMatches && !phoneMatches && !trackingMatches && !codeMatches) {
+                return false;
+            }
+        }
 
         // 2. Delivery Status
         if (deliveryStatusFilter !== 'all') {

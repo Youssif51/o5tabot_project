@@ -159,12 +159,24 @@ export default function ShopifyPendingList() {
         if (!isDateMatchingFilter(ord.date, timeFilter)) return false;
 
         // Search filter
-        if (globalSearch.trim() !== '') {
-            const query = globalSearch.toLowerCase();
+        const searchRaw = (globalSearch || '').trim();
+        if (searchRaw) {
+            const query = searchRaw.toLowerCase();
+            const cleanQuery = query.replace(/^#/, '').trim();
+            
             const clientMatches = (ord.client || '').toLowerCase().includes(query);
-            const idMatches = (ord.id || '').toLowerCase().includes(query);
-            const phoneMatches = parseAddressData(ord.address).phone.includes(query);
-            if (!clientMatches && !idMatches && !phoneMatches) return false;
+            const idMatches = (ord.id || '').toLowerCase().includes(query) || (ord.id || '').toLowerCase().includes(cleanQuery);
+            
+            const shopifyId = String(ord.shopifyOrderId || ord.shopify_order_id || '');
+            const shopifyMatches = shopifyId ? (shopifyId.toLowerCase().includes(query) || shopifyId.toLowerCase().includes(cleanQuery)) : false;
+            
+            const { phone, customerCode } = parseAddressData(ord.address);
+            const phoneMatches = (phone || '').includes(cleanQuery) || (phone || '').includes(query);
+            const codeMatches = (customerCode || '').toLowerCase().includes(query);
+
+            if (!clientMatches && !idMatches && !shopifyMatches && !phoneMatches && !codeMatches) {
+                return false;
+            }
         }
         return true;
     });
