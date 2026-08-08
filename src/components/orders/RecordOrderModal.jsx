@@ -145,6 +145,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         let bostaDistrictId = null;
         let bostaDistrictName = '';
         let bostaZoneId = null;
+        let bostaDeliveryId = null;
+        let parsedSyncWithBosta = undefined;
         
         if (addressStr) {
             let parsed = addressStr;
@@ -160,7 +162,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 secondPhone = parsed.secondPhone || '';
                 vatEnabled = parsed.vatEnabled || false;
                 globalDiscountValue = parsed.globalDiscountValue || '';
-                globalDiscountType = parsed.globalDiscountType || 'Percentage';
+                globalDiscountType = parsed.globalDiscountType ? (String(parsed.globalDiscountType).toLowerCase().includes('percent') ? 'Percentage' : 'Fixed') : 'Fixed';
                 customerCode = parsed.customerCode || 'CUS-0000';
                 appliedCoupon = parsed.appliedCoupon || '';
                 bostaCityCode = parsed.bostaCityCode || null;
@@ -168,12 +170,14 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 bostaDistrictId = parsed.bostaDistrictId || null;
                 bostaDistrictName = parsed.bostaDistrictName || '';
                 bostaZoneId = parsed.bostaZoneId || null;
+                bostaDeliveryId = parsed.bostaDeliveryId || null;
+                parsedSyncWithBosta = parsed.syncWithBosta;
             }
         }
         return { 
             detailAddress, phone, secondPhone, vatEnabled, globalDiscountValue, globalDiscountType, 
             customerCode, appliedCoupon, originalObj,
-            bostaCityCode, bostaCityName, bostaDistrictId, bostaDistrictName, bostaZoneId
+            bostaCityCode, bostaCityName, bostaDistrictId, bostaDistrictName, bostaZoneId, bostaDeliveryId, syncWithBosta: parsedSyncWithBosta
         };
     };
 
@@ -403,21 +407,28 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     const hasCoupon = !!(order.applied_coupon_code || parsed.appliedCoupon);
                     const savedCouponCode = order.applied_coupon_code || parsed.appliedCoupon || '';
                     
+                    const normalizeDiscountType = (type) => {
+                        if (!type) return 'Fixed';
+                        const lower = String(type).toLowerCase();
+                        if (lower.includes('percent') || lower === '%') return 'Percentage';
+                        return 'Fixed';
+                    };
+
                     if (hasCoupon) {
                         setCouponCode(savedCouponCode);
                         setCouponDiscountValue(parseFloat(order.discount_value) || 0);
-                        setCouponDiscountType(order.discount_type || 'Percentage');
+                        setCouponDiscountType(normalizeDiscountType(order.discount_type));
                         setGlobalDiscountValue('');
-                        setGlobalDiscountType('Percentage');
+                        setGlobalDiscountType('Fixed');
                     } else if (parseFloat(order.discount_value) > 0) {
                         setGlobalDiscountValue(String(order.discount_value));
-                        setGlobalDiscountType(order.discount_type || 'Percentage');
+                        setGlobalDiscountType(normalizeDiscountType(order.discount_type || parsed.globalDiscountType));
                         setCouponCode('');
                         setCouponDiscountValue(0);
                         setCouponDiscountType('');
                     } else {
                         setGlobalDiscountValue(parsed.globalDiscountValue || '');
-                        setGlobalDiscountType(parsed.globalDiscountType || 'Percentage');
+                        setGlobalDiscountType(normalizeDiscountType(parsed.globalDiscountType || order.discount_type));
                         setCouponCode('');
                         setCouponDiscountValue(0);
                         setCouponDiscountType('');
@@ -431,8 +442,9 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     // In edit mode: restore the saved receiver (could be another admin)
                     // If none was saved, fall back to current user as a safe default
                     setDepositReceiverId(order.depositReceiverId || state.currentUser?.id || '');
-                    setDepositStatus(order.depositStatus || 'confirmed');
-                    setDepositConfirmChecked(order.depositStatus === 'confirmed');
+                    setDepositStatus(order.depositStatus || 'pending');
+                    // Unchecked by default so admin MUST manually check and acknowledge deposit custody
+                    setDepositConfirmChecked(false);
 
                     const { city, district } = resolveBostaCityAndDistrict(order.governorate, parsed.bostaCityCode, parsed.bostaDistrictId, parsed.bostaDistrictName);
                     setCitySelected(city || null);
@@ -441,6 +453,10 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     setDistrictSearch('');
                     setActiveCityDropdown(false);
                     setActiveDistrictDropdown(false);
+
+                    // Restore exact syncWithBosta setting for this order (default to false if not created with Bosta)
+                    const savedSync = parsed.syncWithBosta !== undefined ? parsed.syncWithBosta : (!!parsed.bostaDeliveryId);
+                    setSyncWithBosta(savedSync);
                     
                     // Fetch latest items directly from database to avoid stale local state overwrites
                     (async () => {
@@ -744,9 +760,9 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     if (gDiscountVal > 0) {
         if (globalDiscountType === 'Percentage') {
             const percentage = Math.min(100, gDiscountVal);
-            globalDisc = orderDiscountBase * (percentage / 100);
+            globalDisc = totalProductsSubtotal * (percentage / 100);
         } else {
-            globalDisc = gDiscountVal;
+            globalDisc = Math.min(gDiscountVal, totalProductsSubtotal);
         }
     }
 
@@ -759,16 +775,6 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     // Final order total subtracts the discount from the entire (subtotal + shipping) base and adds VAT
     const finalOrderTotal = Math.round((Math.max(0, orderDiscountBase - orderDiscountAmount) + vatAmount) * 100) / 100;
     const remainingToCollect = Math.round((finalOrderTotal - depositVal) * 100) / 100;
-
-    // Keep global discount value capped to subtotal + shipping (orderDiscountBase)
-    useEffect(() => {
-        if (globalDiscountType === 'Fixed') {
-            const val = parseFloat(globalDiscountValue) || 0;
-            if (val > orderDiscountBase) {
-                setGlobalDiscountValue(String(orderDiscountBase));
-            }
-        }
-    }, [orderDiscountBase, globalDiscountType, globalDiscountValue]);
 
     const getCurrentStock = (sku) => {
         if (!sku) return 0;
@@ -982,8 +988,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
             }
 
             if (!isDraftSave && depositVal > 0 && depositReceiverId === state.currentUser?.id && !depositConfirmChecked) {
-                showToast("عفواً! لا يمكن تأكيد الطلب قبل الإقرار باستلام مبلغ العربون وتحديد علامة الصح أولاً.", "error");
-                setStep(4);
+                showToast("عفواً! لا يمكن إكمال الطلب قبل الإقرار باستلام مبلغ العربون وتحديد علامة الصح أولاً.", "error");
+                if (step !== 3 && step !== 4) setStep(3);
                 return;
             }
 
@@ -2374,6 +2380,76 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                 <span>المستلم محدد كـ <strong>أنت</strong> — تأكد أنك ستستلم العربون فعلاً، وإلا غيّر الاختيار.</span>
                                             </div>
                                         )}
+
+                                        {/* Custody Acknowledgment Card inside Step 3 (Shipping & Payment) */}
+                                        {depositVal > 0 && (() => {
+                                            const isAssignedToMe = depositReceiverId === state.currentUser?.id;
+                                            const receiverName = (state.users || []).find(u => u.id === depositReceiverId)?.name || 'الآدمن';
+
+                                            return (
+                                                <div className="glass-card" style={{
+                                                    marginTop: '14px',
+                                                    padding: '14px 16px',
+                                                    background: 'linear-gradient(135deg, rgba(22, 20, 12, 0.95), rgba(14, 14, 18, 0.98))',
+                                                    border: `1px solid ${depositConfirmChecked && isAssignedToMe ? 'rgba(46, 204, 113, 0.35)' : 'rgba(241, 196, 15, 0.4)'}`,
+                                                    borderRadius: '12px',
+                                                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)'
+                                                }}>
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                                                        <h4 style={{ fontSize: '13px', color: '#f1c40f', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
+                                                            <img src="/icons/warning-alert.png" alt="Warning" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
+                                                            إقرار استلام عُهدة العربون ({currency} {depositVal.toLocaleString('en-US', {maximumFractionDigits: 2})})
+                                                        </h4>
+                                                        <span style={{
+                                                            fontSize: '11px',
+                                                            padding: '2px 8px',
+                                                            borderRadius: '6px',
+                                                            background: depositConfirmChecked && isAssignedToMe ? 'rgba(46, 204, 113, 0.15)' : 'rgba(241, 196, 15, 0.15)',
+                                                            color: depositConfirmChecked && isAssignedToMe ? '#2ecc71' : '#f1c40f',
+                                                            border: `1px solid ${depositConfirmChecked && isAssignedToMe ? 'rgba(46, 204, 113, 0.3)' : 'rgba(241, 196, 15, 0.3)'}`,
+                                                            fontWeight: 700
+                                                        }}>
+                                                            {depositConfirmChecked && isAssignedToMe ? 'عُهدة مؤكدة' : 'بانتظار الإقرار'}
+                                                        </span>
+                                                    </div>
+
+                                                    {isAssignedToMe ? (
+                                                        <label style={{
+                                                            display: 'flex',
+                                                            alignItems: 'center',
+                                                            gap: '10px',
+                                                            padding: '10px 12px',
+                                                            background: depositConfirmChecked ? 'rgba(46, 204, 113, 0.1)' : 'rgba(0, 0, 0, 0.4)',
+                                                            borderRadius: '8px',
+                                                            cursor: 'pointer',
+                                                            border: `1px solid ${depositConfirmChecked ? 'rgba(46, 204, 113, 0.4)' : 'rgba(241, 196, 15, 0.3)'}`,
+                                                            transition: 'all 0.2s ease'
+                                                        }}>
+                                                            <input 
+                                                                type="checkbox"
+                                                                checked={depositConfirmChecked}
+                                                                onChange={(e) => setDepositConfirmChecked(e.target.checked)}
+                                                                style={{ width: '18px', height: '18px', accentColor: '#2ecc71', cursor: 'pointer' }}
+                                                            />
+                                                            <span style={{ fontSize: '12.5px', color: 'var(--text-primary)', fontWeight: 600 }}>
+                                                                أُقر باستلام مبلغ العربون ({currency} {depositVal.toLocaleString('en-US', {maximumFractionDigits: 2})}) على محفظتي وتأكيد تسجيله على عُهدتي
+                                                            </span>
+                                                        </label>
+                                                    ) : (
+                                                        <div style={{ 
+                                                            fontSize: '12px', 
+                                                            color: '#f1c40f', 
+                                                            background: 'rgba(0, 0, 0, 0.45)', 
+                                                            padding: '10px 12px', 
+                                                            borderRadius: '8px',
+                                                            border: '1px dashed rgba(241, 196, 15, 0.3)'
+                                                        }}>
+                                                            <span>ℹ️ العربون محدد لصالح الأدمن (<strong style={{ color: '#ffffff' }}>{receiverName}</strong>). سيسجل كعُهدة معلقة حتى يتم تأكيده من حسابه.</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
                                     </div>
                                 )}
                                 <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '24px' }}>
