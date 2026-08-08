@@ -818,19 +818,14 @@ export const AppProvider = ({ children }) => {
                     console.log("Realtime INSERT event payload received for order:", newOrder.id, payload);
 
                     try {
-                        // Retry fetching order_items up to 4 times with 1-second interval to ensure Edge Function finished inserting
                         let orderItems = [];
-                        for (let attempt = 0; attempt < 4; attempt++) {
-                            await new Promise(resolve => setTimeout(resolve, 1000));
-                            const { data: fetchedItems, error: itemsErr } = await supabase
-                                .from('order_items')
-                                .select('*')
-                                .eq('order_id', newOrder.id);
-                            
-                            if (fetchedItems && fetchedItems.length > 0) {
-                                orderItems = fetchedItems;
-                                break;
-                            }
+                        const { data: fetchedItems } = await supabase
+                            .from('order_items')
+                            .select('*')
+                            .eq('order_id', newOrder.id);
+                        
+                        if (fetchedItems && fetchedItems.length > 0) {
+                            orderItems = fetchedItems;
                         }
 
                         const items = (orderItems || []).map(oi => ({
@@ -1184,6 +1179,73 @@ export const AppProvider = ({ children }) => {
             supabase.removeChannel(userProfilesChannel);
         };
     }, [supabase, language]);
+
+    // Smart Guarded Sync on Focus / Tab Visibility Change
+    const lastSmartSyncRef = useRef(Date.now());
+    useEffect(() => {
+        if (!supabase) return;
+
+        const handleVisibilityOrFocus = async () => {
+            if (document.visibilityState !== 'visible') return;
+
+            // Form Lock Protection: If any modal or form is open, DO NOT disturb the UI or form inputs
+            const isModalOpen = !!document.querySelector('.modal-overlay') || !!document.querySelector('.modal-backdrop') || !!document.querySelector('[role="dialog"]');
+            if (isModalOpen) {
+                console.log("SmartSync skipped: Form/Modal is active (Form Lock Protection)");
+                return;
+            }
+
+            // Cooldown throttle: minimum 60 seconds between background focus refreshes
+            const now = Date.now();
+            if (now - lastSmartSyncRef.current < 60000) {
+                return;
+            }
+            lastSmartSyncRef.current = now;
+
+            console.log("SmartSync: Gently refreshing fresh data on tab focus in background...");
+            try {
+                const { data: freshOrders } = await supabase.from('orders').select('*').limit(100);
+                const { data: freshProducts } = await supabase.from('products').select('*, variants:product_variants(*)');
+                
+                if (freshOrders || freshProducts) {
+                    setState(prev => ({
+                        ...prev,
+                        ...(freshOrders && {
+                            orders: freshOrders.map(dbO => {
+                                const local = prev.orders.find(o => o.id === dbO.id);
+                                return local ? { ...local, ...dbO, items: local.items || [] } : dbO;
+                            })
+                        }),
+                        ...(freshProducts && {
+                            products: (freshProducts || []).map(p => ({
+                                id: p.id,
+                                name: p.name,
+                                category: p.category,
+                                variants: (p.variants || []).map(v => ({
+                                    sku: v.sku,
+                                    name: v.name,
+                                    retailPrice: parseFloat(v.retail_price) || 0,
+                                    wholesalePrice: parseFloat(v.wholesale_price) || 0,
+                                    averageCost: parseFloat(v.average_cost) || 0,
+                                    stock: { Sulur: v.stock_sulur !== undefined ? v.stock_sulur : 0 }
+                                }))
+                            }))
+                        })
+                    }));
+                }
+            } catch (err) {
+                console.warn("SmartSync background fetch error:", err);
+            }
+        };
+
+        window.addEventListener('focus', handleVisibilityOrFocus);
+        document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+
+        return () => {
+            window.removeEventListener('focus', handleVisibilityOrFocus);
+            document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+        };
+    }, [supabase]);
 
     const t = (key) => {
         const tr = translations[language] && translations[language][key];
@@ -2664,12 +2726,10 @@ export const AppProvider = ({ children }) => {
                             }
                         }
                     }
-                    await loadSupabaseData();
                 } catch (e) {
                     console.error("Supabase Error:", e);
                     showToast(`حدث خطأ أثناء الاتصال بالخادم: ${e.message}`, "error");
                     rollbackLocalState();
-                    await loadSupabaseData();
                 }
             })();
         }

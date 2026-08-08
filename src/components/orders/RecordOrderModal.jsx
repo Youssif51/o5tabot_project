@@ -1020,9 +1020,9 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
                 if (editOrderId) {
                     await editOrder(newOrderObj);
-                    showToast(isDraftSave ? "تم تعديل الطلب كمسودة بنجاح" : "تم التعديل في السيستم وبوسطة بنجاح ✅", "success");
+                    showToast(isDraftSave ? "تم تعديل الطلب كمسودة بنجاح" : "تم التعديل في السيستم بنجاح ✅", "success");
 
-                    // Auto-sync to Bosta if sync is now enabled, not draft, deposit is confirmed, and waybill did not exist before
+                    // Background dispatch to Bosta without blocking the UI modal
                     const hadBostaId = originalOrder?.address && parseAddressData(originalOrder.address)?.bostaDeliveryId;
                     if (!isDraftSave && syncWithBosta && newOrderObj.status !== 'Draft' && newOrderObj.depositStatus !== 'pending' && !hadBostaId) {
                         const bostaMetadata = {
@@ -1038,12 +1038,15 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             bostaZoneId: districtSelected?.zoneId,
                             allowToOpenPackage: allowToOpenPackage
                         };
-                        await approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit);
+                        approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit).catch(err => {
+                            console.error("Background Bosta sync error:", err);
+                        });
                     }
                 } else {
                     await addOrder(newOrderObj);
-                    showToast(isDraftSave ? "تم حفظ الطلب كمسودة بنجاح" : "تم إضافة طلب العميل بنجاح", "success");
+                    showToast(isDraftSave ? "تم حفظ الطلب كمسودة بنجاح" : "تم إضافة طلب العميل بنجاح ✅", "success");
                     
+                    // Background dispatch to Bosta without freezing the UI modal
                     if (!isDraftSave && syncWithBosta && newOrderObj.status !== 'Draft' && newOrderObj.depositStatus !== 'pending') {
                         const bostaMetadata = {
                             customerName: client,
@@ -1058,7 +1061,9 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             bostaZoneId: districtSelected?.zoneId,
                             allowToOpenPackage: allowToOpenPackage
                         };
-                        await approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit);
+                        approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit).catch(err => {
+                            console.error("Background Bosta sync error:", err);
+                        });
                     }
                 }
 
@@ -1066,11 +1071,18 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     applyCouponUsage(couponCode, 1);
                 }
 
+                // Instant close modal
                 onClose();
             };
 
+            // Safety timeout guard (5 seconds max) to guarantee isSubmitting never hangs infinitely
+            const safetyTimeout = setTimeout(() => {
+                setIsSubmitting(false);
+            }, 5000);
+
             if (!isDraftSave && isPotentialDuplicate) {
                 resetSubmitting = false;
+                clearTimeout(safetyTimeout);
                 showConfirm(
                     "تنبيه: تم تسجيل طلب مطابق تماماً لهذا العميل سابقاً (نفس المنتجات ورقم الهاتف). هل أنت متأكد من رغبتك في تكرار هذا الطلب وتأكيده؟",
                     async () => {
@@ -1089,6 +1101,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 return;
             } else {
                 await proceedSave();
+                clearTimeout(safetyTimeout);
             }
         } catch (e) {
             console.error("Submit error:", e);

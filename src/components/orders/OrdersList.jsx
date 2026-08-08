@@ -174,20 +174,6 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         }
     };
 
-    // Automatic background sync for active Bosta orders runs once when page is opened to verify current statuses
-    const hasSyncedOnMount = React.useRef(false);
-    useEffect(() => {
-        if (state.orders && state.orders.length > 0 && !hasSyncedOnMount.current) {
-            hasSyncedOnMount.current = true;
-            (state.orders || []).forEach(ord => {
-                const { bostaTrackingNumber, bostaStateCode } = parseAddressData(ord.address);
-                if (bostaTrackingNumber && ord.status !== 'Completed' && ord.status !== 'Cancelled' && Number(bostaStateCode) !== 45 && Number(bostaStateCode) !== 49) {
-                    syncBostaStatus(ord.id, bostaTrackingNumber, true); // silent background sync
-                }
-            });
-        }
-    }, [state.orders]);
-
     // Pagination
     const [currentPage, setCurrentPage] = useState(1);
     const pageSize = 10;
