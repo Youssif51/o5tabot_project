@@ -523,9 +523,23 @@ export const AppProvider = ({ children }) => {
                     return dateB.localeCompare(dateA);
                 });
 
+                const sysShippingFeeProfile = (users || []).find(u => u.id === 'system_shipping_fees');
+                let dbShippingFees = null;
+                if (sysShippingFeeProfile && sysShippingFeeProfile.avatar) {
+                    try {
+                        const parsed = JSON.parse(sysShippingFeeProfile.avatar);
+                        if (parsed && typeof parsed === 'object') {
+                            dbShippingFees = parsed;
+                            localStorage.setItem('octabot_shipping_fees_v2', JSON.stringify(parsed));
+                        }
+                    } catch (e) {}
+                }
+
+                const actualStaffUsers = (sortedUsers || []).filter(u => u.id !== 'system_shipping_fees');
+
                 const loadedUserAvatars = {};
                 (users || []).forEach(u => {
-                    if (u.avatar) {
+                    if (u.avatar && u.id !== 'system_shipping_fees') {
                         loadedUserAvatars[u.id] = u.avatar;
                     }
                 });
@@ -551,13 +565,14 @@ export const AppProvider = ({ children }) => {
                         minOrderValue: c.min_order_value || null,
                         createdAt: c.created_at
                     })),
-                    users: (sortedUsers).map(u => {
+                    users: (actualStaffUsers).map(u => {
                         const tm = (telegramMappings || []).find(m => m.user_id === u.id);
                         return { ...u, telegram_chat_id: tm ? tm.telegram_chat_id : '' };
                     }),
                     userAvatars: { ...prev.userAvatars, ...loadedUserAvatars },
                     stockLedger: mappedLedger,
-                    collections: sortedCollections
+                    collections: sortedCollections,
+                    shippingFees: dbShippingFees || prev.shippingFees || DEFAULT_SHIPPING_FEES
                 }));
 
                 // Retroactively repair legacy orders that have deposit > 0 but null deposit_receiver_id
@@ -1143,12 +1158,35 @@ export const AppProvider = ({ children }) => {
                 console.log(`Supabase Realtime stock_ledger channel status: ${status}`, err || '');
             });
 
+        const userProfilesChannel = supabase
+            .channel('realtime-user-profiles-sync')
+            .on(
+                'postgres_changes',
+                { event: '*', schema: 'public', table: 'user_profiles' },
+                (payload) => {
+                    if (payload.new && payload.new.id === 'system_shipping_fees' && payload.new.avatar) {
+                        try {
+                            const freshFees = JSON.parse(payload.new.avatar);
+                            if (freshFees && typeof freshFees === 'object') {
+                                localStorage.setItem('octabot_shipping_fees_v2', JSON.stringify(freshFees));
+                                setState(curr => ({ ...curr, shippingFees: freshFees }));
+                                console.log("Realtime shipping fees synced across all admins!");
+                            }
+                        } catch(e) {}
+                    }
+                }
+            )
+            .subscribe((status, err) => {
+                console.log(`Supabase Realtime user_profiles channel status: ${status}`, err || '');
+            });
+
         return () => {
             console.log("Cleaning up Supabase Realtime channels...");
             supabase.removeChannel(ordersChannel);
             supabase.removeChannel(orderItemsChannel);
             supabase.removeChannel(customersChannel);
             supabase.removeChannel(stockLedgerChannel);
+            supabase.removeChannel(userProfilesChannel);
         };
     }, [supabase, language]);
 
@@ -5987,12 +6025,28 @@ export const AppProvider = ({ children }) => {
         };
     }, []);
 
-    const saveShippingFees = (newFees) => {
+    const saveShippingFees = async (newFees) => {
         try {
             localStorage.setItem('octabot_shipping_fees_v2', JSON.stringify(newFees));
         } catch(e) {}
         setState(prev => ({ ...prev, shippingFees: newFees }));
-        showToast("تم حفظ أسعار الشحن للمحافظات بنجاح ✅", "success");
+
+        if (supabase) {
+            try {
+                await supabase
+                    .from('user_profiles')
+                    .upsert({ 
+                        id: 'system_shipping_fees', 
+                        name: 'System Shipping Fees Config',
+                        role: 'SystemConfig',
+                        avatar: JSON.stringify(newFees)
+                    }, { onConflict: 'id' });
+            } catch (err) {
+                console.error("Error saving shipping fees to Supabase DB:", err);
+            }
+        }
+
+        showToast("تم حفظ وتعميم أسعار الشحن للمحافظات بنجاح على جميع الأدمنز ✅", "success");
     };
 
     return (
