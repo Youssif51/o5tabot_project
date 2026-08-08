@@ -2381,75 +2381,6 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             </div>
                                         )}
 
-                                        {/* Custody Acknowledgment Card inside Step 3 (Shipping & Payment) */}
-                                        {depositVal > 0 && (() => {
-                                            const isAssignedToMe = depositReceiverId === state.currentUser?.id;
-                                            const receiverName = (state.users || []).find(u => u.id === depositReceiverId)?.name || 'الآدمن';
-
-                                            return (
-                                                <div className="glass-card" style={{
-                                                    marginTop: '14px',
-                                                    padding: '14px 16px',
-                                                    background: 'linear-gradient(135deg, rgba(22, 20, 12, 0.95), rgba(14, 14, 18, 0.98))',
-                                                    border: `1px solid ${depositConfirmChecked && isAssignedToMe ? 'rgba(46, 204, 113, 0.35)' : 'rgba(241, 196, 15, 0.4)'}`,
-                                                    borderRadius: '12px',
-                                                    boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)'
-                                                }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                                                        <h4 style={{ fontSize: '13px', color: '#f1c40f', margin: 0, display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold' }}>
-                                                            <img src="/icons/warning-alert.png" alt="Warning" style={{ width: '22px', height: '22px', objectFit: 'contain' }} />
-                                                            إقرار استلام عُهدة العربون ({currency} {depositVal.toLocaleString('en-US', {maximumFractionDigits: 2})})
-                                                        </h4>
-                                                        <span style={{
-                                                            fontSize: '11px',
-                                                            padding: '2px 8px',
-                                                            borderRadius: '6px',
-                                                            background: depositConfirmChecked && isAssignedToMe ? 'rgba(46, 204, 113, 0.15)' : 'rgba(241, 196, 15, 0.15)',
-                                                            color: depositConfirmChecked && isAssignedToMe ? '#2ecc71' : '#f1c40f',
-                                                            border: `1px solid ${depositConfirmChecked && isAssignedToMe ? 'rgba(46, 204, 113, 0.3)' : 'rgba(241, 196, 15, 0.3)'}`,
-                                                            fontWeight: 700
-                                                        }}>
-                                                            {depositConfirmChecked && isAssignedToMe ? 'عُهدة مؤكدة' : 'بانتظار الإقرار'}
-                                                        </span>
-                                                    </div>
-
-                                                    {isAssignedToMe ? (
-                                                        <label style={{
-                                                            display: 'flex',
-                                                            alignItems: 'center',
-                                                            gap: '10px',
-                                                            padding: '10px 12px',
-                                                            background: depositConfirmChecked ? 'rgba(46, 204, 113, 0.1)' : 'rgba(0, 0, 0, 0.4)',
-                                                            borderRadius: '8px',
-                                                            cursor: 'pointer',
-                                                            border: `1px solid ${depositConfirmChecked ? 'rgba(46, 204, 113, 0.4)' : 'rgba(241, 196, 15, 0.3)'}`,
-                                                            transition: 'all 0.2s ease'
-                                                        }}>
-                                                            <input 
-                                                                type="checkbox"
-                                                                checked={depositConfirmChecked}
-                                                                onChange={(e) => setDepositConfirmChecked(e.target.checked)}
-                                                                style={{ width: '18px', height: '18px', accentColor: '#2ecc71', cursor: 'pointer' }}
-                                                            />
-                                                            <span style={{ fontSize: '12.5px', color: 'var(--text-primary)', fontWeight: 600 }}>
-                                                                أُقر باستلام مبلغ العربون ({currency} {depositVal.toLocaleString('en-US', {maximumFractionDigits: 2})}) على محفظتي وتأكيد تسجيله على عُهدتي
-                                                            </span>
-                                                        </label>
-                                                    ) : (
-                                                        <div style={{ 
-                                                            fontSize: '12px', 
-                                                            color: '#f1c40f', 
-                                                            background: 'rgba(0, 0, 0, 0.45)', 
-                                                            padding: '10px 12px', 
-                                                            borderRadius: '8px',
-                                                            border: '1px dashed rgba(241, 196, 15, 0.3)'
-                                                        }}>
-                                                            <span>ℹ️ العربون محدد لصالح الأدمن (<strong style={{ color: '#ffffff' }}>{receiverName}</strong>). سيسجل كعُهدة معلقة حتى يتم تأكيده من حسابه.</span>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            );
-                                        })()}
                                     </div>
                                 )}
                                 <div className="form-group" style={{ display: 'flex', alignItems: 'center', gap: '16px', marginTop: '24px' }}>
@@ -2873,7 +2804,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     التالي
                                     <i className="fa-solid fa-arrow-left" style={{ marginRight: '6px' }}></i>
                                 </button>
-                                {isEditMode && canConfirm && (
+                                {isEditMode && canConfirm && step !== 3 && (
                                     <button 
                                         type="button" 
                                         className="btn btn-primary" 
