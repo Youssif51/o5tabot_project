@@ -5,6 +5,7 @@ import { AppContext } from './context/AppContext';
 // Common components
 import Sidebar from './components/common/Sidebar';
 import Topbar from './components/common/Topbar';
+import TopProgressBar from './components/common/TopProgressBar';
 import Modal from './components/common/Modal';
 import SmartDateFilter from './components/common/SmartDateFilter';
 
@@ -302,6 +303,9 @@ export default function App() {
 
     return (
         <div className={`app-container ${sidebarOpen ? 'sidebar-open' : ''}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+            {/* Top Glowing Laser Progress Bar for Instant Section Navigation Feedback */}
+            <TopProgressBar currentView={currentView} />
+
             {/* Sidebar Navigation */}
             <Sidebar sidebarOpen={sidebarOpen} setSidebarOpen={setSidebarOpen} />
 
