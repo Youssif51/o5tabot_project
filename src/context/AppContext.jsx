@@ -1204,35 +1204,7 @@ export const AppProvider = ({ children }) => {
 
             console.log("SmartSync: Gently refreshing fresh data on tab focus in background...");
             try {
-                const { data: freshOrders } = await supabase.from('orders').select('*').limit(100);
-                const { data: freshProducts } = await supabase.from('products').select('*, variants:product_variants(*)');
-                
-                if (freshOrders || freshProducts) {
-                    setState(prev => ({
-                        ...prev,
-                        ...(freshOrders && {
-                            orders: freshOrders.map(dbO => {
-                                const local = prev.orders.find(o => o.id === dbO.id);
-                                return local ? { ...local, ...dbO, items: local.items || [] } : dbO;
-                            })
-                        }),
-                        ...(freshProducts && {
-                            products: (freshProducts || []).map(p => ({
-                                id: p.id,
-                                name: p.name,
-                                category: p.category,
-                                variants: (p.variants || []).map(v => ({
-                                    sku: v.sku,
-                                    name: v.name,
-                                    retailPrice: parseFloat(v.retail_price) || 0,
-                                    wholesalePrice: parseFloat(v.wholesale_price) || 0,
-                                    averageCost: parseFloat(v.average_cost) || 0,
-                                    stock: { Sulur: v.stock_sulur !== undefined ? v.stock_sulur : 0 }
-                                }))
-                            }))
-                        })
-                    }));
-                }
+                await loadSupabaseData();
             } catch (err) {
                 console.warn("SmartSync background fetch error:", err);
             }
@@ -1245,7 +1217,7 @@ export const AppProvider = ({ children }) => {
             window.removeEventListener('focus', handleVisibilityOrFocus);
             document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
         };
-    }, [supabase]);
+    }, [supabase, loadSupabaseData]);
 
     const t = (key) => {
         const tr = translations[language] && translations[language][key];
