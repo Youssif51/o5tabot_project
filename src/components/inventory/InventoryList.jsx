@@ -12,7 +12,13 @@ export default function InventoryList({
     onOpenEditProduct,
     onOpenScanner 
 }) {
-    const { state, showToast, t, deleteProduct, showConfirm } = useContext(AppContext);
+    const { state, showToast, t, deleteProduct, showConfirm, refreshProductsAndLedger } = useContext(AppContext);
+
+    React.useEffect(() => {
+        if (refreshProductsAndLedger) {
+            refreshProductsAndLedger();
+        }
+    }, []);
 
     const formatLedgerDate = (dateStr) => {
         if (!dateStr) return '—';

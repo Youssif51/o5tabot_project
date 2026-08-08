@@ -5820,6 +5820,61 @@ export const AppProvider = ({ children }) => {
             console.error("Failed to adjust variant stock to Shopify:", e);
         }
     };
+
+    const refreshProductsAndLedger = async () => {
+        if (!supabase) return;
+        try {
+            const { data: dbVariants } = await supabase.from('product_variants').select('product_id, sku, stock_sulur, stock_singanallur, average_cost, wholesale_price, retail_price');
+            if (!dbVariants || dbVariants.length === 0) return;
+            
+            setState(prev => {
+                const updatedProducts = (prev.products || []).map(prod => {
+                    const matchingVars = dbVariants.filter(v => String(v.product_id) === String(prod.id));
+                    if (matchingVars.length === 0) return prod;
+                    
+                    return {
+                        ...prod,
+                        variants: (prod.variants || []).map(vr => {
+                            const dbVar = dbVariants.find(v => v.sku === vr.sku);
+                            if (!dbVar) return vr;
+                            return {
+                                ...vr,
+                                stock: {
+                                    Sulur: dbVar.stock_sulur !== undefined ? dbVar.stock_sulur : (vr.stock?.Sulur || 0),
+                                    Singanallur: dbVar.stock_singanallur !== undefined ? dbVar.stock_singanallur : (vr.stock?.Singanallur || 0)
+                                },
+                                averageCost: dbVar.average_cost !== undefined ? dbVar.average_cost : vr.averageCost,
+                                wholesalePrice: dbVar.wholesale_price !== undefined ? dbVar.wholesale_price : vr.wholesalePrice,
+                                retailPrice: dbVar.retail_price !== undefined ? dbVar.retail_price : vr.retailPrice
+                            };
+                        })
+                    };
+                });
+                return { ...prev, products: updatedProducts };
+            });
+        } catch (e) {
+            console.error("Silent background stock refresh failed gracefully:", e);
+        }
+    };
+
+    useEffect(() => {
+        let lastHiddenTime = 0;
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') {
+                lastHiddenTime = Date.now();
+            } else if (document.visibilityState === 'visible') {
+                if (Date.now() - lastHiddenTime > 3000) {
+                    refreshProductsAndLedger();
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, []);
+
     return (
         <AppContext.Provider value={{
             state,
@@ -5830,6 +5885,7 @@ export const AppProvider = ({ children }) => {
             toast,
             restockVariant,
             syncVariantStockToShopify,
+            refreshProductsAndLedger,
             showToast,
             shopifyNotification,
             setShopifyNotification,
