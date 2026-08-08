@@ -1,10 +1,10 @@
 import React, { useContext, useState, useEffect } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
-import { AppContext } from '../../context/AppContext';
+import { AppContext, DEFAULT_SHIPPING_FEES } from '../../context/AppContext';
 import UserManagement from './UserManagement';
 
 export default function StoreSettings() {
-    const { state, saveStoreConfig, saveUserAvatar, restoreStoreData, showToast, t, theme } = useContext(AppContext);
+    const { state, saveStoreConfig, saveUserAvatar, restoreStoreData, showToast, t, theme, saveShippingFees } = useContext(AppContext);
     
     const [storeName, setStoreName] = useState(state.storeSettings.name || 'Octabot Retail Ltd');
     const [storeAddress, setStoreAddress] = useState(state.storeSettings.address || '');
@@ -359,6 +359,11 @@ export default function StoreSettings() {
                         </div>
                     </div>
                 )}
+
+                {/* Shipping Fees Management Section (Visible to SuperAdmin only) */}
+                {state.currentUser?.role === 'SuperAdmin' && (
+                    <ShippingFeesManager />
+                )}
             </div>
             {state.currentUser?.role === 'SuperAdmin' && <UserManagement />}
 
@@ -409,6 +414,116 @@ export default function StoreSettings() {
                     </div>
                 </div>
             )}
+        </div>
+    );
+}
+
+function ShippingFeesManager() {
+    const { state, saveShippingFees } = useContext(AppContext);
+    const [fees, setFees] = useState(() => {
+        const active = (state.shippingFees && Object.keys(state.shippingFees).length > 0) ? state.shippingFees : DEFAULT_SHIPPING_FEES;
+        return { ...active };
+    });
+    const [search, setSearch] = useState('');
+
+    useEffect(() => {
+        const active = (state.shippingFees && Object.keys(state.shippingFees).length > 0) ? state.shippingFees : DEFAULT_SHIPPING_FEES;
+        setFees({ ...active });
+    }, [state.shippingFees]);
+
+    const handlePriceChange = (gov, val) => {
+        setFees(prev => ({
+            ...prev,
+            [gov]: val === '' ? '' : (parseFloat(val) || 0)
+        }));
+    };
+
+    const handleSave = (e) => {
+        e.preventDefault();
+        saveShippingFees(fees);
+    };
+
+    const handleResetDefaults = () => {
+        setFees({ ...DEFAULT_SHIPPING_FEES });
+        saveShippingFees(DEFAULT_SHIPPING_FEES);
+    };
+
+    const filteredGovs = Object.keys(fees).filter(gov => gov.includes(search));
+
+    return (
+        <div className="glass-card dashboard-widget" style={{ padding: '24px', gridColumn: '1 / -1', marginTop: '16px' }}>
+            <div className="widget-header" style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                    <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <i className="fa-solid fa-truck-fast" style={{ color: 'var(--gold-primary)' }}></i>
+                        إدارة أسعار الشحن للمحافظات (خاص بالسوبر أدمن)
+                    </h3>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '12px', margin: '4px 0 0 0' }}>
+                        يمكنك تعديل أسعار الشحن الافتراضية لكل محافظة وسيتم تطبيقها في حاسبة الطلبات تلقائياً.
+                    </p>
+                </div>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input 
+                        type="text" 
+                        placeholder="بحث عن محافظة..." 
+                        value={search} 
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="form-input"
+                        style={{ padding: '6px 12px', fontSize: '13px', width: '180px' }}
+                    />
+                    <button type="button" className="btn btn-secondary" onClick={handleResetDefaults} style={{ fontSize: '12.5px' }}>
+                        <i className="fa-solid fa-rotate-left" style={{ marginLeft: '6px' }}></i>
+                        إعادة الضبط لأسعار بوسطة الأصلية
+                    </button>
+                    <button type="button" className="btn btn-primary" onClick={handleSave} style={{ background: '#27AE60', borderColor: '#27AE60' }}>
+                        <i className="fa-solid fa-floppy-disk" style={{ marginLeft: '6px' }}></i>
+                        حفظ أسعار الشحن
+                    </button>
+                </div>
+            </div>
+
+            <div style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', 
+                gap: '12px',
+                maxHeight: '340px',
+                overflowY: 'auto',
+                padding: '4px'
+            }}>
+                {filteredGovs.map(gov => (
+                    <div key={gov} style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '10px 14px',
+                        borderRadius: '8px',
+                        background: 'var(--bg-color)',
+                        border: '1px solid var(--glass-border)'
+                    }}>
+                        <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-color)' }}>{gov}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <input 
+                                type="number" 
+                                min="0"
+                                value={fees[gov]}
+                                onChange={(e) => handlePriceChange(gov, e.target.value)}
+                                style={{
+                                    width: '70px',
+                                    padding: '4px 8px',
+                                    borderRadius: '6px',
+                                    border: '1px solid var(--glass-border-hover)',
+                                    background: 'var(--surface-color)',
+                                    color: 'var(--text-primary)',
+                                    textAlign: 'center',
+                                    fontSize: '13px',
+                                    fontWeight: 'bold'
+                                }}
+                            />
+                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>ج.م</span>
+                        </div>
+                    </div>
+                ))}
+            </div>
         </div>
     );
 }

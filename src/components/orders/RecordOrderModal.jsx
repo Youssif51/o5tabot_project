@@ -2,52 +2,18 @@ import { formatProductDisplayName } from '../../utils/productUtils';
 import { getBostaDistrictDisplayName, filterAndSortBostaDistricts, autoParseAddressToBostaLocation, getBostaAddressSuggestions } from '../../utils/bostaUtils';
 import React, { useContext, useState, useEffect, useMemo } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
-import { AppContext } from '../../context/AppContext';
+import { AppContext, DEFAULT_SHIPPING_FEES, getShippingFeeForGov } from '../../context/AppContext';
 import Modal from '../common/Modal';
 import bostaData from '../../../محافظات/المناطق التابعه لكل محافظة.json';
 
-export const shippingFees = {
-  "القاهرة": 55,
-  "الجيزة": 55,
-  "الإسكندرية": 65,
-  "القليوبية": 60,
-  "الشرقية": 70,
-  "الدقهلية": 70,
-  "البحيرة": 75,
-  "الغربية": 70,
-  "المنوفية": 70,
-  "كفر الشيخ": 75,
-  "دمياط": 75,
-  "بورسعيد": 75,
-  "الإسماعيلية": 75,
-  "السويس": 75,
-  "شمال سيناء": 95,
-  "جنوب سيناء": 110,
-  "بني سويف": 85,
-  "الفيوم": 85,
-  "المنيا": 90,
-  "أسيوط": 95,
-  "سوهاج": 100,
-  "قنا": 105,
-  "الأقصر": 110,
-  "أسوان": 115,
-  "البحر الأحمر": 115,
-  "الوادي الجديد": 130,
-  "مطروح": 120,
-};
-
-const calculateBostaShippingFee = (cityName) => {
-    if (!cityName) return 65;
-    const city = cityName.trim();
-    if (["بور سعيد", "الاسماعيليه", "السويس"].includes(city)) return 75;
-    if (["الفيوم", "بني سويف", "المنيا", "اسيوط", "سوهاج"].includes(city)) return 80;
-    if (["قنا", "الاقصر", "اسوان", "البحر الاحمر", "مرسي مطروح", "الساحل الشمالي"].includes(city)) return 100;
-    if (["شمال سيناء", "جنوب سيناء", "الوادي الجديد"].includes(city)) return 120;
-    return 65;
-};
+export const shippingFees = DEFAULT_SHIPPING_FEES;
 
 export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     const { state, supabase, addOrder, editOrder, showToast, showConfirm, t, validateCoupon, applyCouponUsage, checkLiveCouponAvailability, getOrCreateCustomer, approveOrderWithBosta } = useContext(AppContext);
+    
+    const calculateBostaShippingFee = (cityName, currentFees) => {
+        return getShippingFeeForGov(cityName, currentFees || state.shippingFees);
+    };
     
     const isEditMode = !!editOrderId;
     const originalOrder = editOrderId ? state.orders.find(o => o.id === editOrderId) : null;
@@ -439,9 +405,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     setGovernorate(order.governorate || '');
                     setShippingFee(order.shipping_fee || '');
                     setDeposit(order.deposit || '');
-                    // In edit mode: restore the saved receiver (could be another admin)
-                    // If none was saved, fall back to current user as a safe default
-                    setDepositReceiverId(order.depositReceiverId || state.currentUser?.id || '');
+                    setDepositReceiverId(order.depositReceiverId || state.currentUser?.id || (state.users && state.users[0] ? state.users[0].id : ''));
                     setDepositStatus(order.depositStatus || 'pending');
                     // Unchecked by default so admin MUST manually check and acknowledge deposit custody
                     setDepositConfirmChecked(false);
@@ -601,11 +565,9 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         setCitySelected(city || null);
         setDistrictSelected(district || null);
         
-        if (city) {
-            const calculatedFee = calculateBostaShippingFee(city.cityOtherName);
-            setShippingFee(sFee || calculatedFee);
-        } else if (finalGov) {
-            setShippingFee(sFee || shippingFees[finalGov] || 0);
+        const targetGov = city ? city.cityOtherName : finalGov;
+        if (targetGov) {
+            setShippingFee(getShippingFeeForGov(targetGov, state.shippingFees));
         }
 
         showToast("تم ملء بيانات العميل والمحافظة والمنطقة تلقائياً", "success");
@@ -727,7 +689,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
     const handleGovernorateChange = (gov) => {
         setGovernorate(gov);
-        const fee = shippingFees[gov] || 0;
+        const fee = getShippingFeeForGov(gov, state.shippingFees);
         setShippingFee(fee);
     };
 
@@ -1009,6 +971,9 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     setCustomerId(finalCustomerId);
                 }
 
+                const finalReceiverId = depositVal > 0 ? (depositReceiverId || state.currentUser?.id || (state.users && state.users[0] ? state.users[0].id : null)) : null;
+                const finalDepositStatus = depositVal > 0 ? (finalReceiverId === state.currentUser?.id ? (depositConfirmChecked ? 'confirmed' : 'pending') : (depositStatus || 'pending')) : 'confirmed';
+
                 const newOrderObj = {
                     id: orderId,
                     client: client,
@@ -1044,8 +1009,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     }),
                     governorate: governorate,
                     deposit: depositVal,
-                    depositReceiverId: depositVal > 0 ? (depositReceiverId || state.currentUser?.id || null) : null,
-                    depositStatus: depositVal > 0 ? (depositReceiverId === state.currentUser?.id ? (depositConfirmChecked ? 'confirmed' : 'pending') : (depositStatus || 'pending')) : 'confirmed',
+                    depositReceiverId: finalReceiverId,
+                    depositStatus: finalDepositStatus,
                     shipping_fee: shippingFeeVal,
                     createdBy: editOrderId ? (originalOrder?.createdBy || originalOrder?.created_by || 'sfsf') : (state.currentUser ? state.currentUser.name : 'sfsf'),
                     shopifyOrderId: editOrderId ? (originalOrder?.shopifyOrderId || originalOrder?.shopify_order_id || null) : null,

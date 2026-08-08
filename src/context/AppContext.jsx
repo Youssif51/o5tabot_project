@@ -16,6 +16,64 @@ const defaultStockLedger = [];
 
 const defaultActivities = [];
 
+export const DEFAULT_SHIPPING_FEES = {
+  "القاهرة": 65,
+  "الجيزة": 65,
+  "الإسكندرية": 65,
+  "القليوبية": 65,
+  "الشرقية": 65,
+  "الدقهلية": 65,
+  "البحيرة": 65,
+  "الغربية": 65,
+  "المنوفية": 65,
+  "كفر الشيخ": 65,
+  "دمياط": 65,
+  "بورسعيد": 75,
+  "الإسماعيلية": 75,
+  "السويس": 75,
+  "بني سويف": 80,
+  "الفيوم": 80,
+  "المنيا": 80,
+  "أسيوط": 80,
+  "سوهاج": 80,
+  "قنا": 100,
+  "الأقصر": 100,
+  "أسوان": 100,
+  "البحر الأحمر": 100,
+  "مطروح": 100,
+  "الساحل الشمالي": 100,
+  "شمال سيناء": 120,
+  "جنوب سيناء": 120,
+  "الوادي الجديد": 120
+};
+
+export const getShippingFeeForGov = (govName, currentFeesMap) => {
+    const fees = currentFeesMap || DEFAULT_SHIPPING_FEES;
+    if (!govName) return fees["القاهرة"] || 65;
+
+    const clean = (str) => String(str || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[أإآء]/g, 'ا')
+        .replace(/ه$/g, 'ة')
+        .replace(/\s+/g, '');
+
+    const target = clean(govName);
+
+    // 1. Direct exact key match
+    if (fees[govName] !== undefined) return parseFloat(fees[govName]) || 0;
+
+    // 2. Normalized match across keys
+    for (const key of Object.keys(fees)) {
+        const cleanedKey = clean(key);
+        if (cleanedKey === target || target.includes(cleanedKey) || cleanedKey.includes(target)) {
+            return parseFloat(fees[key]) || 0;
+        }
+    }
+
+    return fees["القاهرة"] || 65;
+};
+
     const initialState = {
         products: [],
         suppliers: [],
@@ -32,7 +90,15 @@ const defaultActivities = [];
         storeSettings: { name: "a5tabot dashboard", address: "Egypt", currency: "EGP", vipThresholdPurchases: 5000, vipThresholdOrders: 10 },
         userAvatars: {},
         influencers: [],
-        currentUser: null
+        currentUser: null,
+        shippingFees: (function() {
+            try {
+                const saved = localStorage.getItem('octabot_shipping_fees_v2');
+                return saved ? JSON.parse(saved) : DEFAULT_SHIPPING_FEES;
+            } catch(e) {
+                return DEFAULT_SHIPPING_FEES;
+            }
+        })()
     };
 
 const getFunctionsErrorMessage = async (error) => {
@@ -75,9 +141,18 @@ export const AppProvider = ({ children }) => {
                     Array.isArray(parsed.wastes) &&
                     Array.isArray(parsed.purchaseOrders) &&
                     Array.isArray(parsed.stockLedger) &&
-                    Array.isArray(parsed.activities) &&
                     parsed.storeSettings) {
-                    return parsed;
+                    return {
+                        ...parsed,
+                        shippingFees: (function() {
+                            try {
+                                const savedFees = localStorage.getItem('octabot_shipping_fees_v2');
+                                return savedFees ? JSON.parse(savedFees) : DEFAULT_SHIPPING_FEES;
+                            } catch(e) {
+                                return DEFAULT_SHIPPING_FEES;
+                            }
+                        })()
+                    };
                 }
             }
         } catch (e) {
@@ -484,6 +559,44 @@ export const AppProvider = ({ children }) => {
                     stockLedger: mappedLedger,
                     collections: sortedCollections
                 }));
+
+                // Retroactively repair legacy orders that have deposit > 0 but null deposit_receiver_id
+                setTimeout(() => {
+                    const nullDepositOrders = mappedOrders.filter(o => (o.deposit || 0) > 0 && !o.depositReceiverId && !!o.createdBy);
+                    if (nullDepositOrders.length > 0 && sortedUsers.length > 0) {
+                        const updatesToRun = [];
+                        const fixedMap = {};
+                        for (const ord of nullDepositOrders) {
+                            const creatorName = String(ord.createdBy).trim().toLowerCase();
+                            const matchedUser = sortedUsers.find(u => u.name && String(u.name).trim().toLowerCase() === creatorName);
+                            if (matchedUser && matchedUser.id) {
+                                updatesToRun.push(
+                                    supabase
+                                        .from('orders')
+                                        .update({ deposit_receiver_id: matchedUser.id })
+                                        .eq('id', ord.id)
+                                );
+                                fixedMap[ord.id] = matchedUser.id;
+                            }
+                        }
+                        if (updatesToRun.length > 0) {
+                            Promise.all(updatesToRun).then(() => {
+                                console.log(`[Auto-Fix] Successfully repaired ${updatesToRun.length} legacy null-deposit orders.`);
+                                setState(prev => ({
+                                    ...prev,
+                                    orders: (prev.orders || []).map(o => {
+                                        if (fixedMap[o.id]) {
+                                            return { ...o, depositReceiverId: fixedMap[o.id] };
+                                        }
+                                        return o;
+                                    })
+                                }));
+                            }).catch(err => {
+                                console.error("[Auto-Fix] Error updating legacy deposit orders:", err);
+                            });
+                        }
+                    }
+                }, 1000);
             } catch (err) {
                 console.error("Supabase load error:", err);
             }
@@ -2431,7 +2544,7 @@ export const AppProvider = ({ children }) => {
                         address: enrichedOrder.address || null,
                         governorate: enrichedOrder.governorate || null,
                         deposit: enrichedOrder.deposit || 0,
-                        deposit_receiver_id: enrichedOrder.depositReceiverId || null,
+                        deposit_receiver_id: (enrichedOrder.deposit && enrichedOrder.deposit > 0) ? (enrichedOrder.depositReceiverId || stateRef.current.currentUser?.id || null) : null,
                         deposit_status: enrichedOrder.depositStatus || 'confirmed',
                         shipping_fee: enrichedOrder.shipping_fee || 0,
                         created_by: enrichedOrder.createdBy || null,
@@ -3612,7 +3725,7 @@ export const AppProvider = ({ children }) => {
                         address: finalAddress || null,
                         governorate: enrichedOrder.governorate || null,
                         deposit: enrichedOrder.deposit || 0,
-                        deposit_receiver_id: enrichedOrder.depositReceiverId || null,
+                        deposit_receiver_id: (enrichedOrder.deposit && enrichedOrder.deposit > 0) ? (enrichedOrder.depositReceiverId || stateRef.current.currentUser?.id || null) : null,
                         deposit_status: enrichedOrder.depositStatus || 'confirmed',
                         shipping_fee: enrichedOrder.shipping_fee || 0,
                         created_by: enrichedOrder.createdBy || null,
@@ -5869,11 +5982,18 @@ export const AppProvider = ({ children }) => {
             }
         };
 
-        document.addEventListener('visibilitychange', handleVisibilityChange);
         return () => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, []);
+
+    const saveShippingFees = (newFees) => {
+        try {
+            localStorage.setItem('octabot_shipping_fees_v2', JSON.stringify(newFees));
+        } catch(e) {}
+        setState(prev => ({ ...prev, shippingFees: newFees }));
+        showToast("تم حفظ أسعار الشحن للمحافظات بنجاح ✅", "success");
+    };
 
     return (
         <AppContext.Provider value={{
@@ -5893,6 +6013,7 @@ export const AppProvider = ({ children }) => {
             deductOrderStock,
             fetchMissingOrderItems,
             syncBostaStatus,
+            saveShippingFees,
             authLogin,
             authSignup,
             updateUserPermissions,
