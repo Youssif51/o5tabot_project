@@ -722,9 +722,9 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     if (gDiscountVal > 0) {
         if (globalDiscountType === 'Percentage') {
             const percentage = Math.min(100, gDiscountVal);
-            globalDisc = totalProductsSubtotal * (percentage / 100);
+            globalDisc = orderDiscountBase * (percentage / 100);
         } else {
-            globalDisc = Math.min(gDiscountVal, totalProductsSubtotal);
+            globalDisc = Math.min(gDiscountVal, orderDiscountBase);
         }
     }
 
@@ -833,7 +833,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
     const isDiscountInfoValid = !hasDiscount || (!!discountReason && !!discountReasonDetails.trim());
 
-    const isStep3Valid = shippingFee !== '' && shippingFee !== null && !isNaN(shippingFee) && parseFloat(shippingFee) > 0 && depositVal >= 0 && depositVal <= finalOrderTotal && (depositVal === 0 || !!depositReceiverId) && isDiscountInfoValid;
+    const isStep3Valid = shippingFee !== '' && shippingFee !== null && !isNaN(shippingFee) && parseFloat(shippingFee) >= 0 && depositVal >= 0 && depositVal <= finalOrderTotal && (depositVal === 0 || !!depositReceiverId) && isDiscountInfoValid;
 
     // Check if the current order is a potential duplicate of another existing order within the last 48 hours
     const isPotentialDuplicate = React.useMemo(() => {
@@ -2172,7 +2172,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                 </div>
 
                                 <div className="form-group">
-                                    <label className="form-label">خصم عام على إجمالي المنتجات</label>
+                                    <label className="form-label">خصم عام على إجمالي الطلب (شاملاً الشحن)</label>
                                     <div style={{ display: 'flex', gap: '4px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '6px', overflow: 'hidden' }}>
                                         <input 
                                             type="number"
@@ -2240,9 +2240,19 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         placeholder="أدخل مصاريف الشحن..."
                                         required
                                     />
-                                    {(shippingFee === '' || shippingFee === null || isNaN(shippingFee) || parseFloat(shippingFee) <= 0) && (
+                                    {parseFloat(shippingFee) === 0 && (
+                                        <div style={{ fontSize: '11.5px', color: '#10b981', marginTop: '4px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                            <i className="fa-solid fa-circle-check"></i> 💡 تنبيه: الطلب شحن مجاني (بدون مصاريف شحن 0 ج.م).
+                                        </div>
+                                    )}
+                                    {parseFloat(shippingFee) < 0 && (
                                         <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px', fontWeight: 'bold' }}>
-                                            * مصاريف الشحن إجبارية وتتطلب تحديد قيمة برقم أكبر من الصفر للمتابعة.
+                                            * لا يمكن إدخال مصاريف شحن بقيمة سالبة.
+                                        </div>
+                                    )}
+                                    {(shippingFee === '' || shippingFee === null || isNaN(shippingFee)) && (
+                                        <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px', fontWeight: 'bold' }}>
+                                            * يرجى إدخال مصاريف الشحن (يمكن كتابة 0 للشحن المجاني).
                                         </div>
                                     )}
                                 </div>

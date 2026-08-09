@@ -339,6 +339,21 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         }
     };
 
+    const isOrderReviewed = (o) => {
+        if (!o) return false;
+        if (o.is_reviewed || o.isReviewed) return true;
+        if (o.address) {
+            if (typeof o.address === 'object') return !!(o.address.isReviewed || o.address.is_reviewed || o.address.bostaDeliveryId || o.address.trackingNumber || o.address.bostaTrackingNumber);
+            if (typeof o.address === 'string') {
+                try {
+                    const p = JSON.parse(o.address);
+                    return !!(p?.isReviewed || p?.is_reviewed || p?.bostaDeliveryId || p?.trackingNumber || p?.bostaTrackingNumber);
+                } catch(e) {}
+            }
+        }
+        return false;
+    };
+
     // Filter Logic
     const filteredOrders = (state.orders || []).filter(ord => {
         // 1. Search Filter
@@ -363,9 +378,21 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
             }
         }
 
-        // 2. Delivery Status
+        // 2. Delivery & System Status Filter
         if (deliveryStatusFilter !== 'all') {
-            if (!isNaN(deliveryStatusFilter)) {
+            if (deliveryStatusFilter === 'shopify_pending') {
+                if (!(ord.source === 'shopify' && ord.status === 'Pending' && !isOrderReviewed(ord))) {
+                    return false;
+                }
+            } else if (deliveryStatusFilter === 'deposit_pending') {
+                if (!(ord.depositStatus === 'pending' && (parseFloat(ord.deposit) || 0) > 0)) {
+                    return false;
+                }
+            } else if (deliveryStatusFilter === 'deposit_refund_awaiting') {
+                if (!(ord.status === 'Cancelled' && ord.depositRefundStatus === 'awaiting_return')) {
+                    return false;
+                }
+            } else if (!isNaN(deliveryStatusFilter)) {
                 const { bostaStateCode } = parseAddressData(ord.address);
                 if (bostaStateCode === null || String(bostaStateCode) !== deliveryStatusFilter) {
                     return false;
@@ -419,20 +446,6 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
 
     const todayStr = getLocalDateString();
     const todayOrdersCount = filteredOrders.filter(o => o.date === todayStr).length;
-    const isOrderReviewed = (o) => {
-        if (!o) return false;
-        if (o.is_reviewed || o.isReviewed) return true;
-        if (o.address) {
-            if (typeof o.address === 'object') return !!(o.address.isReviewed || o.address.is_reviewed || o.address.bostaDeliveryId || o.address.trackingNumber || o.address.bostaTrackingNumber);
-            if (typeof o.address === 'string') {
-                try {
-                    const p = JSON.parse(o.address);
-                    return !!(p?.isReviewed || p?.is_reviewed || p?.bostaDeliveryId || p?.trackingNumber || p?.bostaTrackingNumber);
-                } catch(e) {}
-            }
-        }
-        return false;
-    };
 
     const pendingShopifyOrders = (state.orders || []).filter(o => 
         o.status === 'Pending' && o.source === 'shopify' && !isOrderReviewed(o)
@@ -819,25 +832,43 @@ ${followUpReason}
                         
                         <select 
                             className="form-select" 
-                            style={{ flex: '1', minWidth: '180px', backgroundColor: 'var(--bg-secondary)', color: 'var(--text-primary)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '10px' }} 
+                            style={{ 
+                                flex: '1', 
+                                minWidth: '220px', 
+                                backgroundColor: 'var(--bg-secondary)', 
+                                color: 'var(--text-primary)', 
+                                border: '1px solid var(--glass-border)', 
+                                borderRadius: '8px', 
+                                padding: '10px 14px',
+                                fontSize: '13.5px',
+                                fontWeight: 500
+                            }} 
                             value={deliveryStatusFilter} 
                             onChange={(e) => { setDeliveryStatusFilter(e.target.value); setCurrentPage(1); }}>
-                            <option value="all" style={{ background: 'var(--bg-secondary)' }}>كل حالات التوصيل</option>
-                            <option value="Draft" style={{ background: 'var(--bg-secondary)' }}>مسودة</option>
-                            <option value="Pending" style={{ background: 'var(--bg-secondary)' }}>قيد الانتظار</option>
-                            <option value="10" style={{ background: 'var(--bg-secondary)' }}>جديد</option>
-                            <option value="11" style={{ background: 'var(--bg-secondary)' }}>في انتظار الاستلام</option>
-                            <option value="21" style={{ background: 'var(--bg-secondary)' }}>تم استلام الأوردر</option>
-                            <option value="24" style={{ background: 'var(--bg-secondary)' }}>تم تخزينه</option>
-                            <option value="30" style={{ background: 'var(--bg-secondary)' }}>قيد التنفيذ</option>
-                            <option value="41" style={{ background: 'var(--bg-secondary)' }}>متجه للعميل</option>
-                            <option value="46" style={{ background: 'var(--bg-secondary)' }}>مرتجعاتك العائدة</option>
-                            <option value="102" style={{ background: 'var(--bg-secondary)' }}>متوقف مؤقتاً</option>
-                            <option value="103" style={{ background: 'var(--bg-secondary)' }}>في انتظار متابعتك</option>
-                            <option value="45" style={{ background: 'var(--bg-secondary)' }}>تم بنجاح</option>
-                            <option value="100" style={{ background: 'var(--bg-secondary)' }}>غير ناجح</option>
-                            <option value="60" style={{ background: 'var(--bg-secondary)' }}>تم الاسترجاع</option>
-                            <option value="48" style={{ background: 'var(--bg-secondary)' }}>لم يتم بنجاح</option>
+                            <option value="all" style={{ background: 'var(--bg-secondary)' }}>كل حالات النظام وبوسطة</option>
+                            <optgroup label="── حالات النظام الداخلية ──" style={{ background: 'var(--bg-secondary)', color: 'var(--gold-primary)', fontWeight: 'bold' }}>
+                                <option value="Draft" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>مسودة (Draft)</option>
+                                <option value="Pending" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>قيد الانتظار العام (Pending)</option>
+                                <option value="shopify_pending" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>طلبات شوبيفاي المعلقة (بانتظار المراجعة)</option>
+                                <option value="deposit_pending" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>عرابين بانتظار التأكيد</option>
+                                <option value="deposit_refund_awaiting" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>مرتجعات عرابين بانتظار الإرجاع</option>
+                                <option value="Cancelled" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>الطلبات الملغاة من النظام (Cancelled / Rejected)</option>
+                            </optgroup>
+                            <optgroup label="── حالات شحن بوسطة ──" style={{ background: 'var(--bg-secondary)', color: '#38bdf8', fontWeight: 'bold' }}>
+                                <option value="10" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>10 - جديد</option>
+                                <option value="11" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>11 - في انتظار الاستلام</option>
+                                <option value="21" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>21 - تم استلام الأوردر</option>
+                                <option value="24" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>24 - تم تخزينه</option>
+                                <option value="30" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>30 - قيد التنفيذ</option>
+                                <option value="41" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>41 - متجه للعميل</option>
+                                <option value="46" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>46 - مرتجعاتك العائدة</option>
+                                <option value="102" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>102 - متوقف مؤقتاً</option>
+                                <option value="103" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>103 - في انتظار متابعتك</option>
+                                <option value="45" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>45 - تم بنجاح</option>
+                                <option value="100" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>100 - غير ناجح</option>
+                                <option value="60" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>60 - تم الاسترجاع</option>
+                                <option value="48" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>48 - لم يتم بنجاح</option>
+                            </optgroup>
                         </select>
 
                         <select 

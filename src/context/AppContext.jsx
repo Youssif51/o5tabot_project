@@ -1180,33 +1180,45 @@ export const AppProvider = ({ children }) => {
         };
     }, [supabase, language]);
 
-    // Smart Guarded Sync on Focus / Tab Visibility Change
-    const lastSmartSyncRef = useRef(Date.now());
+    // 20-Minute Idle Absence Auto-Sync Guard
+    const lastUserActivityRef = useRef(Date.now());
+
+    useEffect(() => {
+        const handleUserActivity = () => {
+            lastUserActivityRef.current = Date.now();
+        };
+
+        window.addEventListener('mousemove', handleUserActivity);
+        window.addEventListener('keydown', handleUserActivity);
+        window.addEventListener('click', handleUserActivity);
+        window.addEventListener('scroll', handleUserActivity);
+
+        return () => {
+            window.removeEventListener('mousemove', handleUserActivity);
+            window.removeEventListener('keydown', handleUserActivity);
+            window.removeEventListener('click', handleUserActivity);
+            window.removeEventListener('scroll', handleUserActivity);
+        };
+    }, []);
+
     useEffect(() => {
         if (!supabase) return;
 
         const handleVisibilityOrFocus = async () => {
             if (document.visibilityState !== 'visible') return;
 
-            // Form Lock Protection: If any modal or form is open, DO NOT disturb the UI or form inputs
-            const isModalOpen = !!document.querySelector('.modal-overlay') || !!document.querySelector('.modal-backdrop') || !!document.querySelector('[role="dialog"]');
-            if (isModalOpen) {
-                console.log("SmartSync skipped: Form/Modal is active (Form Lock Protection)");
-                return;
-            }
-
-            // Cooldown throttle: minimum 60 seconds between background focus refreshes
             const now = Date.now();
-            if (now - lastSmartSyncRef.current < 60000) {
-                return;
-            }
-            lastSmartSyncRef.current = now;
+            const idleMs = now - lastUserActivityRef.current;
 
-            console.log("SmartSync: Gently refreshing fresh data on tab focus in background...");
-            try {
-                await loadSupabaseData();
-            } catch (err) {
-                console.warn("SmartSync background fetch error:", err);
+            // 20 Minutes threshold = 20 * 60 * 1000 = 1,200,000 ms
+            if (idleMs >= 1200000) {
+                lastUserActivityRef.current = now;
+                console.log(`Absence Sync: User returned after ${Math.round(idleMs / 60000)} minutes of idle absence. Refreshing fresh DB data...`);
+                try {
+                    await loadSupabaseData();
+                } catch (err) {
+                    console.warn("Absence Sync fetch error:", err);
+                }
             }
         };
 
