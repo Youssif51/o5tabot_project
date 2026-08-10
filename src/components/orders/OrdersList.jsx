@@ -255,11 +255,11 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                 case 45: return { label: 'تم بنجاح', className: 'badge-success' };
                 case 46: return { label: 'مرتجعاتك العائدة', className: 'badge-danger' };
                 case 47: return { label: 'في انتظار متابعتك', className: 'badge-warning' };
-                case 48: return { label: 'لم يتم بنجاح', className: 'badge-danger' };
-                case 49: return { label: 'لم يتم بنجاح', className: 'badge-danger' };
+                case 48: return { label: 'محاولة فاشلة', className: 'badge-danger' };
+                case 49: return { label: 'ملغي في بوسطة', className: 'badge-danger' };
                 case 60: return { label: 'تم الاسترجاع', className: 'badge-danger' };
-                case 100: return { label: 'غير ناجح', className: 'badge-danger' };
-                case 101: return { label: 'غير ناجح', className: 'badge-danger' };
+                case 100: return { label: 'معلق - إجراء مطلوب', className: 'badge-warning' };
+                case 101: return { label: 'شحنة تالفة', className: 'badge-danger' };
                 case 102: return { label: 'متوقف مؤقتاً', className: 'badge-warning' };
                 case 103: return { label: 'في انتظار متابعتك', className: 'badge-warning' };
                 default: return { label: bostaStateName || `حالة ${bostaStateCode}`, className: 'badge-info' };
@@ -391,6 +391,16 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
                 }
             } else if (deliveryStatusFilter === 'deposit_refund_awaiting') {
                 if (!(ord.status === 'Cancelled' && ord.depositRefundStatus === 'awaiting_return')) {
+                    return false;
+                }
+            } else if (deliveryStatusFilter === 'bosta_all_pending_action') {
+                const { bostaStateCode } = parseAddressData(ord.address);
+                if (bostaStateCode === null || ![100, 102, 103, 47].includes(Number(bostaStateCode))) {
+                    return false;
+                }
+            } else if (deliveryStatusFilter === 'bosta_all_failed_returned') {
+                const { bostaStateCode } = parseAddressData(ord.address);
+                if (bostaStateCode === null || ![46, 60, 48, 49, 101].includes(Number(bostaStateCode))) {
                     return false;
                 }
             } else if (!isNaN(deliveryStatusFilter)) {
@@ -848,6 +858,10 @@ ${followUpReason}
                             value={deliveryStatusFilter} 
                             onChange={(e) => { setDeliveryStatusFilter(e.target.value); setCurrentPage(1); }}>
                             <option value="all" style={{ background: 'var(--bg-secondary)' }}>كل حالات النظام وبوسطة</option>
+                            <optgroup label="── تجميعات بوسطة الذكية ──" style={{ background: 'var(--bg-secondary)', color: '#f59e0b', fontWeight: 'bold' }}>
+                                <option value="bosta_all_pending_action" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>⚠️ كل المعلقات بانتظار إجراء (بوسطة)</option>
+                                <option value="bosta_all_failed_returned" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>🛑 كل المرتجعات والإلغاء والتالف (بوسطة)</option>
+                            </optgroup>
                             <optgroup label="── حالات النظام الداخلية ──" style={{ background: 'var(--bg-secondary)', color: 'var(--gold-primary)', fontWeight: 'bold' }}>
                                 <option value="Draft" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>مسودة (Draft)</option>
                                 <option value="Pending" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>قيد الانتظار العام (Pending)</option>
@@ -856,20 +870,31 @@ ${followUpReason}
                                 <option value="deposit_refund_awaiting" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>مرتجعات عرابين بانتظار الإرجاع</option>
                                 <option value="Cancelled" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>الطلبات الملغاة من النظام (Cancelled / Rejected)</option>
                             </optgroup>
-                            <optgroup label="── حالات شحن بوسطة ──" style={{ background: 'var(--bg-secondary)', color: '#38bdf8', fontWeight: 'bold' }}>
-                                <option value="10" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>10 - جديد</option>
+                            <optgroup label="── بوسطة: قيد التجهيز والاستلام ──" style={{ background: 'var(--bg-secondary)', color: '#38bdf8', fontWeight: 'bold' }}>
+                                <option value="10" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>10 - طلب بيك أب جديد</option>
                                 <option value="11" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>11 - في انتظار الاستلام</option>
-                                <option value="21" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>21 - تم استلام الأوردر</option>
-                                <option value="24" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>24 - تم تخزينه</option>
-                                <option value="30" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>30 - قيد التنفيذ</option>
+                                <option value="21" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>21 - تم استلام الأوردر من التاجر</option>
+                                <option value="24" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>24 - تم تخزينه في بوسطة</option>
+                                <option value="30" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>30 - قيد التنفيذ بين الفروع</option>
+                            </optgroup>
+                            <optgroup label="── بوسطة: قيد التوصيل الفعلي ──" style={{ background: 'var(--bg-secondary)', color: '#a855f7', fontWeight: 'bold' }}>
                                 <option value="41" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>41 - متجه للعميل</option>
-                                <option value="46" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>46 - مرتجعاتك العائدة</option>
-                                <option value="102" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>102 - متوقف مؤقتاً</option>
+                            </optgroup>
+                            <optgroup label="── بوسطة: معلق / يحتاج متابعة ──" style={{ background: 'var(--bg-secondary)', color: '#eab308', fontWeight: 'bold' }}>
+                                <option value="100" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>100 - معلق - إجراء مطلوب</option>
                                 <option value="103" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>103 - في انتظار متابعتك</option>
+                                <option value="102" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>102 - متوقف مؤقتاً</option>
+                                <option value="47" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>47 - تعذر التوصيل (متابعة/تأجيل)</option>
+                            </optgroup>
+                            <optgroup label="── بوسطة: شحنات مكتملة بنجاح ──" style={{ background: 'var(--bg-secondary)', color: '#22c55e', fontWeight: 'bold' }}>
                                 <option value="45" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>45 - تم بنجاح</option>
-                                <option value="100" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>100 - غير ناجح</option>
-                                <option value="60" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>60 - تم الاسترجاع</option>
-                                <option value="48" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>48 - لم يتم بنجاح</option>
+                            </optgroup>
+                            <optgroup label="── بوسطة: شحنات ملغاة / فاشلة / مرتجعة ──" style={{ background: 'var(--bg-secondary)', color: '#ef4444', fontWeight: 'bold' }}>
+                                <option value="46" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>46 - مرتجعاتك العائدة</option>
+                                <option value="60" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>60 - تم الاسترجاع للمخزن</option>
+                                <option value="48" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>48 - محاولة فاشلة</option>
+                                <option value="49" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>49 - ملغي في بوسطة</option>
+                                <option value="101" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>101 - شحنة تالفة</option>
                             </optgroup>
                         </select>
 
@@ -1106,7 +1131,8 @@ ${followUpReason}
                                                             bostaZoneId,
                                                             allowToOpenPackage,
                                                             phone,
-                                                            detailAddress
+                                                            detailAddress,
+                                                            bostaExceptionReason
                                                         } = parseAddressData(ord.address);
                                                         
                                                         return (
@@ -1114,7 +1140,26 @@ ${followUpReason}
                                                                 <span className={`badge ${badge.className}`} style={{ fontSize: '11px', padding: '4px 8px', borderRadius: '4px', fontWeight: 600, whiteSpace: 'nowrap' }}>
                                                                     {badge.label}
                                                                 </span>
-                                                                {bostaTrackingNumber ? (
+                                                                 {bostaExceptionReason && (
+                                                                     <span style={{ 
+                                                                         fontSize: '9.5px', 
+                                                                         color: '#f59e0b',
+                                                                         whiteSpace: 'normal', 
+                                                                         maxWidth: '160px', 
+                                                                         textAlign: 'center',
+                                                                         lineHeight: '1.25',
+                                                                         marginTop: '1px',
+                                                                         fontWeight: '500',
+                                                                         display: 'inline-block'
+                                                                     }}>
+                                                                         ⚠️ {
+                                                                             bostaExceptionReason === "Waiting for data modification - address not clear" 
+                                                                             ? "بانتظار تعديل العنوان"
+                                                                             : bostaExceptionReason
+                                                                         }
+                                                                     </span>
+                                                                 )}
+                                                                 {bostaTrackingNumber ? (
                                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px' }}>
                                                                         <span style={{ fontSize: '10px', opacity: 0.8, fontFamily: 'monospace', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                                                                             بوليصة: {bostaTrackingNumber}
