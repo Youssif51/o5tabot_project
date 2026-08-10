@@ -633,7 +633,7 @@ ${followUpReason}
         <div id="orders-view" className="view-pane active" dir="rtl" style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)' }}>
             
 
-            {/* SuperAdmin active custody dashboard */}
+            {/* SuperAdmin active custody dashboard - Hidden Visually
             {state.currentUser?.role === 'SuperAdmin' && (() => {
                 const adminCustodies = (() => {
                     const custodyMap = {};
@@ -690,6 +690,7 @@ ${followUpReason}
                     </div>
                 );
             })()}
+            */}
             {/* Header */}
             <div className="page-header" style={{ marginBottom: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                 <div className="page-title-group" style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
@@ -847,54 +848,58 @@ ${followUpReason}
                             style={{ 
                                 flex: '1', 
                                 minWidth: '220px', 
-                                backgroundColor: 'var(--bg-secondary)', 
-                                color: 'var(--text-primary)', 
-                                border: '1px solid var(--glass-border)', 
+                                backgroundColor: '#1e293b', 
+                                color: '#f1f5f9', 
+                                border: '1px solid rgba(226, 232, 240, 0.15)', 
                                 borderRadius: '8px', 
                                 padding: '10px 14px',
                                 fontSize: '13.5px',
-                                fontWeight: 500
+                                fontWeight: 500,
+                                cursor: 'pointer',
+                                transition: 'all 0.2s ease',
+                                outline: 'none',
+                                boxShadow: '0 2px 8px rgba(0, 0, 0, 0.15)'
                             }} 
                             value={deliveryStatusFilter} 
                             onChange={(e) => { setDeliveryStatusFilter(e.target.value); setCurrentPage(1); }}>
-                            <option value="all" style={{ background: 'var(--bg-secondary)' }}>كل حالات النظام وبوسطة</option>
-                            <optgroup label="── تجميعات بوسطة الذكية ──" style={{ background: 'var(--bg-secondary)', color: '#f59e0b', fontWeight: 'bold' }}>
-                                <option value="bosta_all_pending_action" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>⚠️ كل المعلقات بانتظار إجراء (بوسطة)</option>
-                                <option value="bosta_all_failed_returned" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>🛑 كل المرتجعات والإلغاء والتالف (بوسطة)</option>
+                            <option value="all" style={{ background: '#1e293b', color: '#f1f5f9' }}>كل حالات النظام وبوسطة</option>
+                            <optgroup label="── تجميعات بوسطة الذكية ──" style={{ background: '#1e293b', color: '#f59e0b', fontWeight: 'bold' }}>
+                                <option value="bosta_all_pending_action" style={{ background: '#1e293b', color: '#f1f5f9' }}>كل المعلقات بانتظار إجراء (بوسطة)</option>
+                                <option value="bosta_all_failed_returned" style={{ background: '#1e293b', color: '#f1f5f9' }}>كل المرتجعات والإلغاء والتالف (بوسطة)</option>
                             </optgroup>
-                            <optgroup label="── حالات النظام الداخلية ──" style={{ background: 'var(--bg-secondary)', color: 'var(--gold-primary)', fontWeight: 'bold' }}>
-                                <option value="Draft" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>مسودة (Draft)</option>
-                                <option value="Pending" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>قيد الانتظار العام (Pending)</option>
-                                <option value="shopify_pending" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>طلبات شوبيفاي المعلقة (بانتظار المراجعة)</option>
-                                <option value="deposit_pending" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>عرابين بانتظار التأكيد</option>
-                                <option value="deposit_refund_awaiting" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>مرتجعات عرابين بانتظار الإرجاع</option>
-                                <option value="Cancelled" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>الطلبات الملغاة من النظام (Cancelled / Rejected)</option>
+                            <optgroup label="── حالات النظام الداخلية ──" style={{ background: '#1e293b', color: '#94a3b8', fontWeight: 'bold' }}>
+                                <option value="Draft" style={{ background: '#1e293b', color: '#f1f5f9' }}>مسودة (Draft)</option>
+                                <option value="Pending" style={{ background: '#1e293b', color: '#f1f5f9' }}>قيد الانتظار العام (Pending)</option>
+                                <option value="shopify_pending" style={{ background: '#1e293b', color: '#f1f5f9' }}>طلبات شوبيفاي المعلقة (بانتظار المراجعة)</option>
+                                <option value="deposit_pending" style={{ background: '#1e293b', color: '#f1f5f9' }}>عرابين بانتظار التأكيد</option>
+                                <option value="deposit_refund_awaiting" style={{ background: '#1e293b', color: '#f1f5f9' }}>مرتجعات عرابين بانتظار الإرجاع</option>
+                                <option value="Cancelled" style={{ background: '#1e293b', color: '#f1f5f9' }}>الطلبات الملغاة من النظام (Cancelled / Rejected)</option>
                             </optgroup>
-                            <optgroup label="── بوسطة: قيد التجهيز والاستلام ──" style={{ background: 'var(--bg-secondary)', color: '#38bdf8', fontWeight: 'bold' }}>
-                                <option value="10" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>10 - طلب بيك أب جديد</option>
-                                <option value="11" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>11 - في انتظار الاستلام</option>
-                                <option value="21" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>21 - تم استلام الأوردر من التاجر</option>
-                                <option value="24" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>24 - تم تخزينه في بوسطة</option>
-                                <option value="30" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>30 - قيد التنفيذ بين الفروع</option>
+                            <optgroup label="── بوسطة: قيد التجهيز والاستلام ──" style={{ background: '#1e293b', color: '#94a3b8', fontWeight: 'bold' }}>
+                                <option value="10" style={{ background: '#1e293b', color: '#f1f5f9' }}>طلب بيك أب جديد</option>
+                                <option value="11" style={{ background: '#1e293b', color: '#f1f5f9' }}>في انتظار الاستلام</option>
+                                <option value="21" style={{ background: '#1e293b', color: '#f1f5f9' }}>تم استلام الأوردر من التاجر</option>
+                                <option value="24" style={{ background: '#1e293b', color: '#f1f5f9' }}>تم تخزينه في بوسطة</option>
+                                <option value="30" style={{ background: '#1e293b', color: '#f1f5f9' }}>قيد التنفيذ بين الفروع</option>
                             </optgroup>
-                            <optgroup label="── بوسطة: قيد التوصيل الفعلي ──" style={{ background: 'var(--bg-secondary)', color: '#a855f7', fontWeight: 'bold' }}>
-                                <option value="41" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>41 - متجه للعميل</option>
+                            <optgroup label="── بوسطة: قيد التوصيل الفعلي ──" style={{ background: '#1e293b', color: '#94a3b8', fontWeight: 'bold' }}>
+                                <option value="41" style={{ background: '#1e293b', color: '#f1f5f9' }}>متجه للعميل</option>
                             </optgroup>
-                            <optgroup label="── بوسطة: معلق / يحتاج متابعة ──" style={{ background: 'var(--bg-secondary)', color: '#eab308', fontWeight: 'bold' }}>
-                                <option value="100" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>100 - معلق - إجراء مطلوب</option>
-                                <option value="103" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>103 - في انتظار متابعتك</option>
-                                <option value="102" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>102 - متوقف مؤقتاً</option>
-                                <option value="47" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>47 - تعذر التوصيل (متابعة/تأجيل)</option>
+                            <optgroup label="── بوسطة: معلق / يحتاج متابعة ──" style={{ background: '#1e293b', color: '#94a3b8', fontWeight: 'bold' }}>
+                                <option value="100" style={{ background: '#1e293b', color: '#f1f5f9' }}>معلق - إجراء مطلوب</option>
+                                <option value="103" style={{ background: '#1e293b', color: '#f1f5f9' }}>في انتظار متابعتك</option>
+                                <option value="102" style={{ background: '#1e293b', color: '#f1f5f9' }}>متوقف مؤقتاً</option>
+                                <option value="47" style={{ background: '#1e293b', color: '#f1f5f9' }}>تعذر التوصيل (متابعة/تأجيل)</option>
                             </optgroup>
-                            <optgroup label="── بوسطة: شحنات مكتملة بنجاح ──" style={{ background: 'var(--bg-secondary)', color: '#22c55e', fontWeight: 'bold' }}>
-                                <option value="45" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>45 - تم بنجاح</option>
+                            <optgroup label="── بوسطة: شحنات مكتملة بنجاح ──" style={{ background: '#1e293b', color: '#94a3b8', fontWeight: 'bold' }}>
+                                <option value="45" style={{ background: '#1e293b', color: '#f1f5f9' }}>تم بنجاح</option>
                             </optgroup>
-                            <optgroup label="── بوسطة: شحنات ملغاة / فاشلة / مرتجعة ──" style={{ background: 'var(--bg-secondary)', color: '#ef4444', fontWeight: 'bold' }}>
-                                <option value="46" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>46 - مرتجعاتك العائدة</option>
-                                <option value="60" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>60 - تم الاسترجاع للمخزن</option>
-                                <option value="48" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>48 - محاولة فاشلة</option>
-                                <option value="49" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>49 - ملغي في بوسطة</option>
-                                <option value="101" style={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)' }}>101 - شحنة تالفة</option>
+                            <optgroup label="── بوسطة: شحنات ملغاة / فاشلة / مرتجعة ──" style={{ background: '#1e293b', color: '#94a3b8', fontWeight: 'bold' }}>
+                                <option value="46" style={{ background: '#1e293b', color: '#f1f5f9' }}>مرتجعاتك العائدة</option>
+                                <option value="60" style={{ background: '#1e293b', color: '#f1f5f9' }}>تم الاسترجاع للمخزن</option>
+                                <option value="48" style={{ background: '#1e293b', color: '#f1f5f9' }}>محاولة فاشلة</option>
+                                <option value="49" style={{ background: '#1e293b', color: '#f1f5f9' }}>ملغي في بوسطة</option>
+                                <option value="101" style={{ background: '#1e293b', color: '#f1f5f9' }}>شحنة تالفة</option>
                             </optgroup>
                         </select>
 
@@ -1402,16 +1407,7 @@ ${followUpReason}
                                                                     {ord.updatedBy && ord.updatedBy !== 'Shopify Webhook' && (
                                                                         <div><strong>تم التعديل بواسطة:</strong> <span style={{ color: 'var(--gold-primary)' }}>{ord.updatedBy}</span></div>
                                                                     )}
-                                                                    {ord.discount_reason && (
-                                                                        <div style={{ marginTop: '4px', borderTop: '1px dashed var(--glass-border)', paddingTop: '4px' }}>
-                                                                            <strong>سبب الخصم:</strong> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{ord.discount_reason}</span>
-                                                                        </div>
-                                                                    )}
-                                                                    {ord.discount_reason_details && (
-                                                                        <div>
-                                                                            <strong>تفاصيل الخصم:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ord.discount_reason_details}</span>
-                                                                        </div>
-                                                                    )}
+
                                                                     {(ord.cancellationReason || ord.cancellation_reason) && (
                                                                         <div style={{ marginTop: '6px', borderTop: '1px dashed rgba(239,68,68,0.3)', paddingTop: '6px', color: '#ef4444' }}>
                                                                             <strong>سبب إلغاء الطلب:</strong> <span style={{ fontWeight: 'bold' }}>{ord.cancellationReason || ord.cancellation_reason}</span>
@@ -1426,26 +1422,28 @@ ${followUpReason}
                                                                 <h4 style={{ fontSize: '13px', color: 'var(--gold-primary)', marginBottom: '12px', fontWeight: 600 }}>
                                                                     <i className="fa-solid fa-box-open" style={{ marginLeft: '6px' }}></i> المنتجات المطلوبة ({ord.items?.length || 0} أصناف)
                                                                 </h4>
-                                                                <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse' }}>
-                                                                    <thead>
-                                                                        <tr style={{ borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }}>
-                                                                            <th style={{ textAlign: 'right', padding: '6px 4px' }}>اسم الصنف / SKU</th>
-                                                                            <th style={{ textAlign: 'center', padding: '6px 4px' }}>الكمية</th>
-                                                                            <th style={{ textAlign: 'center', padding: '6px 4px' }}>سعر الوحدة</th>
-                                                                            <th style={{ textAlign: 'left', padding: '6px 4px' }}>الإجمالي</th>
-                                                                        </tr>
-                                                                    </thead>
-                                                                    <tbody>
-                                                                        {(ord.items || []).map((item, idx) => (
-                                                                            <tr key={idx} style={{ borderBottom: '1px solid var(--glass-bg)' }}>
-                                                                                <td style={{ padding: '8px 4px' }}>{getProductNameBySku(item.variantSku)}</td>
-                                                                                <td style={{ textAlign: 'center', padding: '8px 4px' }}>{item.quantity}</td>
-                                                                                <td style={{ textAlign: 'center', padding: '8px 4px' }}>{currency} {(parseFloat(item.price) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
-                                                                                <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold' }}>{currency} {((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                                <div style={{ overflowX: 'auto' }}>
+                                                                    <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: '420px' }}>
+                                                                        <thead>
+                                                                            <tr style={{ borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }}>
+                                                                                <th style={{ textAlign: 'right', padding: '6px 4px', width: '50%' }}>اسم الصنف / SKU</th>
+                                                                                <th style={{ textAlign: 'center', padding: '6px 4px', width: '12%' }}>الكمية</th>
+                                                                                <th style={{ textAlign: 'center', padding: '6px 4px', width: '18%' }}>سعر الوحدة</th>
+                                                                                <th style={{ textAlign: 'left', padding: '6px 4px', width: '20%' }}>الإجمالي</th>
                                                                             </tr>
-                                                                        ))}
-                                                                    </tbody>
-                                                                </table>
+                                                                        </thead>
+                                                                        <tbody>
+                                                                            {(ord.items || []).map((item, idx) => (
+                                                                                <tr key={idx} style={{ borderBottom: '1px solid var(--glass-bg)' }}>
+                                                                                    <td style={{ padding: '8px 4px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{getProductNameBySku(item.variantSku)}</td>
+                                                                                    <td style={{ textAlign: 'center', padding: '8px 4px' }}>{item.quantity}</td>
+                                                                                    <td style={{ textAlign: 'center', padding: '8px 4px', whiteSpace: 'nowrap' }}>{currency} {(parseFloat(item.price) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                                                    <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{currency} {((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                                                </tr>
+                                                                            ))}
+                                                                        </tbody>
+                                                                    </table>
+                                                                </div>
                                                             </div>
 
                                                             {/* Financial breakdown */}
@@ -1468,6 +1466,17 @@ ${followUpReason}
                                                                                     <span>مصاريف الشحن:</span>
                                                                                     <span>+{currency} {(ord.shipping_fee || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                                 </div>
+                                                                                {((parseFloat(ord.discount_value) || 0) > 0) && (
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#ef4444' }}>
+                                                                                        <span>الخصم المطبق {ord.discount_reason ? `(${ord.discount_reason})` : ''}:</span>
+                                                                                        <span>-{currency} {(parseFloat(ord.discount_value) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                    </div>
+                                                                                )}
+                                                                                {((parseFloat(ord.discount_value) || 0) > 0 && ord.discount_reason_details) && (
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '10.5px', marginTop: '-4px', paddingRight: '12px' }}>
+                                                                                        <span>تفاصيل الخصم: {ord.discount_reason_details}</span>
+                                                                                    </div>
+                                                                                )}
                                                                                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
                                                                                     <span>{depositLabel}:</span>
                                                                                     <span>-{currency} {(ord.deposit || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
@@ -1754,16 +1763,7 @@ ${followUpReason}
                                                     )}
                                                     <div><strong>المحافظة:</strong> {ord.governorate || 'غير مسجل'}</div>
                                                     <div style={{ wordBreak: 'break-word', overflowWrap: 'anywhere' }}><strong>العنوان بالتفصيل:</strong> {detailAddress || 'غير مسجل'}</div>
-                                                    {ord.discount_reason && (
-                                                        <div style={{ marginTop: '4px', borderTop: '1px dashed var(--glass-border)', paddingTop: '4px' }}>
-                                                            <strong>سبب الخصم:</strong> <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{ord.discount_reason}</span>
-                                                        </div>
-                                                    )}
-                                                    {ord.discount_reason_details && (
-                                                        <div>
-                                                            <strong>تفاصيل الخصم:</strong> <span style={{ color: 'var(--text-secondary)' }}>{ord.discount_reason_details}</span>
-                                                        </div>
-                                                    )}
+
                                                     {bostaTrackingNumber ? (
                                                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                                                             <strong>بوليصة بوسطة:</strong>
@@ -1858,6 +1858,17 @@ ${followUpReason}
                                                                     <span>مصاريف الشحن:</span>
                                                                     <span>+{currency} {(ord.shipping_fee || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                 </div>
+                                                                {((parseFloat(ord.discount_value) || 0) > 0) && (
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#ef4444' }}>
+                                                                        <span>الخصم المطبق {ord.discount_reason ? `(${ord.discount_reason})` : ''}:</span>
+                                                                        <span>-{currency} {(parseFloat(ord.discount_value) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                    </div>
+                                                                )}
+                                                                {((parseFloat(ord.discount_value) || 0) > 0 && ord.discount_reason_details) && (
+                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '10.5px', marginTop: '-4px', paddingRight: '12px' }}>
+                                                                        <span>تفاصيل الخصم: {ord.discount_reason_details}</span>
+                                                                    </div>
+                                                                )}
                                                                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
                                                                     <span>{depositLabel}:</span>
                                                                     <span>-{currency} {(ord.deposit || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
