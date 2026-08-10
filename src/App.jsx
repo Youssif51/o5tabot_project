@@ -6,6 +6,7 @@ import { AppContext } from './context/AppContext';
 import Sidebar from './components/common/Sidebar';
 import Topbar from './components/common/Topbar';
 import TopProgressBar from './components/common/TopProgressBar';
+import SectionTransitionOverlay from './components/common/SectionTransitionOverlay';
 import Modal from './components/common/Modal';
 import SmartDateFilter from './components/common/SmartDateFilter';
 
@@ -39,6 +40,8 @@ export default function App() {
         state, 
         currentView, 
         setCurrentView,
+        isSectionRefreshing,
+        sectionRefreshMessage,
         toast, 
         shopifyNotification,
         setShopifyNotification,
@@ -303,6 +306,9 @@ export default function App() {
 
     return (
         <div className={`app-container ${sidebarOpen ? 'sidebar-open' : ''}`} dir={language === 'ar' ? 'rtl' : 'ltr'}>
+            {/* Transparent Section Transition Overlay with Vector Lottie Animation */}
+            <SectionTransitionOverlay isVisible={isSectionRefreshing} message={sectionRefreshMessage} />
+
             {/* Top Glowing Laser Progress Bar for Instant Section Navigation Feedback */}
             <TopProgressBar currentView={currentView} />
 

@@ -2,7 +2,7 @@ import React, { useContext, useState } from 'react';
 import { AppContext } from '../../context/AppContext';
 
 export default function Sidebar() {
-    const { state, currentView, setCurrentView, authLogout, t, theme } = useContext(AppContext);
+    const { state, currentView, setCurrentView, triggerSectionRefresh, authLogout, t, theme } = useContext(AppContext);
     const [showUserDropdown, setShowUserDropdown] = useState(false);
     
     if (!state.currentUser) return null;
@@ -76,7 +76,15 @@ export default function Sidebar() {
                         key={item.id} 
                         className={`nav-item ${currentView === item.id ? 'active' : ''}`}
                     >
-                        <a href="#" onClick={(e) => { e.preventDefault(); setCurrentView(item.id); }}>
+                        <a href="#" onClick={(e) => { 
+                            e.preventDefault(); 
+                            if (currentView !== item.id) {
+                                setCurrentView(item.id); 
+                                if (triggerSectionRefresh) {
+                                    triggerSectionRefresh(`جاري تحديث بيانات قسم (${item.name})...`);
+                                }
+                            }
+                        }}>
                             {item.id === 'shopifyPending' ? (
                                 <i className="fa-brands fa-shopify" style={{ 
                                     fontSize: '22px', 

@@ -1201,6 +1201,26 @@ export const AppProvider = ({ children }) => {
         };
     }, []);
 
+    // Section Transition Overlay & Targeted Revalidation State
+    const [isSectionRefreshing, setIsSectionRefreshing] = useState(false);
+    const [sectionRefreshMessage, setSectionRefreshMessage] = useState('جاري جلب أحدث البيانات الحية...');
+
+    const triggerSectionRefresh = useCallback((customMsg = 'جاري جلب أحدث البيانات الحية...') => {
+        setSectionRefreshMessage(customMsg);
+        setIsSectionRefreshing(true);
+        setTimeout(async () => {
+            try {
+                await loadSupabaseData();
+            } catch (err) {
+                console.warn("Section refresh error:", err);
+            } finally {
+                setTimeout(() => {
+                    setIsSectionRefreshing(false);
+                }, 200);
+            }
+        }, 50);
+    }, [loadSupabaseData]);
+
     useEffect(() => {
         if (!supabase) return;
 
@@ -1210,15 +1230,11 @@ export const AppProvider = ({ children }) => {
             const now = Date.now();
             const idleMs = now - lastUserActivityRef.current;
 
-            // 20 Minutes threshold = 20 * 60 * 1000 = 1,200,000 ms
+            // Trigger fresh revalidation on tab wake-up / return after closing or 20 minutes
             if (idleMs >= 1200000) {
                 lastUserActivityRef.current = now;
                 console.log(`Absence Sync: User returned after ${Math.round(idleMs / 60000)} minutes of idle absence. Refreshing fresh DB data...`);
-                try {
-                    await loadSupabaseData();
-                } catch (err) {
-                    console.warn("Absence Sync fetch error:", err);
-                }
+                triggerSectionRefresh('جاري تحديث البيانات طازجة بعد العودة...');
             }
         };
 
@@ -1229,7 +1245,7 @@ export const AppProvider = ({ children }) => {
             window.removeEventListener('focus', handleVisibilityOrFocus);
             document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
         };
-    }, [supabase, loadSupabaseData]);
+    }, [supabase, triggerSectionRefresh]);
 
     const t = (key) => {
         const tr = translations[language] && translations[language][key];
@@ -6107,6 +6123,9 @@ export const AppProvider = ({ children }) => {
             supabase,
             currentView,
             setCurrentView,
+            isSectionRefreshing,
+            sectionRefreshMessage,
+            triggerSectionRefresh,
             toast,
             restockVariant,
             syncVariantStockToShopify,
