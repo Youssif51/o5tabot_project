@@ -5069,9 +5069,12 @@ export const AppProvider = ({ children }) => {
                 console.error("Error setting isReviewed on address JSON in approveOrderWithBosta:", e);
             }
 
+            const finalReceiverId = depositReceiverId || targetOrder?.depositReceiverId || state.currentUser?.id || null;
+            const finalCreatorName = state.currentUser?.name || targetOrder?.createdBy || 'الآدمن';
+
             const updatePayload = {
                 deposit: depositAmount,
-                deposit_receiver_id: depositReceiverId,
+                deposit_receiver_id: finalReceiverId,
                 deposit_status: depositStatus,
                 status: 'Pending',
                 address: finalAddressStr
@@ -5079,7 +5082,7 @@ export const AppProvider = ({ children }) => {
 
             // Only set created_by if it's currently empty or set to the webhook default
             if (!targetOrder?.createdBy || targetOrder?.createdBy === 'Shopify Webhook') {
-                updatePayload.created_by = state.currentUser?.name || 'الآدمن';
+                updatePayload.created_by = finalCreatorName;
             }
 
             const { error: dbUpdateErr } = await supabase.from('orders').update(updatePayload).eq('id', orderId);
@@ -5098,9 +5101,9 @@ export const AppProvider = ({ children }) => {
                     isReviewed: true,
                     address: finalAddressStr,
                     deposit: depositAmount,
-                    depositReceiverId: depositReceiverId,
+                    depositReceiverId: finalReceiverId,
                     depositStatus: depositStatus,
-                    ...((!o.createdBy || o.createdBy === 'Shopify Webhook') && { createdBy: state.currentUser?.name || 'الآدمن' })
+                    ...((!o.createdBy || o.createdBy === 'Shopify Webhook') && { createdBy: finalCreatorName })
                 } : o)
             }));
 

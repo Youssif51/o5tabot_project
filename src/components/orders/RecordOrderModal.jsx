@@ -1038,7 +1038,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             bostaZoneId: districtSelected?.zoneId,
                             allowToOpenPackage: allowToOpenPackage
                         };
-                        approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit).catch(err => {
+                        approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit, newOrderObj.depositReceiverId, newOrderObj.depositStatus || 'confirmed').catch(err => {
                             console.error("Background Bosta sync error:", err);
                         });
                     }
@@ -1061,7 +1061,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                             bostaZoneId: districtSelected?.zoneId,
                             allowToOpenPackage: allowToOpenPackage
                         };
-                        approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit).catch(err => {
+                        approveOrderWithBosta(newOrderObj.id, bostaMetadata, newOrderObj.deposit, newOrderObj.depositReceiverId, newOrderObj.depositStatus || 'confirmed').catch(err => {
                             console.error("Background Bosta sync error:", err);
                         });
                     }
