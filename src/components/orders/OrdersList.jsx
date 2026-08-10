@@ -211,7 +211,8 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
 
     const normalizePhoneNumber = (phoneStr) => {
         if (!phoneStr) return '';
-        const trimmed = phoneStr.trim();
+        const strVal = String(phoneStr || '');
+        const trimmed = strVal.trim();
         let clean = trimmed.replace(/\D/g, '');
         // If international number starting with non-Egyptian prefix (+ or 966/971 etc and not 20), preserve format
         if (trimmed.startsWith('+') && !clean.startsWith('20')) {
@@ -531,7 +532,8 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
 
     const getWhatsAppLink = (phoneStr, ord) => {
         if (!phoneStr) return '';
-        let clean = phoneStr.replace(/\D/g, '');
+        const strVal = String(phoneStr || '');
+        let clean = strVal.replace(/\D/g, '');
         if (clean.startsWith('01') && clean.length === 11) {
             clean = '2' + clean;
         } else if (clean.startsWith('1') && clean.length === 10) {
@@ -1049,7 +1051,7 @@ ${followUpReason}
                                                     )}
                                                 </td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontSize: '13px', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>{totalQty} قطع</td>
-                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, verticalAlign: 'middle', whiteSpace: 'nowrap' }}>{currency} {ord.totalValue.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, verticalAlign: 'middle', whiteSpace: 'nowrap' }}>{currency} {(parseFloat(ord.totalValue || ord.total_value) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                 <td style={{ textAlign: 'center', padding: '14px 16px', fontWeight: 600, color: remaining > 0 ? '#e74c3c' : '#2ecc71', verticalAlign: 'middle', whiteSpace: 'nowrap' }}>
                                                     {ord.depositStatus === 'pending' ? (
                                                         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
@@ -1393,8 +1395,8 @@ ${followUpReason}
                                                                             <tr key={idx} style={{ borderBottom: '1px solid var(--glass-bg)' }}>
                                                                                 <td style={{ padding: '8px 4px' }}>{getProductNameBySku(item.variantSku)}</td>
                                                                                 <td style={{ textAlign: 'center', padding: '8px 4px' }}>{item.quantity}</td>
-                                                                                <td style={{ textAlign: 'center', padding: '8px 4px' }}>{currency} {item.price.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
-                                                                                <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold' }}>{currency} {(item.quantity * item.price).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                                                <td style={{ textAlign: 'center', padding: '8px 4px' }}>{currency} {(parseFloat(item.price) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                                                <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold' }}>{currency} {((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                                             </tr>
                                                                         ))}
                                                                     </tbody>
@@ -1783,7 +1785,7 @@ ${followUpReason}
                                                                 <tr key={idx} style={{ borderBottom: '1px solid var(--glass-bg)' }}>
                                                                     <td style={{ padding: '8px 4px' }}>{getProductNameBySku(item.variantSku)}</td>
                                                                     <td style={{ textAlign: 'center', padding: '8px 4px' }}>{item.quantity}</td>
-                                                                    <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold' }}>{currency} {item.price.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                                    <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold' }}>{currency} {(parseFloat(item.price) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                                 </tr>
                                                             ))}
                                                         </tbody>
