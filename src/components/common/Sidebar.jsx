@@ -9,6 +9,9 @@ export default function Sidebar() {
 
     const checkPermission = (perm) => {
         if (state.currentUser.role === 'SuperAdmin') return true;
+        if (Array.isArray(perm)) {
+            return perm.every(p => (state.currentUser.permissions || []).includes(p));
+        }
         return (state.currentUser.permissions || []).includes(perm);
     };
 
@@ -54,7 +57,7 @@ export default function Sidebar() {
     const navItems = [
         { id: 'dashboard', name: t('dashboard'), icon: 'Home.png', perm: 'view_dashboard' },
         { id: 'inventory', name: t('inventory'), icon: 'Inventory.png', perm: 'manage_inventory' },
-        { id: 'reports', name: t('reports'), icon: 'Report.png', perm: 'view_reports' },
+        { id: 'reports', name: t('reports'), icon: 'Report.png', perm: ['view_reports', 'view_dashboard'] },
         { id: 'suppliers', name: t('suppliers'), icon: 'Suppliers.png', perm: 'manage_suppliers' },
         { id: 'customers', name: t('customersList') || 'العملاء', icon: 'Support.png', perm: 'manage_customers' },
         { id: 'orders', name: t('orders'), icon: 'Order.png', perm: 'manage_orders' },

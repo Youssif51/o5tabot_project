@@ -35,6 +35,18 @@ import RecordOrderModal from './components/orders/RecordOrderModal';
 // Global styles
 import './assets/style.css';
 
+const getFirstAllowedRoute = (user) => {
+    if (!user) return "/login";
+    if (user.role === 'SuperAdmin') return "/dashboard";
+    const perms = user.permissions || [];
+    if (perms.includes('view_dashboard')) return "/dashboard";
+    if (perms.includes('manage_orders')) return "/orders";
+    if (perms.includes('manage_inventory')) return "/inventory";
+    if (perms.includes('manage_suppliers')) return "/suppliers";
+    if (perms.includes('manage_customers')) return "/customers";
+    return "/store";
+};
+
 export default function App() {
     const { 
         state, 
@@ -335,35 +347,39 @@ export default function App() {
                 {/* Main Views Router */}
                 <Routes>
                     <Route path="/dashboard" element={
-                        <div id="dashboard-view" className="view-pane active" dir="rtl">
-                            {/* Premium Welcome & Time Filter Header */}
-                            <div className="page-header" style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '18px' }}>
-                                <div className="page-title-group">
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
-                                        <h2 style={{ fontSize: '24px', fontWeight: '800', background: 'linear-gradient(135deg, #fff 30%, var(--gold-primary) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', margin: 0 }}>
-                                            لوحة التحكم والتحليلات
-                                        </h2>
-                                        <div className={`live-indicator ${isOnline ? '' : 'offline'}`} title={isOnline ? "اتصال مباشر بسيرفر النظام وقاعدة البيانات" : "تم قطع الاتصال بالسيرفر"}>
-                                            <span className="live-indicator-dot"></span>
-                                            <span>{isOnline ? "اتصال السيرفر نشط" : "السيرفر غير متصل"}</span>
+                        (state.currentUser?.role === 'SuperAdmin' || (state.currentUser?.permissions || []).includes('view_dashboard')) ? (
+                            <div id="dashboard-view" className="view-pane active" dir="rtl">
+                                {/* Premium Welcome & Time Filter Header */}
+                                <div className="page-header" style={{ marginBottom: '28px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '18px' }}>
+                                    <div className="page-title-group">
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                                            <h2 style={{ fontSize: '24px', fontWeight: '800', background: 'linear-gradient(135deg, #fff 30%, var(--gold-primary) 100%)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', margin: 0 }}>
+                                                لوحة التحكم والتحليلات
+                                            </h2>
+                                            <div className={`live-indicator ${isOnline ? '' : 'offline'}`} title={isOnline ? "اتصال مباشر بسيرفر النظام وقاعدة البيانات" : "تم قطع الاتصال بالسيرفر"}>
+                                                <span className="live-indicator-dot"></span>
+                                                <span>{isOnline ? "اتصال السيرفر نشط" : "السيرفر غير متصل"}</span>
+                                            </div>
                                         </div>
+                                        <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '6px', lineHeight: 1.5 }}>
+                                            مرحباً بك مجدداً يا رئيس! إليك نظرة شاملة على مؤشرات الأداء ومستوى المخزون لمتجرك <strong style={{ color: 'var(--gold-primary)' }}>{state.storeSettings?.storeName || 'a5tabot'}</strong>.
+                                        </p>
                                     </div>
-                                    <p style={{ color: 'var(--text-secondary)', fontSize: '13px', marginTop: '6px', lineHeight: 1.5 }}>
-                                        مرحباً بك مجدداً يا رئيس! إليك نظرة شاملة على مؤشرات الأداء ومستوى المخزون لمتجرك <strong style={{ color: 'var(--gold-primary)' }}>{state.storeSettings?.storeName || 'a5tabot'}</strong>.
-                                    </p>
+                                    <div className="page-actions" style={{ marginRight: 'auto', marginLeft: 0 }}>
+                                        <SmartDateFilter filterConfig={dashTimeFilter} setFilterConfig={setDashTimeFilter} />
+                                    </div>
                                 </div>
-                                <div className="page-actions" style={{ marginRight: 'auto', marginLeft: 0 }}>
-                                    <SmartDateFilter filterConfig={dashTimeFilter} setFilterConfig={setDashTimeFilter} />
-                                </div>
-                            </div>
 
-                            <MetricsRow timeFilter={dashTimeFilter} />
-                            <ChartsSection timeFilter={dashTimeFilter} />
-                            <div className="dashboard-grid" style={{ marginTop: '24px' }}>
-                                <TopSelling timeFilter={dashTimeFilter} />
-                                <LowQuantity />
+                                <MetricsRow timeFilter={dashTimeFilter} />
+                                <ChartsSection timeFilter={dashTimeFilter} />
+                                <div className="dashboard-grid" style={{ marginTop: '24px' }}>
+                                    <TopSelling timeFilter={dashTimeFilter} />
+                                    <LowQuantity />
+                                </div>
                             </div>
-                        </div>
+                        ) : (
+                            <Navigate to={getFirstAllowedRoute(state.currentUser)} replace />
+                        )
                     } />
 
                     <Route path="/inventory" element={
@@ -400,7 +416,10 @@ export default function App() {
                     } />
 
                     <Route path="/reports" element={
-                        (state.currentUser?.role === 'SuperAdmin' || (state.currentUser?.permissions || []).includes('view_reports')) ? (
+                        (state.currentUser?.role === 'SuperAdmin' || (
+                            (state.currentUser?.permissions || []).includes('view_reports') &&
+                            (state.currentUser?.permissions || []).includes('view_dashboard')
+                        )) ? (
                             <ReportsView />
                         ) : (
                             <Navigate to="/dashboard" replace />
@@ -420,10 +439,14 @@ export default function App() {
                     } />
 
                     <Route path="/marketing" element={
-                        <MarketingView />
+                        (state.currentUser?.role === 'SuperAdmin' || (state.currentUser?.permissions || []).includes('view_dashboard')) ? (
+                            <MarketingView />
+                        ) : (
+                            <Navigate to={getFirstAllowedRoute(state.currentUser)} replace />
+                        )
                     } />
 
-                    <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                    <Route path="*" element={<Navigate to={getFirstAllowedRoute(state.currentUser)} replace />} />
                 </Routes>
             </main>
 
