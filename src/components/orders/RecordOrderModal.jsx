@@ -695,7 +695,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
     // Financial Math calculations (parsed for string safety)
     
-    const shippingFeeVal = parseFloat(shippingFee) || 0;
+    const shippingFeeVal = syncWithBosta ? (parseFloat(shippingFee) || 0) : 0;
     const depositVal = parseFloat(deposit) || 0;
 
     const totalProductsSubtotal = items.reduce((sum, item) => {
@@ -897,6 +897,48 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         if (targetStep >= 3 && (!isStep1Valid || !isStep2Valid)) return false;
         if (targetStep >= 4 && (!isStep1Valid || !isStep2Valid || !isStep3Valid)) return false;
         return true;
+    };
+
+    const handleToggleBosta = () => {
+        if (syncWithBosta) {
+            // Turning OFF Bosta
+            const bostaId = originalAddressObj?.bostaDeliveryId || originalAddressObj?.bostaTrackingNumber;
+            if (editOrderId && bostaId) {
+                showConfirm(
+                    `⚠️ تنبيه: هذا الطلب يملك بوليصة شحن مسجلة في بوسطة برقم (${bostaId}). هل تريد إلغاء الشحنة في بوسطة وتحويل الطلب إلى ( بدون شحن - استلام يد بيد )؟`,
+                    async () => {
+                        if (originalAddressObj?.bostaStateCode === 45 || originalAddressObj?.bostaStateName?.includes("توصيل") || originalAddressObj?.bostaStateName?.includes("Delivered")) {
+                            showToast("لا يمكن إلغاء الأوردر آلياً لأنه قيد التوصيل لدى بوسطة.", "error");
+                            return;
+                        }
+                        showToast("جاري إلغاء الشحنة في بوسطة...", "info");
+                        try {
+                            const { data: bostaData, error: bostaErr } = await supabase.functions.invoke('manage-bosta-delivery', {
+                                body: { action: 'cancel', bostaDeliveryId: bostaId }
+                            });
+                            if (bostaErr || !bostaData || !bostaData.success) {
+                                console.error("Bosta cancel failed:", bostaErr || bostaData);
+                                showToast("فشل إلغاء الشحنة في بوسطة، سيتم تحويل الطلب محلياً بدون شحن.", "warning");
+                            } else {
+                                showToast("تم إلغاء الشحنة في بوسطة بنجاح ✅", "success");
+                            }
+                        } catch(e) {
+                            console.error("Bosta cancellation exception:", e);
+                        }
+                        setSyncWithBosta(false);
+                        setShippingFee('0');
+                    }
+                );
+            } else {
+                setSyncWithBosta(false);
+                setShippingFee('0');
+            }
+        } else {
+            // Turning ON Bosta
+            setSyncWithBosta(true);
+            const defaultFee = governorate ? getShippingFeeForGov(governorate, state.shippingFees) : 0;
+            setShippingFee(defaultFee > 0 ? String(defaultFee) : (shippingFee === '0' ? '' : shippingFee));
+        }
     };
 
     const canConfirm = isStep1Valid && isStep2Valid && isStep3Valid;
@@ -2230,30 +2272,101 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                 </div>
 
                                 <div className="form-group">
-                                    <label className="form-label">سعر الشحن ({currency}) *</label>
-                                    <input 
-                                        type="number" 
-                                        className="form-input" 
-                                        min="0"
-                                        value={shippingFee}
-                                        onChange={(e) => setShippingFee(e.target.value)}
-                                        placeholder="أدخل مصاريف الشحن..."
-                                        required
-                                    />
-                                    {parseFloat(shippingFee) === 0 && (
-                                        <div style={{ fontSize: '11.5px', color: '#10b981', marginTop: '4px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                            <i className="fa-solid fa-circle-check"></i> 💡 تنبيه: الطلب شحن مجاني (بدون مصاريف شحن 0 ج.م).
+                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                                        <label className="form-label" style={{ marginBottom: 0 }}>سعر الشحن ({currency}) *</label>
+                                        <div 
+                                            onClick={handleToggleBosta}
+                                            style={{ 
+                                                display: 'inline-flex', 
+                                                alignItems: 'center', 
+                                                gap: '8px', 
+                                                cursor: 'pointer', 
+                                                userSelect: 'none', 
+                                                background: syncWithBosta ? 'rgba(227, 0, 15, 0.1)' : 'rgba(255,255,255,0.05)', 
+                                                border: syncWithBosta ? '1px solid rgba(227, 0, 15, 0.3)' : '1px solid var(--glass-border)', 
+                                                padding: '4px 10px', 
+                                                borderRadius: '20px',
+                                                transition: 'all 0.3s ease'
+                                            }}
+                                            title={syncWithBosta ? "إيقاف مزامنة بوسطة" : "تفعيل الشحن عبر بوسطة"}
+                                        >
+                                            <span style={{ fontSize: '11.5px', fontWeight: 600, color: syncWithBosta ? '#E3000F' : 'var(--text-secondary)' }}>
+                                                {syncWithBosta ? 'بوسطة (Bosta)' : '( بدون شحن - استلام يد بيد )'}
+                                            </span>
+                                            <div style={{ position: 'relative', width: '32px', height: '18px', background: syncWithBosta ? '#E3000F' : 'rgba(255,255,255,0.2)', borderRadius: '9px', transition: '0.3s' }}>
+                                                <div style={{ position: 'absolute', top: '2px', left: syncWithBosta ? '16px' : '2px', width: '14px', height: '14px', background: '#fff', borderRadius: '50%', transition: '0.3s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
+                                            </div>
                                         </div>
-                                    )}
-                                    {parseFloat(shippingFee) < 0 && (
-                                        <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px', fontWeight: 'bold' }}>
-                                            * لا يمكن إدخال مصاريف شحن بقيمة سالبة.
+                                    </div>
+
+                                    {!syncWithBosta ? (
+                                        <div style={{ fontSize: '12.5px', color: 'var(--gold-primary)', padding: '12px 14px', background: 'rgba(212, 175, 55, 0.05)', border: '1px solid rgba(212, 175, 55, 0.2)', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 600 }}>
+                                            <i className="fa-solid fa-handshake"></i>
+                                            <span>نوع التسليم: <strong>( بدون شحن - استلام يد بيد )</strong></span>
                                         </div>
-                                    )}
-                                    {(shippingFee === '' || shippingFee === null || isNaN(shippingFee)) && (
-                                        <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px', fontWeight: 'bold' }}>
-                                            * يرجى إدخال مصاريف الشحن (يمكن كتابة 0 للشحن المجاني).
-                                        </div>
+                                    ) : (
+                                        <>
+                                            <input 
+                                                type="number" 
+                                                className="form-input" 
+                                                min="0"
+                                                value={shippingFee}
+                                                onChange={(e) => setShippingFee(e.target.value)}
+                                                placeholder="أدخل مصاريف الشحن..."
+                                                required
+                                            />
+                                            {parseFloat(shippingFee) === 0 && (
+                                                <div style={{ fontSize: '11.5px', color: '#10b981', marginTop: '4px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                                    <i className="fa-solid fa-circle-check"></i> 💡 تنبيه: الطلب (شحن مجاني) بـ 0 ج.م.
+                                                </div>
+                                            )}
+                                            {parseFloat(shippingFee) < 0 && (
+                                                <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px', fontWeight: 'bold' }}>
+                                                    * لا يمكن إدخال مصاريف شحن بقيمة سالبة.
+                                                </div>
+                                            )}
+                                            {(shippingFee === '' || shippingFee === null || isNaN(shippingFee)) && (
+                                                <div style={{ fontSize: '11px', color: '#ef4444', marginTop: '4px', fontWeight: 'bold' }}>
+                                                    * يرجى إدخال مصاريف الشحن (يمكن كتابة 0 للشحن المجاني).
+                                                </div>
+                                            )}
+
+                                            {/* Allow To Open Package Checkbox */}
+                                            <div 
+                                                style={{ 
+                                                    display: 'flex', 
+                                                    alignItems: 'center', 
+                                                    gap: '10px', 
+                                                    padding: '10px 12px', 
+                                                    background: 'rgba(227, 0, 15, 0.05)', 
+                                                    border: '1px solid rgba(227, 0, 15, 0.2)',
+                                                    borderRadius: '8px',
+                                                    marginTop: '10px',
+                                                    cursor: 'pointer'
+                                                }} 
+                                                onClick={() => setAllowToOpenPackage(!allowToOpenPackage)}
+                                            >
+                                                <div style={{
+                                                    width: '18px',
+                                                    height: '18px',
+                                                    borderRadius: '4px',
+                                                    border: allowToOpenPackage ? 'none' : '2px solid var(--glass-border-hover)',
+                                                    background: allowToOpenPackage ? '#E3000F' : 'transparent',
+                                                    display: 'flex',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    color: '#fff',
+                                                    transition: '0.2s',
+                                                    flexShrink: 0
+                                                }}>
+                                                    {allowToOpenPackage && <i className="fa-solid fa-check" style={{ fontSize: '11px' }}></i>}
+                                                </div>
+                                                <div style={{ fontSize: '12.5px', color: 'var(--text-primary)', userSelect: 'none', fontWeight: 500 }}>
+                                                    السماح للعميل بفتح الشحنة
+                                                    <span style={{ color: 'var(--text-muted)', fontSize: '11.5px', marginRight: '6px' }}>(Allow to open package)</span>
+                                                </div>
+                                            </div>
+                                        </>
                                     )}
                                 </div>
                             </div>
@@ -2411,6 +2524,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         <span style={{ color: 'var(--text-secondary)' }}>خصم الأوردر:</span>
                                         <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px', color: 'var(--color-danger)' }}>
                                             -{currency} {orderDiscountAmount.toLocaleString('en-US', {maximumFractionDigits: 2})}
+                                            {(syncWithBosta && shippingFeeVal === 0) && <span style={{ fontSize: '11px', color: 'var(--color-success)', marginRight: '4px' }}>(شحن مجاني)</span>}
                                         </strong>
                                     </div>
                                     <div>
@@ -2419,7 +2533,15 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     </div>
                                     <div>
                                         <span style={{ color: 'var(--text-secondary)' }}>سعر الشحن ({governorate || 'لم تحدد'}):</span>
-                                        <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px' }}>+{currency} {shippingFeeVal.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
+                                        <strong style={{ display: 'block', marginTop: '4px', fontSize: '15px' }}>
+                                            {!syncWithBosta ? (
+                                                <span style={{ color: 'var(--gold-primary)', fontSize: '13px' }}>( بدون شحن - استلام يد بيد )</span>
+                                            ) : shippingFeeVal === 0 ? (
+                                                <span style={{ color: 'var(--color-success)' }}>(شحن مجاني)</span>
+                                            ) : (
+                                                `+${currency} ${shippingFeeVal.toLocaleString('en-US', {maximumFractionDigits: 2})}`
+                                            )}
+                                        </strong>
                                     </div>
                                     <div>
                                         <span style={{ color: 'var(--text-secondary)' }}>العربون المستلم:</span>
@@ -2468,7 +2590,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         </div>
                                         {couponValid && (
                                             <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-danger)' }}>
-                                                <span>خصم الكوبون:</span>
+                                                <span>خصم الكوبون: {(syncWithBosta && shippingFeeVal === 0) && <span style={{ color: 'var(--color-success)', fontSize: '11px' }}>(شحن مجاني)</span>}</span>
                                                 <span>-{currency} {orderDiscountAmount.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                             </div>
                                         )}
@@ -2480,7 +2602,15 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                         )}
                                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                                             <span>مصاريف الشحن:</span>
-                                            <span>+{currency} {shippingFeeVal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                            <span>
+                                                {!syncWithBosta ? (
+                                                    <span style={{ color: 'var(--gold-primary)', fontWeight: 'bold' }}>( بدون شحن - استلام يد بيد )</span>
+                                                ) : shippingFeeVal === 0 ? (
+                                                    <span style={{ color: 'var(--color-success)', fontWeight: 'bold' }}>(شحن مجاني)</span>
+                                                ) : (
+                                                    `+${currency} ${shippingFeeVal.toLocaleString('en-US', {maximumFractionDigits: 2})}`
+                                                )}
+                                            </span>
                                         </div>
                                         {deposit > 0 && (
                                             <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--color-success)' }}>
@@ -2574,14 +2704,9 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                                 padding: '12px 14px', 
                                                 borderRadius: '8px',
                                                 border: '1px dashed rgba(241, 196, 15, 0.3)',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                gap: '10px'
+                                                display: 'flex'
                                             }}>
-                                                <img src="/icons/warning-alert.png" alt="Notice" style={{ width: '24px', height: '24px', objectFit: 'contain', flexShrink: 0 }} />
-                                                <div>
-                                                    العربون مسجل على الأدمن <strong style={{ color: '#fff' }}>{receiverName}</strong>. سيظل في حالة "معلق" حتى يقوم بتأكيد استلامه بنفسه في شاشة العرابين.
-                                                </div>
+                                                ⚠️ ملاحظة: العربون مُسجل باسم {receiverName}. يُرجى التأكد من استلام المبلغ في الخزينة المعنية.
                                             </div>
                                         )}
                                     </div>
@@ -2619,107 +2744,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                     </tbody>
                                 </table>
                             </div>
-                            
-                            {!editOrderId && (
-                                <div style={{ 
-                                    marginTop: '16px',
-                                    padding: '20px', 
-                                    background: syncWithBosta ? 'rgba(227, 0, 15, 0.08)' : 'rgba(255,255,255,0.03)', 
-                                    border: syncWithBosta ? '1px solid rgba(227, 0, 15, 0.3)' : '1px solid var(--glass-border)',
-                                    borderRadius: '12px',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    gap: '16px',
-                                    transition: 'all 0.3s ease'
-                                }}>
-                                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }} onClick={() => setSyncWithBosta(!syncWithBosta)}>
-                                        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                                            <div style={{
-                                                width: '44px',
-                                                height: '44px',
-                                                borderRadius: '10px',
-                                                background: syncWithBosta ? '#E3000F' : 'rgba(255,255,255,0.1)',
-                                                color: '#fff',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                transition: 'all 0.3s ease'
-                                            }}>
-                                                <svg viewBox="0 0 100 100" style={{ width: '26px', height: '26px', stroke: 'currentColor', strokeWidth: 9, fill: 'none', strokeLinejoin: 'round', strokeLinecap: 'round' }}>
-                                                    <polygon points="50,10 90,32 90,68 50,90 10,68 10,32" />
-                                                    <line x1="10" y1="32" x2="90" y2="68" />
-                                                    <line x1="10" y1="68" x2="90" y2="32" />
-                                                </svg>
-                                            </div>
-                                            <div>
-                                                <div style={{ fontSize: '16px', fontWeight: 'bold', color: syncWithBosta ? '#E3000F' : 'var(--text-primary)', transition: 'color 0.3s' }}>
-                                                    بوسطة (Bosta)
-                                                </div>
-                                                <div style={{ fontSize: '13px', color: 'var(--text-secondary)', marginTop: '4px' }}>
-                                                    إرسال الطلب لشركة الشحن تلقائياً عند التأكيد
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div style={{
-                                            position: 'relative',
-                                            display: 'inline-block',
-                                            width: '44px',
-                                            height: '24px',
-                                            background: syncWithBosta ? '#E3000F' : 'rgba(255,255,255,0.2)',
-                                            borderRadius: '12px',
-                                            transition: '0.3s',
-                                        }}>
-                                            <div style={{
-                                                position: 'absolute',
-                                                top: '2px',
-                                                left: syncWithBosta ? '22px' : '2px',
-                                                width: '20px',
-                                                height: '20px',
-                                                background: '#fff',
-                                                borderRadius: '50%',
-                                                transition: '0.3s',
-                                                boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                                            }} />
-                                        </div>
-                                    </div>
-                                    
-                                    {syncWithBosta && (
-                                        <div style={{ 
-                                            display: 'flex', 
-                                            alignItems: 'center', 
-                                            gap: '12px', 
-                                            padding: '12px', 
-                                            background: 'rgba(0,0,0,0.15)', 
-                                            borderRadius: '8px',
-                                            marginTop: '4px',
-                                            cursor: 'pointer'
-                                        }} onClick={(e) => { e.stopPropagation(); setAllowToOpenPackage(!allowToOpenPackage); }}>
-                                            <div style={{
-                                                width: '20px',
-                                                height: '20px',
-                                                borderRadius: '4px',
-                                                border: allowToOpenPackage ? 'none' : '2px solid var(--glass-border-hover)',
-                                                background: allowToOpenPackage ? '#E3000F' : 'transparent',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'center',
-                                                color: '#fff',
-                                                transition: '0.2s'
-                                            }}>
-                                                {allowToOpenPackage && <i className="fa-solid fa-check" style={{ fontSize: '12px' }}></i>}
-                                            </div>
-                                            <div style={{ fontSize: '14px', color: '#fff', userSelect: 'none' }}>
-                                                السماح للعميل بفتح الشحنة
-                                                <span style={{ color: 'var(--text-muted)', fontSize: '12px', marginLeft: '6px' }}>(Allow to open package)</span>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
-
-                        </div>
-                    )}
+                         </div>
+                     )}
                 </div>
 
                 {/* NAVIGATION FOOTER */}
