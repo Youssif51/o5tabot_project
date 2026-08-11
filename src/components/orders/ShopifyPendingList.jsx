@@ -414,16 +414,25 @@ ${itemsList}
                 };
                 const addressStr = JSON.stringify(updatedAddrObj);
 
+                // Triple-tier safety valve for deposit receiver & order creator (matching manual order logic)
+                const finalReceiverId = (depositAmount > 0)
+                    ? (receiverId || originalOrd?.depositReceiverId || state.currentUser?.id || null)
+                    : null;
+                const finalCreatorName = state.currentUser?.name || 'الآدمن';
+                const createdByValue = (!originalOrd?.createdBy || originalOrd?.createdBy === 'Shopify Webhook')
+                    ? finalCreatorName
+                    : originalOrd.createdBy;
+
                 if (!isBostaEnabled) {
                     if (supabase) {
                         try {
                             await supabase.from('orders').update({
                                 deposit: depositAmount,
-                                deposit_receiver_id: receiverId,
+                                deposit_receiver_id: finalReceiverId,
                                 deposit_status: depositStatus,
                                 status: 'Pending',
                                 address: addressStr,
-                                created_by: state.currentUser?.name || 'الآدمن',
+                                created_by: createdByValue,
                                 updated_by: null
                             }).eq('id', ordId);
 
@@ -438,13 +447,13 @@ ${itemsList}
 
                     updateOrderProperties(ordId, {
                          deposit: depositAmount,
-                         depositReceiverId: receiverId,
+                         depositReceiverId: finalReceiverId,
                          depositStatus: depositStatus,
                          status: 'Pending',
                          is_reviewed: true,
                          isReviewed: true,
                          address: addressStr,
-                         createdBy: state.currentUser?.name || 'الآدمن',
+                         createdBy: createdByValue,
                          updatedBy: null
                      });
 
@@ -458,11 +467,11 @@ ${itemsList}
                             try {
                                 await supabase.from('orders').update({
                                     deposit: depositAmount,
-                                    deposit_receiver_id: receiverId,
+                                    deposit_receiver_id: finalReceiverId,
                                     deposit_status: 'pending',
                                     status: 'Pending',
                                     address: addressStr,
-                                    created_by: state.currentUser?.name || 'الآدمن',
+                                    created_by: createdByValue,
                                     updated_by: null
                                 }).eq('id', ordId);
 
@@ -473,13 +482,13 @@ ${itemsList}
 
                                 updateOrderProperties(ordId, {
                                     deposit: depositAmount,
-                                    depositReceiverId: receiverId,
+                                    depositReceiverId: finalReceiverId,
                                     depositStatus: 'pending',
                                     status: 'Pending',
                                     is_reviewed: true,
                                     isReviewed: true,
                                     address: addressStr,
-                                    createdBy: state.currentUser?.name || 'الآدمن',
+                                    createdBy: createdByValue,
                                     updatedBy: null
                                 });
 
@@ -497,7 +506,7 @@ ${itemsList}
                             bostaDistrictName: district.districtOtherName,
                             bostaZoneId: district.zoneId,
                             allowToOpenPackage: allowToOpen
-                        }, depositAmount, receiverId, depositStatus);
+                        }, depositAmount, finalReceiverId, depositStatus);
                     }
                 }
                 
