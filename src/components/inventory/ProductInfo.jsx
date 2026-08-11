@@ -8,6 +8,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
     const { state, recordStockAdjustment, showToast, language, t } = useContext(AppContext);
     const [activeTab, setActiveTab] = useState('Overview');
     const [ledgerPage, setLedgerPage] = useState(1);
+    const [ledgerSearch, setLedgerSearch] = useState('');
     const ledgerPageSize = 15;
 
     const formatLedgerDateTime = (dateVal) => {
@@ -746,13 +747,60 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
             ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
                     <div className="glass-card" style={{ padding: '24px' }}>
-                        <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '18px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
-                            تاريخ الحركات وتتبع التكلفة (Stock & Cost History)
-                        </h3>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '18px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px', flexWrap: 'wrap', gap: '12px' }}>
+                            <h3 style={{ fontSize: '15px', color: '#fff', margin: 0 }}>
+                                تاريخ الحركات وتتبع التكلفة (Stock & Cost History)
+                            </h3>
+                            <div className="search-box-wrapper" style={{ minWidth: '240px', position: 'relative' }}>
+                                <i className="fa-solid fa-magnifying-glass" style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-secondary)', fontSize: '13px' }}></i>
+                                <input 
+                                    type="text" 
+                                    placeholder="بحث برقم الطلب، العميل، الـ SKU..." 
+                                    value={ledgerSearch} 
+                                    onChange={(e) => { setLedgerSearch(e.target.value); setLedgerPage(1); }} 
+                                    style={{
+                                        width: '100%',
+                                        padding: '8px 36px 8px 12px',
+                                        background: 'rgba(255,255,255,0.03)',
+                                        border: '1px solid var(--glass-border)',
+                                        borderRadius: '8px',
+                                        color: '#fff',
+                                        fontSize: '13px',
+                                        outline: 'none',
+                                        transition: 'all 0.3s ease',
+                                    }}
+                                    onFocus={(e) => e.target.style.borderColor = 'var(--gold-primary)'}
+                                    onBlur={(e) => e.target.style.borderColor = 'var(--glass-border)'}
+                                />
+                            </div>
+                        </div>
                         {(() => {
                             const rawLogs = (state.stockLedger || []).filter(log => {
                                 const pId = log.product_id || log.productId;
-                                return String(pId) === String(productId);
+                                if (String(pId) !== String(productId)) return false;
+                                
+                                if (ledgerSearch.trim()) {
+                                    const searchLower = ledgerSearch.toLowerCase().trim();
+                                    const orderIdStr = String(log.orderId || log.order_id || '').toLowerCase();
+                                    const notesStr = String(log.notes || log.remarks || '').toLowerCase();
+                                    const skuStr = String(log.variant_sku || log.variantSku || '').toLowerCase();
+                                    
+                                    // Search client name if order exists
+                                    let clientStr = '';
+                                    const ordId = log.orderId || log.order_id;
+                                    if (ordId) {
+                                        const ord = (state.orders || []).find(o => o.id === ordId) || (state.deletedOrdersWithDeposits || []).find(o => o.id === ordId);
+                                        if (ord) clientStr = String(ord.client || '').toLowerCase();
+                                    }
+                                    
+                                    if (!orderIdStr.includes(searchLower) && 
+                                        !notesStr.includes(searchLower) && 
+                                        !skuStr.includes(searchLower) && 
+                                        !clientStr.includes(searchLower)) {
+                                        return false;
+                                    }
+                                }
+                                return true;
                             });
 
                             // Group by variant_sku to calculate accurate running balance per variant

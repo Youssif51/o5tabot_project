@@ -121,6 +121,40 @@ export default function App() {
             window.removeEventListener('offline', handleOffline);
         };
     }, []);
+
+    // ─── Auto Version Check & Reload (كل 5 دقائق) ───
+    React.useEffect(() => {
+        let currentVersion = null;
+
+        const checkVersion = async () => {
+            try {
+                const res = await fetch('/version.json?t=' + Date.now(), { cache: 'no-store' });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (currentVersion === null) {
+                    // أول مرة - سجل النسخة الحالية فقط
+                    currentVersion = data.v;
+                } else if (data.v !== currentVersion) {
+                    // في تحديث جديد! → أعد تحميل الصفحة تلقائياً
+                    console.log('🔄 New version detected:', data.v, '(was:', currentVersion, ')');
+                    window.location.reload();
+                }
+            } catch (e) {
+                // تجاهل الأخطاء بصمت (مثلاً لو أوفلاين)
+            }
+        };
+
+        // أول فحص بعد 10 ثوانٍ من فتح التطبيق
+        const initialTimer = setTimeout(checkVersion, 10000);
+        // ثم كل 5 دقائق
+        const interval = setInterval(checkVersion, 5 * 60 * 1000);
+
+        return () => {
+            clearTimeout(initialTimer);
+            clearInterval(interval);
+        };
+    }, []);
+
     const [isScanning, setIsScanning] = useState(false);
 
     // Gather all active barcodes for scanner dropdown
