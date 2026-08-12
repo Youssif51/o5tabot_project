@@ -570,7 +570,7 @@ export const AppProvider = ({ children }) => {
                     shippingFees: dbShippingFees || prev.shippingFees || DEFAULT_SHIPPING_FEES
                 }));
 
-                // Self-healing guard: check for reviewed Shopify orders missing stock ledger
+                // Retroactively repair legacy orders that have deposit > 0 but null deposit_receiver_id
                 setTimeout(async () => {
                     try {
                         const nullDepositOrders = mappedOrders.filter(o => (o.deposit || 0) > 0 && !o.depositReceiverId && !!o.createdBy);
@@ -593,22 +593,8 @@ export const AppProvider = ({ children }) => {
                                 }));
                             }
                         }
-
-                        // Check for reviewed Shopify orders missing stock ledger
-                        const unDeductedOrders = mappedOrders.filter(o => o.isReviewed && o.items && o.items.length > 0 && o.status !== 'Cancelled' && o.status !== 'Rejected');
-                        for (const ord of unDeductedOrders) {
-                            try {
-                                const { data: existingLedger } = await supabase.from('stock_ledger').select('id').eq('order_id', ord.id).limit(1);
-                                if (!existingLedger || existingLedger.length === 0) {
-                                    console.log(`Self-healing stock deduction for order ${ord.id}...`);
-                                    await deductOrderStock(ord);
-                                }
-                            } catch(e) {
-                                console.error("Self-healing error for order:", ord.id, e);
-                            }
-                        }
                     } catch (e) {
-                        console.error("Error in background self-healing guard:", e);
+                        console.error("Error in background legacy deposit repair:", e);
                     }
                 }, 1000);
             } catch (err) {
@@ -5001,6 +4987,12 @@ export const AppProvider = ({ children }) => {
         }
 
         const targetOrder = (state.orders || []).find(o => o.id === orderId);
+
+        if (targetOrder && targetOrder.depositStatus === 'unconfirmed') {
+            showToast(language === 'ar' ? "الطلب مجمد رقابياً لعدم استلام العربون. يرجى حسم ملف العربون من شاشة العرابين أولاً." : "Order is frozen due to unconfirmed deposit.", "error");
+            return false;
+        }
+
         const wasAlreadyReviewed = targetOrder ? (targetOrder.is_reviewed || targetOrder.isReviewed) : false;
         const isShopifyOrder = targetOrder ? (targetOrder.source === 'shopify') : false;
 
@@ -5255,6 +5247,77 @@ export const AppProvider = ({ children }) => {
         } catch (err) {
             console.error("Error updating deposit status:", err);
             showToast("حدث خطأ أثناء تحديث حالة العربون", "error");
+        }
+    };
+
+    const resolveUnconfirmedDeposit = async (orderId, actionType, payload = {}) => {
+        if (!supabase) return false;
+        const targetOrder = (state.orders || []).find(o => o.id === orderId);
+        if (!targetOrder) return false;
+
+        const currentUserName = state.currentUser?.name || 'الأدمن';
+
+        try {
+            if (actionType === 'reassign') {
+                const { newReceiverId, newReceiverName } = payload;
+                if (!newReceiverId) {
+                    showToast("يرجى اختيار الأدمن المخصص لاستلام العربون", "error");
+                    return false;
+                }
+                const { error } = await supabase.from('orders').update({
+                    deposit_receiver_id: newReceiverId,
+                    deposit_status: 'pending'
+                }).eq('id', orderId);
+
+                if (error) throw error;
+
+                setState(prev => ({
+                    ...prev,
+                    orders: (prev.orders || []).map(o => o.id === orderId ? { 
+                        ...o, 
+                        depositReceiverId: newReceiverId, 
+                        depositStatus: 'pending' 
+                    } : o)
+                }));
+
+                showToast(`تم إعادة تحويل عهدة العربون إلى الأدمن (${newReceiverName}) بنجاح`, "success");
+                logActivity("order", `🔄 حسم نزاع عربون: تم إعادة تخصيص عهدة العربون للطلب ${orderId} للأدمن (${newReceiverName}) بواسطة (${currentUserName}).`);
+                return true;
+            }
+
+            if (actionType === 'zero_out') {
+                const { error } = await supabase.from('orders').update({
+                    deposit: 0,
+                    deposit_status: 'settled'
+                }).eq('id', orderId);
+
+                if (error) throw error;
+
+                setState(prev => ({
+                    ...prev,
+                    orders: (prev.orders || []).map(o => o.id === orderId ? { 
+                        ...o, 
+                        deposit: 0, 
+                        depositStatus: 'settled' 
+                    } : o)
+                }));
+
+                showToast("تم إلغاء قيمة العربون وتحويل المبلغ كاملاً للتحصيل عند التسليم", "success");
+                logActivity("order", `🚫 حسم نزاع عربون: تم تصفير مبلغ العربون للطلب ${orderId} وتحويله بالكامل للتحصيل بواسطة (${currentUserName}).`);
+                return true;
+            }
+
+            if (actionType === 'cancel_order') {
+                await updateOrderStatus(orderId, 'Cancelled');
+
+                showToast("تم إلغاء الطلب واسترجاع المخزون بنجاح", "info");
+                logActivity("order", `❌ حسم نزاع عربون: تم إلغاء الطلب ${orderId} بسبب نزاع العربون بواسطة (${currentUserName}).`);
+                return true;
+            }
+        } catch (err) {
+            console.error("Error resolving unconfirmed deposit:", err);
+            showToast("حدث خطأ أثناء حسم النزاع", "error");
+            return false;
         }
     };
 
@@ -6173,6 +6236,7 @@ export const AppProvider = ({ children }) => {
             deleteMultipleProducts,
             deleteProductsLocalOnly,
             updateDepositStatus,
+            resolveUnconfirmedDeposit,
             confirmDepositRefund,
             confirmDepositAndRefund,
             updateOrderProperties,

@@ -946,6 +946,12 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
     // Handle Submit
     const handleSaveOrder = async (isDraftSave) => {
         if (isSubmitting) return;
+
+        if (originalOrder && originalOrder.depositStatus === 'unconfirmed') {
+            showToast("الطلب مجمد رقابياً لعدم استلام العربون. يرجى حسم ملف العربون من شاشة العرابين أولاً قبل التعديل أو الشحن.", "error");
+            return;
+        }
+
         setIsSubmitting(true);
         let resetSubmitting = true;
         try {
@@ -1192,6 +1198,30 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                         </span>
                     </div>
                 </div>
+
+                {originalOrder && originalOrder.depositStatus === 'unconfirmed' && (
+                    <div style={{
+                        background: 'rgba(239, 68, 68, 0.12)',
+                        border: '1px solid #ef4444',
+                        borderRadius: '8px',
+                        padding: '14px 18px',
+                        marginBottom: '20px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        color: '#ef4444',
+                        fontSize: '13px',
+                        fontWeight: 600
+                    }}>
+                        <i className="fa-solid fa-triangle-exclamation" style={{ fontSize: '20px' }}></i>
+                        <div>
+                            <div>🚨 <strong>تنبيه رقابي عاجل - الطلب مجمد:</strong></div>
+                            <div style={{ fontSize: '12px', opacity: 0.9, marginTop: '2px', fontWeight: 400 }}>
+                                الأدمن (<strong>{originalOrder.createdBy || 'الأدمن'}</strong>) أقر عدم استلام مبلغ العربون ({originalOrder.deposit || 0} ج.م). تم تجميد الطلب ولا يمكن تعديله أو شحنه لبوسطة حتى حسم نزاع العربون من شاشة العرابين.
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* 4-STEP STEPPER */}
                 <div className="stepper-container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px', position: 'relative', padding: '0 40px' }}>

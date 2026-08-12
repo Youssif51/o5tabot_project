@@ -100,6 +100,14 @@ Deno.serve(async (req) => {
       });
     }
 
+    // AUDIT SECURITY GUARD: Block shipment creation if deposit status is unconfirmed
+    if (order.deposit_status === 'unconfirmed') {
+      return new Response(JSON.stringify({ error: "لا يمكن إنشاء شحنة بوسطة لطلب فيه عربون غير مستلم وتحت المراجعة الرقابية." }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
     // CRITICAL CONCURRENCY CHECK: Prevent duplicate Bosta shipment creation
     let hasBostaDelivery = false;
     let isReviewed = false;

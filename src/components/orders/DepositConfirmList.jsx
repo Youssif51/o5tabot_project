@@ -87,7 +87,7 @@ const getRemainingToCollect = (ord) => {
 };
 
 export default function DepositConfirmList() {
-    const { state, updateDepositStatus, settleAdminsCustody, confirmDepositRefund, confirmDepositAndRefund, showToast, showConfirm } = useContext(AppContext);
+    const { state, updateDepositStatus, resolveUnconfirmedDeposit, settleAdminsCustody, confirmDepositRefund, confirmDepositAndRefund, showToast, showConfirm } = useContext(AppContext);
     const allOrdersForDeposits = [
         ...(state.orders || []),
         ...(state.deletedOrdersWithDeposits || [])
@@ -98,6 +98,65 @@ export default function DepositConfirmList() {
     const [selectedSettleOrderIds, setSelectedSettleOrderIds] = useState([]);
     const [amountError, setAmountError] = useState('');
     const [timeFilter, setTimeFilter] = useState({ type: 'preset', preset: 'all' });
+    const [reassignAdminMap, setReassignAdminMap] = useState({});
+
+    const unconfirmedDepositsList = (allOrdersForDeposits || []).filter(o => 
+        o.depositStatus === 'unconfirmed' && 
+        o.status !== 'Cancelled' &&
+        o.status !== 'Rejected' &&
+        (parseFloat(o.deposit) || 0) > 0 &&
+        isDateMatchingFilter(o.date, timeFilter)
+    );
+
+    const totalUnconfirmedAmount = unconfirmedDepositsList.reduce(
+        (sum, o) => sum + (parseFloat(o.deposit) || 0), 0
+    );
+
+    const handleReassignDeposit = async (orderId) => {
+        const targetAdminId = reassignAdminMap[orderId];
+        if (!targetAdminId) {
+            showToast("يرجى اختيار الأدمن المخصص قبل إعادة التحويل", "error");
+            return;
+        }
+        const targetAdmin = (state.users || []).find(u => u.id === targetAdminId);
+        const adminName = targetAdmin ? targetAdmin.name : 'أدمن';
+        
+        showConfirm(
+            `هل أنت متأكد من إعادة تحويل عهدة عربون الطلب #${orderId} للأدمن (${adminName})؟`,
+            async () => {
+                const res = await resolveUnconfirmedDeposit(orderId, 'reassign', {
+                    newReceiverId: targetAdminId,
+                    newReceiverName: adminName
+                });
+                if (res) {
+                    setReassignAdminMap(prev => {
+                        const copy = { ...prev };
+                        delete copy[orderId];
+                        return copy;
+                    });
+                }
+            }
+        );
+    };
+
+    const handleZeroOutDeposit = async (orderId, currentDeposit) => {
+        showConfirm(
+            `هل أنت متأكد من تصفير عربون الطلب #${orderId} (إلغاء ${currentDeposit} ج.م ومطالبة العميل بالمبلغ كاملاً عند التسليم)؟`,
+            async () => {
+                await resolveUnconfirmedDeposit(orderId, 'zero_out');
+            }
+        );
+    };
+
+    const handleCancelOrderForDeposit = async (orderId) => {
+        showConfirm(
+            `هل أنت متأكد من إلغاء الطلب #${orderId} نهائياً بسبب نزاع العربون واسترجاع مخزنه؟`,
+            async () => {
+                await resolveUnconfirmedDeposit(orderId, 'cancel_order');
+            }
+        );
+    };
+
     const location = useLocation();
 
     useEffect(() => {
@@ -412,6 +471,131 @@ export default function DepositConfirmList() {
                 </div>
             </div>
 
+
+            {/* Section 0: Unconfirmed Deposits Audit & Resolution Section */}
+            <div className="glass-card" style={{ 
+                padding: '24px', 
+                marginBottom: '24px', 
+                border: unconfirmedDepositsList.length > 0 ? '1px solid #ef4444' : '1px solid var(--glass-border)', 
+                background: unconfirmedDepositsList.length > 0 ? 'rgba(239, 68, 68, 0.04)' : 'var(--glass-bg)' 
+            }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px', flexWrap: 'wrap', gap: '12px' }}>
+                    <h3 style={{ margin: 0, color: unconfirmedDepositsList.length > 0 ? '#ef4444' : 'var(--gold-primary)', fontSize: '16px', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <i className="fa-solid fa-triangle-exclamation" style={{ fontSize: '18px' }}></i> 🚨 عرابين لم تُستلم / تحت المراجعة والتدقيق
+                    </h3>
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                        <span className="badge" style={{ fontSize: '11px', background: 'rgba(239,68,68,0.2)', color: '#ef4444', fontWeight: 'bold' }}>
+                            {unconfirmedDepositsList.length} طلبات مرفوضة
+                        </span>
+                        <span className="badge" style={{ fontSize: '12px', background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)', padding: '4px 12px', fontWeight: 'bold' }}>
+                            إجمالي العرابين المفقودة: {totalUnconfirmedAmount.toLocaleString()} {currency}
+                        </span>
+                    </div>
+                </div>
+
+                {unconfirmedDepositsList.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '30px', color: 'var(--text-muted)' }}>
+                        <i className="fa-solid fa-shield-check" style={{ fontSize: '32px', marginBottom: '10px', color: '#2ecc71' }}></i>
+                        <p style={{ margin: 0, fontSize: '13px' }}>ممتاز! لا توجد أي نزاعات أو عرابين مرفوضة حالياً.</p>
+                    </div>
+                ) : (
+                    <div className="table-wrapper" style={{ overflowX: 'auto' }}>
+                        <table className="custom-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
+                            <thead>
+                                <tr style={{ borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)', fontSize: '12px' }}>
+                                    <th style={{ textAlign: 'center', padding: '12px 8px' }}>رقم الطلب</th>
+                                    <th style={{ textAlign: 'center', padding: '12px 8px' }}>العميل</th>
+                                    <th style={{ textAlign: 'center', padding: '12px 8px' }}>مبلغ العربون المرفوض</th>
+                                    <th style={{ textAlign: 'center', padding: '12px 8px' }}>الآدمن المُقر بالرفض</th>
+                                    <th style={{ textAlign: 'center', padding: '12px 8px' }}>منشئ الطلب</th>
+                                    <th style={{ textAlign: 'center', padding: '12px 8px' }}>لوحة الحسم والقرارات الرقابية</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {unconfirmedDepositsList.map(ord => {
+                                    const receiverAdmin = (state.users || []).find(u => u.id === ord.depositReceiverId);
+                                    const canResolve = state.currentUser?.role === 'SuperAdmin' || 
+                                                        state.currentUser?.name === ord.createdBy || 
+                                                        state.currentUser?.id === ord.depositReceiverId;
+
+                                    return (
+                                        <tr key={ord.id} style={{ borderBottom: '1px solid var(--glass-bg)', textAlign: 'center', background: 'rgba(239, 68, 68, 0.02)' }}>
+                                            <td style={{ padding: '12px 8px', fontFamily: 'monospace', fontWeight: 'bold', color: '#ef4444' }}>
+                                                #{ord.id}
+                                            </td>
+                                            <td style={{ padding: '12px 8px', fontWeight: 500 }}>{ord.client}</td>
+                                            <td style={{ padding: '12px 8px', fontWeight: 'bold', color: '#ef4444' }}>
+                                                {ord.deposit} {currency}
+                                            </td>
+                                            <td style={{ padding: '12px 8px', color: 'var(--text-primary)' }}>
+                                                <span style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', padding: '4px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 600 }}>
+                                                    {receiverAdmin ? receiverAdmin.name : (ord.createdBy || 'الآدمن')}
+                                                </span>
+                                            </td>
+                                            <td style={{ padding: '12px 8px', color: 'var(--text-muted)', fontSize: '12px' }}>
+                                                {ord.createdBy || 'الآدمن'}
+                                            </td>
+                                            <td style={{ padding: '12px 8px' }}>
+                                                {canResolve ? (
+                                                    <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
+                                                        {/* Reassign dropdown & button */}
+                                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                                            <select
+                                                                className="form-input"
+                                                                style={{ padding: '4px 8px', fontSize: '11px', height: '30px', background: 'var(--glass-bg-hover)' }}
+                                                                value={reassignAdminMap[ord.id] || ''}
+                                                                onChange={(e) => setReassignAdminMap(prev => ({ ...prev, [ord.id]: e.target.value }))}
+                                                            >
+                                                                <option value="">-- اختر أدمن لإعادة التحويل --</option>
+                                                                {(state.users || []).map(u => (
+                                                                    <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                                                                ))}
+                                                            </select>
+                                                            <button
+                                                                className="btn"
+                                                                disabled={!reassignAdminMap[ord.id]}
+                                                                onClick={() => handleReassignDeposit(ord.id)}
+                                                                style={{ padding: '4px 10px', fontSize: '11px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '4px', cursor: reassignAdminMap[ord.id] ? 'pointer' : 'not-allowed', opacity: reassignAdminMap[ord.id] ? 1 : 0.5, fontWeight: 600 }}
+                                                                title="إعادة تحويل عهدة العربون كـ pending"
+                                                            >
+                                                                🔁 تحويل
+                                                            </button>
+                                                        </div>
+
+                                                        {/* Zero Out Button */}
+                                                        <button
+                                                            className="btn"
+                                                            onClick={() => handleZeroOutDeposit(ord.id, ord.deposit)}
+                                                            style={{ padding: '4px 10px', fontSize: '11px', background: '#e67e22', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
+                                                            title="تصفير العربون وتحويل المبلغ كاملاً للتحصيل عند التسليم"
+                                                        >
+                                                            🚫 تصفير العربون
+                                                        </button>
+
+                                                        {/* Cancel Order Button */}
+                                                        <button
+                                                            className="btn"
+                                                            onClick={() => handleCancelOrderForDeposit(ord.id)}
+                                                            style={{ padding: '4px 10px', fontSize: '11px', background: '#dc2626', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 600 }}
+                                                            title="إلغاء الطلب نهائياً"
+                                                        >
+                                                            ❌ إلغاء الطلب
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                                                        بانتظار حسم السوبر أدمن أو منشئ الطلب
+                                                    </span>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
 
             {/* Section 1: My Pending Deposits */}
             <div className="glass-card" style={{ padding: '24px', marginBottom: '24px', border: '1px solid var(--glass-border)', background: 'var(--glass-bg)' }}>
