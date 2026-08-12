@@ -88,7 +88,7 @@ export default function MetricsRow({ timeFilter = 'all' }) {
     let purReturns = (state.wastes || []).filter(w => isDateMatchingFilter(w.date, timeFilter)).length;
 
     // 4. Product Summary calculations
-    let categories = [...new Set(state.products.map(p => p.category).filter(Boolean))];
+    let categories = [...new Set(state.products.map(p => p.category).filter(c => c && c !== 'Uncategorized' && c !== 'غير مصنف'))];
 
     return (
         <>

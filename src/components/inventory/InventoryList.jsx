@@ -65,6 +65,9 @@ export default function InventoryList({
     // Filter products by collection
     let filteredList = [];
     state.products.forEach(prod => {
+        // Visually hide Uncategorized products from inventory view
+        if (prod.category === 'Uncategorized' || prod.category === 'غير مصنف' || !prod.category) return;
+
         if (collectionFilter !== 'all') {
             if (collectionFilter === 'none') {
                 if (prod.shopifyCollectionIds && prod.shopifyCollectionIds.length > 0) return;
