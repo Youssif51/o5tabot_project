@@ -4988,7 +4988,10 @@ export const AppProvider = ({ children }) => {
 
         const targetOrder = (state.orders || []).find(o => o.id === orderId);
 
-        if (targetOrder && (parseFloat(targetOrder.deposit) || 0) > 0 && (targetOrder.depositStatus === 'pending' || targetOrder.depositStatus === 'unconfirmed')) {
+        // Effective deposit status: prefer explicitly passed depositStatus parameter (e.g. 'confirmed' when clicking 'نعم استلمت')
+        const effectiveDepositStatus = depositStatus || targetOrder?.depositStatus || 'confirmed';
+
+        if (targetOrder && (parseFloat(depositAmount || targetOrder.deposit) || 0) > 0 && (effectiveDepositStatus === 'unconfirmed' || (effectiveDepositStatus === 'pending' && targetOrder.depositStatus === 'pending' && depositStatus !== 'confirmed'))) {
             showToast(language === 'ar' ? "لا يمكن إصدار بوليصة بوسطة لطلب عربونه معلق أو مرفوض. يرجى تأكيد استلام العربون أولاً." : "Cannot generate Bosta waybill for order with pending or unconfirmed deposit.", "error");
             return false;
         }

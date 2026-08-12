@@ -100,9 +100,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    // AUDIT SECURITY GUARD: Block shipment creation if deposit status is pending or unconfirmed
-    if ((parseFloat(order.deposit) || 0) > 0 && (order.deposit_status === 'pending' || order.deposit_status === 'unconfirmed')) {
-      return new Response(JSON.stringify({ error: "لا يمكن إنشاء شحنة بوسطة لطلب فيه عربون معلق أو غير مستلم." }), {
+    // AUDIT SECURITY GUARD: Block shipment creation ONLY if deposit status is unconfirmed (rejected)
+    if (order.deposit_status === 'unconfirmed') {
+      return new Response(JSON.stringify({ error: "لا يمكن إنشاء شحنة بوسطة لطلب فيه عربون غير مستلم وتحت المراجعة الرقابية." }), {
         status: 400,
         headers: { "Content-Type": "application/json", ...corsHeaders }
       });
