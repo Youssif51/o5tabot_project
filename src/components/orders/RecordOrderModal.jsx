@@ -1072,7 +1072,9 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
 
                     // Background dispatch to Bosta without blocking the UI modal
                     const hadBostaId = originalOrder?.address && parseAddressData(originalOrder.address)?.bostaDeliveryId;
-                    if (!isDraftSave && syncWithBosta && newOrderObj.status !== 'Draft' && newOrderObj.depositStatus !== 'pending' && !hadBostaId) {
+                    const isDepositValidForBosta = (parseFloat(newOrderObj.deposit) || 0) === 0 || (newOrderObj.depositStatus === 'confirmed' || newOrderObj.depositStatus === 'settled');
+
+                    if (!isDraftSave && syncWithBosta && newOrderObj.status !== 'Draft' && isDepositValidForBosta && !hadBostaId) {
                         const bostaMetadata = {
                             customerName: client,
                             customerPhone: phone,
@@ -1094,8 +1096,10 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     await addOrder(newOrderObj);
                     showToast(isDraftSave ? "تم حفظ الطلب كمسودة بنجاح" : "تم إضافة طلب العميل بنجاح ✅", "success");
                     
+                    const isDepositValidForBosta = (parseFloat(newOrderObj.deposit) || 0) === 0 || (newOrderObj.depositStatus === 'confirmed' || newOrderObj.depositStatus === 'settled');
+
                     // Background dispatch to Bosta without freezing the UI modal
-                    if (!isDraftSave && syncWithBosta && newOrderObj.status !== 'Draft' && newOrderObj.depositStatus !== 'pending') {
+                    if (!isDraftSave && syncWithBosta && newOrderObj.status !== 'Draft' && isDepositValidForBosta) {
                         const bostaMetadata = {
                             customerName: client,
                             customerPhone: phone,

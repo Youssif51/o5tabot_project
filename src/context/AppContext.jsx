@@ -4988,8 +4988,8 @@ export const AppProvider = ({ children }) => {
 
         const targetOrder = (state.orders || []).find(o => o.id === orderId);
 
-        if (targetOrder && targetOrder.depositStatus === 'unconfirmed') {
-            showToast(language === 'ar' ? "الطلب مجمد رقابياً لعدم استلام العربون. يرجى حسم ملف العربون من شاشة العرابين أولاً." : "Order is frozen due to unconfirmed deposit.", "error");
+        if (targetOrder && (parseFloat(targetOrder.deposit) || 0) > 0 && (targetOrder.depositStatus === 'pending' || targetOrder.depositStatus === 'unconfirmed')) {
+            showToast(language === 'ar' ? "لا يمكن إصدار بوليصة بوسطة لطلب عربونه معلق أو مرفوض. يرجى تأكيد استلام العربون أولاً." : "Cannot generate Bosta waybill for order with pending or unconfirmed deposit.", "error");
             return false;
         }
 
