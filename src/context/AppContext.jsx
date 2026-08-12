@@ -5079,11 +5079,6 @@ export const AppProvider = ({ children }) => {
                 console.error("Error setting isReviewed on address JSON in approveOrderWithBosta:", e);
             }
 
-            const finalReceiverId = (depositAmount > 0) 
-                ? (depositReceiverId || targetOrder?.depositReceiverId || state.currentUser?.id || null) 
-                : null;
-            const finalCreatorName = state.currentUser?.name || targetOrder?.createdBy || 'الآدمن';
-
             const updatePayload = {
                 deposit: depositAmount,
                 deposit_receiver_id: finalReceiverId,
