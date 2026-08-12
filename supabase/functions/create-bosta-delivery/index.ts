@@ -72,7 +72,7 @@ Deno.serve(async (req) => {
     }
 
     // 2. Read Request Parameters
-    const { orderId, bostaMetadata, depositAmount } = await req.json();
+    const { orderId, bostaMetadata, depositAmount, creatorName, depositReceiverId } = await req.json();
     if (!orderId || !bostaMetadata) {
       return new Response(JSON.stringify({ error: "Missing required parameters: orderId or bostaMetadata." }), {
         status: 400,
@@ -359,13 +359,22 @@ Deno.serve(async (req) => {
       bostaStateName: "طلب بيك أب جديد"
     };
 
-    // We only update the address in DB; the frontend will execute the status update to trigger WAC stock deduction, etc.
+    // We update address, deposit, created_by, deposit_receiver_id in DB atomically on the server
+    const updateDbPayload: Record<string, any> = {
+      address: JSON.stringify(updatedAddressObj),
+      deposit: depositAmount,
+      status: 'Pending'
+    };
+    if (creatorName && creatorName !== 'Shopify Webhook') {
+      updateDbPayload.created_by = creatorName;
+    }
+    if (depositReceiverId) {
+      updateDbPayload.deposit_receiver_id = depositReceiverId;
+    }
+
     const { error: dbErr } = await supabaseAdmin
       .from('orders')
-      .update({
-        address: JSON.stringify(updatedAddressObj),
-        deposit: depositAmount
-      })
+      .update(updateDbPayload)
       .eq('id', orderId);
 
     if (dbErr) {

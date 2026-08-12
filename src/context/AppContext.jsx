@@ -570,41 +570,45 @@ export const AppProvider = ({ children }) => {
                     shippingFees: dbShippingFees || prev.shippingFees || DEFAULT_SHIPPING_FEES
                 }));
 
-                // Retroactively repair legacy orders that have deposit > 0 but null deposit_receiver_id
-                setTimeout(() => {
-                    const nullDepositOrders = mappedOrders.filter(o => (o.deposit || 0) > 0 && !o.depositReceiverId && !!o.createdBy);
-                    if (nullDepositOrders.length > 0 && sortedUsers.length > 0) {
-                        const updatesToRun = [];
-                        const fixedMap = {};
-                        for (const ord of nullDepositOrders) {
-                            const creatorName = String(ord.createdBy).trim().toLowerCase();
-                            const matchedUser = sortedUsers.find(u => u.name && String(u.name).trim().toLowerCase() === creatorName);
-                            if (matchedUser && matchedUser.id) {
-                                updatesToRun.push(
-                                    supabase
-                                        .from('orders')
-                                        .update({ deposit_receiver_id: matchedUser.id })
-                                        .eq('id', ord.id)
-                                );
-                                fixedMap[ord.id] = matchedUser.id;
+                // Self-healing guard: check for reviewed Shopify orders missing stock ledger
+                setTimeout(async () => {
+                    try {
+                        const nullDepositOrders = mappedOrders.filter(o => (o.deposit || 0) > 0 && !o.depositReceiverId && !!o.createdBy);
+                        if (nullDepositOrders.length > 0 && sortedUsers.length > 0) {
+                            const fixedMap = {};
+                            for (const ord of nullDepositOrders) {
+                                const creatorName = String(ord.createdBy).trim().toLowerCase();
+                                const matchedUser = sortedUsers.find(u => u.name && String(u.name).trim().toLowerCase() === creatorName);
+                                if (matchedUser && matchedUser.id) {
+                                    try {
+                                        await supabase.from('orders').update({ deposit_receiver_id: matchedUser.id }).eq('id', ord.id);
+                                        fixedMap[ord.id] = matchedUser.id;
+                                    } catch(e) {}
+                                }
                             }
-                        }
-                        if (updatesToRun.length > 0) {
-                            Promise.all(updatesToRun).then(() => {
-                                console.log(`[Auto-Fix] Successfully repaired ${updatesToRun.length} legacy null-deposit orders.`);
+                            if (Object.keys(fixedMap).length > 0) {
                                 setState(prev => ({
                                     ...prev,
-                                    orders: (prev.orders || []).map(o => {
-                                        if (fixedMap[o.id]) {
-                                            return { ...o, depositReceiverId: fixedMap[o.id] };
-                                        }
-                                        return o;
-                                    })
+                                    orders: (prev.orders || []).map(o => fixedMap[o.id] ? { ...o, depositReceiverId: fixedMap[o.id] } : o)
                                 }));
-                            }).catch(err => {
-                                console.error("[Auto-Fix] Error updating legacy deposit orders:", err);
-                            });
+                            }
                         }
+
+                        // Check for reviewed Shopify orders missing stock ledger
+                        const unDeductedOrders = mappedOrders.filter(o => o.isReviewed && o.items && o.items.length > 0 && o.status !== 'Cancelled' && o.status !== 'Rejected');
+                        for (const ord of unDeductedOrders) {
+                            try {
+                                const { data: existingLedger } = await supabase.from('stock_ledger').select('id').eq('order_id', ord.id).limit(1);
+                                if (!existingLedger || existingLedger.length === 0) {
+                                    console.log(`Self-healing stock deduction for order ${ord.id}...`);
+                                    await deductOrderStock(ord);
+                                }
+                            } catch(e) {
+                                console.error("Self-healing error for order:", ord.id, e);
+                            }
+                        }
+                    } catch (e) {
+                        console.error("Error in background self-healing guard:", e);
                     }
                 }, 1000);
             } catch (err) {
@@ -5000,12 +5004,23 @@ export const AppProvider = ({ children }) => {
         const wasAlreadyReviewed = targetOrder ? (targetOrder.is_reviewed || targetOrder.isReviewed) : false;
         const isShopifyOrder = targetOrder ? (targetOrder.source === 'shopify') : false;
 
+        const finalReceiverId = (depositAmount > 0) 
+            ? (depositReceiverId || targetOrder?.depositReceiverId || state.currentUser?.id || null) 
+            : null;
+        const finalCreatorName = state.currentUser?.name || targetOrder?.createdBy || 'الآدمن';
+
         try {
             showToast(language === 'ar' ? "جاري إنشاء الشحنة وتوليد البوليصة في بوسطة..." : "Creating shipment and air waybill in Bosta...", "info");
             
             // Invoke the create-bosta-delivery Edge Function
             const { data, error } = await supabase.functions.invoke('create-bosta-delivery', {
-                body: { orderId, bostaMetadata, depositAmount }
+                body: { 
+                    orderId, 
+                    bostaMetadata, 
+                    depositAmount,
+                    creatorName: finalCreatorName,
+                    depositReceiverId: finalReceiverId
+                }
             });
 
             if (error || !data || !data.success) {
