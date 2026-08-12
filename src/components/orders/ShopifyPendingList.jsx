@@ -337,15 +337,10 @@ ${itemsList}
             return;
         }
 
-        if (depositAmount > 0 && isAssignedToMe && !isConfirmedByCheck) {
-            showToast('عفواً! لا يمكن اعتماد الطلب قبل الإقرار باستلام مبلغ العربون وتحديد علامة الصح أولاً.', 'error');
-            return;
-        }
-
         let depositStatus = 'confirmed';
         if (depositAmount > 0) {
             if (isAssignedToMe) {
-                depositStatus = isConfirmedByCheck ? 'confirmed' : 'pending';
+                depositStatus = 'confirmed';
             } else {
                 depositStatus = 'pending';
             }

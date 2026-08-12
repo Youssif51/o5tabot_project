@@ -7,6 +7,79 @@ import SmartDateFilter from '../common/SmartDateFilter';
 import { isDateMatchingFilter } from '../../utils/smartDateMatcher';
 import CancellationReasonModal from '../common/CancellationReasonModal';
 
+// Standalone helper to parse address JSON structure safely (handles Object or String)
+export const parseAddressData = (addressData) => {
+    let detailAddress = '';
+    let phone = '';
+    let vatEnabled = false;
+    let orderDiscountPercent = 0;
+    let customerCode = 'CUS-0000';
+    let bostaStateName = '';
+    let bostaStateCode = null;
+    let bostaTrackingNumber = '';
+    let bostaExceptionReason = '';
+    let syncWithBosta = true;
+    let bostaCityCode = '';
+    let bostaCityName = '';
+    let bostaDistrictId = '';
+    let bostaDistrictName = '';
+    let bostaZoneId = '';
+    let allowToOpenPackage = true;
+    
+    if (addressData) {
+        let parsed = addressData;
+        if (typeof addressData === 'string') {
+            if (addressData.startsWith('{')) {
+                try {
+                    parsed = JSON.parse(addressData);
+                } catch(e) {
+                    parsed = { detailAddress: addressData };
+                }
+            } else {
+                parsed = { detailAddress: addressData };
+            }
+        }
+        
+        if (parsed && typeof parsed === 'object') {
+            detailAddress = parsed.detailAddress || '';
+            phone = parsed.phone || '';
+            vatEnabled = parsed.vatEnabled || false;
+            orderDiscountPercent = parseFloat(parsed.orderDiscountPercent) || 0;
+            customerCode = parsed.customerCode || 'CUS-0000';
+            bostaStateName = parsed.bostaStateName || '';
+            bostaStateCode = (parsed.bostaStateCode !== undefined && parsed.bostaStateCode !== null) ? parsed.bostaStateCode : null;
+            bostaTrackingNumber = parsed.bostaTrackingNumber || '';
+            bostaExceptionReason = parsed.bostaExceptionReason || '';
+            
+            syncWithBosta = parsed.syncWithBosta !== false;
+            bostaCityCode = parsed.bostaCityCode || '';
+            bostaCityName = parsed.bostaCityName || '';
+            bostaDistrictId = parsed.bostaDistrictId || '';
+            bostaDistrictName = parsed.bostaDistrictName || '';
+            bostaZoneId = parsed.bostaZoneId || '';
+            allowToOpenPackage = parsed.allowToOpenPackage !== false;
+        }
+    }
+    return { 
+        detailAddress, 
+        phone, 
+        vatEnabled, 
+        orderDiscountPercent, 
+        customerCode, 
+        bostaStateName, 
+        bostaStateCode, 
+        bostaTrackingNumber, 
+        bostaExceptionReason,
+        syncWithBosta,
+        bostaCityCode,
+        bostaCityName,
+        bostaDistrictId,
+        bostaDistrictName,
+        bostaZoneId,
+        allowToOpenPackage
+    };
+};
+
 export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrder, onOpenEditOrder }) {
     const { state, updateOrderStatus, deleteOrder, showToast, logActivity, setCurrentView, t, showConfirm, addCustomer, setCustomerSpam, syncBostaStatus, updateDepositStatus, updateOrderProperties, settleAdminsCustody, fetchMissingOrderItems, approveOrderWithBosta, searchOrdersDatabase } = useContext(AppContext);
     const navigate = useNavigate();
@@ -46,79 +119,6 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
     const [activeDropdownOrderId, setActiveDropdownOrderId] = useState(null);
     const [updatingOrdersMap, setUpdatingOrdersMap] = useState({});
     const [cancelModalData, setCancelModalData] = useState(null);
-
-    // Helper to parse address JSON structure safely (handles Object or String)
-    const parseAddressData = (addressData) => {
-        let detailAddress = '';
-        let phone = '';
-        let vatEnabled = false;
-        let orderDiscountPercent = 0;
-        let customerCode = 'CUS-0000';
-        let bostaStateName = '';
-        let bostaStateCode = null;
-        let bostaTrackingNumber = '';
-        let bostaExceptionReason = '';
-        let syncWithBosta = true;
-        let bostaCityCode = '';
-        let bostaCityName = '';
-        let bostaDistrictId = '';
-        let bostaDistrictName = '';
-        let bostaZoneId = '';
-        let allowToOpenPackage = true;
-        
-        if (addressData) {
-            let parsed = addressData;
-            if (typeof addressData === 'string') {
-                if (addressData.startsWith('{')) {
-                    try {
-                        parsed = JSON.parse(addressData);
-                    } catch(e) {
-                        parsed = { detailAddress: addressData };
-                    }
-                } else {
-                    parsed = { detailAddress: addressData };
-                }
-            }
-            
-            if (parsed && typeof parsed === 'object') {
-                detailAddress = parsed.detailAddress || '';
-                phone = parsed.phone || '';
-                vatEnabled = parsed.vatEnabled || false;
-                orderDiscountPercent = parseFloat(parsed.orderDiscountPercent) || 0;
-                customerCode = parsed.customerCode || 'CUS-0000';
-                bostaStateName = parsed.bostaStateName || '';
-                bostaStateCode = (parsed.bostaStateCode !== undefined && parsed.bostaStateCode !== null) ? parsed.bostaStateCode : null;
-                bostaTrackingNumber = parsed.bostaTrackingNumber || '';
-                bostaExceptionReason = parsed.bostaExceptionReason || '';
-                
-                syncWithBosta = parsed.syncWithBosta !== false;
-                bostaCityCode = parsed.bostaCityCode || '';
-                bostaCityName = parsed.bostaCityName || '';
-                bostaDistrictId = parsed.bostaDistrictId || '';
-                bostaDistrictName = parsed.bostaDistrictName || '';
-                bostaZoneId = parsed.bostaZoneId || '';
-                allowToOpenPackage = parsed.allowToOpenPackage !== false;
-            }
-        }
-        return { 
-            detailAddress, 
-            phone, 
-            vatEnabled, 
-            orderDiscountPercent, 
-            customerCode, 
-            bostaStateName, 
-            bostaStateCode, 
-            bostaTrackingNumber, 
-            bostaExceptionReason,
-            syncWithBosta,
-            bostaCityCode,
-            bostaCityName,
-            bostaDistrictId,
-            bostaDistrictName,
-            bostaZoneId,
-            allowToOpenPackage
-        };
-    };
 
     const handleStatusChange = async (orderId, newStatus, bostaTrackingNumber) => {
         if (updatingOrdersMap[orderId]) return;

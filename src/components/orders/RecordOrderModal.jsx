@@ -997,12 +997,6 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 return;
             }
 
-            if (!isDraftSave && depositVal > 0 && depositReceiverId === state.currentUser?.id && !depositConfirmChecked) {
-                showToast("عفواً! لا يمكن إكمال الطلب قبل الإقرار باستلام مبلغ العربون وتحديد علامة الصح أولاً.", "error");
-                if (step !== 3 && step !== 4) setStep(3);
-                return;
-            }
-
             const proceedSave = async () => {
                 const orderItems = items.map(item => ({
                     variantSku: item.variantSku,
@@ -1020,7 +1014,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 }
 
                 const finalReceiverId = depositVal > 0 ? (depositReceiverId || state.currentUser?.id || (state.users && state.users[0] ? state.users[0].id : null)) : null;
-                const finalDepositStatus = depositVal > 0 ? (finalReceiverId === state.currentUser?.id ? (depositConfirmChecked ? 'confirmed' : 'pending') : (depositStatus || 'pending')) : 'confirmed';
+                // If admin assigns deposit to THEMSELVES, it is automatically 'confirmed' immediately!
+                const finalDepositStatus = depositVal > 0 ? (finalReceiverId === state.currentUser?.id ? 'confirmed' : (depositStatus || 'pending')) : 'confirmed';
 
                 const newOrderObj = {
                     id: orderId,
