@@ -1351,6 +1351,30 @@ ${followUpReason}
                                             {isExpanded && (
                                                 <tr style={{ background: 'var(--glass-bg)' }}>
                                                     <td colSpan="10" style={{ padding: '20px', borderBottom: '1px solid var(--glass-border)' }}>
+                                                        {/* Dynamic Discount / Offer Banner */}
+                                                        {((parseFloat(ord.discount_value) || 0) > 0 || ord.discount_reason || ord.discount_reason_details) && (
+                                                            <div style={{
+                                                                marginBottom: '16px',
+                                                                padding: '10px 16px',
+                                                                background: 'rgba(46, 204, 113, 0.08)',
+                                                                border: '1px solid rgba(46, 204, 113, 0.3)',
+                                                                borderRadius: '8px',
+                                                                display: 'flex',
+                                                                alignItems: 'center',
+                                                                justifyContent: 'space-between'
+                                                            }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#2ecc71', fontWeight: 'bold', fontSize: '13px' }}>
+                                                                    <i className="fa-solid fa-tags"></i>
+                                                                    <span> خصم / عرض مطبق: {ord.discount_reason_details || ord.discount_reason || 'خصم شوبيفاي'}</span>
+                                                                </div>
+                                                                {((parseFloat(ord.discount_value) || 0) > 0) && (
+                                                                    <span style={{ background: '#2ecc71', color: '#000', padding: '2px 10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '12px' }}>
+                                                                        خصم {currency} {(parseFloat(ord.discount_value) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
+
                                                         <div className="grid-responsive-1-1_3-1" style={{ gap: '24px' }}>
                                                             
                                                             {/* Customer details */}
@@ -1433,14 +1457,56 @@ ${followUpReason}
                                                                             </tr>
                                                                         </thead>
                                                                         <tbody>
-                                                                            {(ord.items || []).map((item, idx) => (
-                                                                                <tr key={idx} style={{ borderBottom: '1px solid var(--glass-bg)' }}>
-                                                                                    <td style={{ padding: '8px 4px', wordBreak: 'break-word', whiteSpace: 'normal' }}>{getProductNameBySku(item.variantSku)}</td>
-                                                                                    <td style={{ textAlign: 'center', padding: '8px 4px' }}>{item.quantity}</td>
-                                                                                    <td style={{ textAlign: 'center', padding: '8px 4px', whiteSpace: 'nowrap' }}>{currency} {(parseFloat(item.price) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
-                                                                                    <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{currency} {((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
-                                                                                </tr>
-                                                                            ))}
+                                                                             {(() => {
+                                                                                 const itemsArr = ord.items || [];
+                                                                                 const totalDiscount = parseFloat(ord.discount_value) || 0;
+                                                                                 const giftItemSku = totalDiscount > 0 ? itemsArr.find(it => (parseFloat(it.price) || 0) * (parseInt(it.quantity) || 1) === totalDiscount)?.variantSku : null;
+
+                                                                                 return itemsArr.map((item, idx) => {
+                                                                                     const listPrice = parseFloat(item.price) || 0;
+                                                                                     const qty = parseInt(item.quantity) || 1;
+                                                                                     const listSubtotal = listPrice * qty;
+                                                                                     const isGift = giftItemSku ? (item.variantSku === giftItemSku) : (totalDiscount > 0 && itemsArr.length === 1 && totalDiscount === listSubtotal);
+
+                                                                                     const netUnitPrice = isGift ? 0 : listPrice;
+                                                                                     const netSubtotal = isGift ? 0 : listSubtotal;
+
+                                                                                     return (
+                                                                                         <tr key={idx} style={{ borderBottom: '1px solid var(--glass-bg)' }}>
+                                                                                             <td style={{ padding: '8px 4px', wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                                                                                                 <div style={{ fontWeight: '500' }}>{getProductNameBySku(item.variantSku)}</div>
+                                                                                                 {isGift ? (
+                                                                                                     <div style={{ fontSize: '10px', color: '#2ecc71', marginTop: '3px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(46, 204, 113, 0.15)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(46, 204, 113, 0.3)', fontWeight: 'bold' }}>
+                                                                                                         🎁 قطعة مجانية بالعرض (0 {currency})
+                                                                                                     </div>
+                                                                                                 ) : (totalDiscount > 0 && (
+                                                                                                     <div style={{ fontSize: '9.5px', color: '#2ecc71', marginTop: '2px', display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'rgba(46, 204, 113, 0.08)', padding: '1px 6px', borderRadius: '4px', border: '1px solid rgba(46, 204, 113, 0.2)' }}>
+                                                                                                         🏷️ {ord.discount_reason_details || ord.discount_reason || 'مشمول في العرض'}
+                                                                                                     </div>
+                                                                                                 ))}
+                                                                                             </td>
+                                                                                             <td style={{ textAlign: 'center', padding: '8px 4px' }}>{qty}</td>
+                                                                                             <td style={{ textAlign: 'center', padding: '8px 4px', whiteSpace: 'nowrap' }}>
+                                                                                                 {isGift ? (
+                                                                                                     <div>
+                                                                                                         <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '10px', display: 'block' }}>{currency} {listPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                                         <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>0 {currency}</span>
+                                                                                                     </div>
+                                                                                                 ) : (
+                                                                                                     `${currency} ${listPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}`
+                                                                                                 )}
+                                                                                             </td>
+                                                                                             <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                                                                                                 {isGift ? (
+                                                                                                     <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>0 {currency}</span>
+                                                                                                 ) : (
+                                                                                                     `${currency} ${netSubtotal.toLocaleString('en-US', {maximumFractionDigits: 2})}`
+                                                                                                 )}
+                                                                                             </td>
+                                                                                         </tr>
+                                                                                     );
+                                                                                 });
+                                                                             })()}
                                                                         </tbody>
                                                                     </table>
                                                                 </div>
@@ -1468,13 +1534,13 @@ ${followUpReason}
                                                                                 </div>
                                                                                 {((parseFloat(ord.discount_value) || 0) > 0) && (
                                                                                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#ef4444' }}>
-                                                                                        <span>الخصم المطبق {ord.discount_reason ? `(${ord.discount_reason})` : ''}:</span>
+                                                                                        <span>الخصم المطبق ({ord.discount_reason_details || ord.discount_reason || 'خصم شوبيفاي'}):</span>
                                                                                         <span>-{currency} {(parseFloat(ord.discount_value) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
                                                                                     </div>
                                                                                 )}
-                                                                                {((parseFloat(ord.discount_value) || 0) > 0 && ord.discount_reason_details) && (
+                                                                                {((parseFloat(ord.discount_value) || 0) > 0 && (ord.discount_reason_details || ord.discount_reason)) && (
                                                                                     <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)', fontSize: '10.5px', marginTop: '-4px', paddingRight: '12px' }}>
-                                                                                        <span>تفاصيل الخصم: {ord.discount_reason_details}</span>
+                                                                                        <span>تفاصيل الخصم: {ord.discount_reason_details || ord.discount_reason}</span>
                                                                                     </div>
                                                                                 )}
                                                                                 <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
@@ -1684,9 +1750,6 @@ ${followUpReason}
                                         <div style={{ display: 'flex', gap: '6px' }}>
                                             <span className={`badge ${deliveryBadge.className}`} style={{ fontSize: '10px', padding: '3px 6px', borderRadius: '4px', fontWeight: 600 }}>
                                                 {deliveryBadge.label}
-                                            </span>
-                                            <span className={`badge ${paymentBadgeClass}`} style={{ fontSize: '10px', padding: '3px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                                                {paymentStatus}
                                             </span>
                                         </div>
                                         <div style={{ fontSize: '13px' }}>

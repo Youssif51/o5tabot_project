@@ -2698,6 +2698,12 @@ export const AppProvider = ({ children }) => {
                                     const uCost = item.costAtTimeOfSale || item.cost_at_time_of_sale || vData.average_cost || 0;
                                     const tCost = uCost * Math.abs(item.quantity);
 
+                                    let ledgerNote = `مبيعات طلب #${enrichedOrder.id}`;
+                                    const discountInfo = enrichedOrder.discount_reason_details || enrichedOrder.discount_reason || (enrichedOrder.discount_value > 0 ? `خصم: ${enrichedOrder.discount_value} ج.م` : null);
+                                    if (discountInfo) {
+                                        ledgerNote += ` (${discountInfo})`;
+                                    }
+
                                     await supabase.from('stock_ledger').insert([{
                                         order_id: enrichedOrder.id,
                                         date: new Date().toISOString(),
@@ -2708,7 +2714,8 @@ export const AppProvider = ({ children }) => {
                                         quantity: -item.quantity,
                                         unit_cost: uCost,
                                         total_cost: tCost,
-                                        balance_after: newStock !== undefined ? newStock : 0
+                                        balance_after: newStock !== undefined ? newStock : 0,
+                                        notes: ledgerNote
                                     }]);
                                 }
                             } catch (ledgerErr) {

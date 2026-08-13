@@ -2555,6 +2555,11 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                                             -{currency} {orderDiscountAmount.toLocaleString('en-US', {maximumFractionDigits: 2})}
                                             {(syncWithBosta && shippingFeeVal === 0) && <span style={{ fontSize: '11px', color: 'var(--color-success)', marginRight: '4px' }}>(شحن مجاني)</span>}
                                         </strong>
+                                        {(orderDiscountAmount > 0 || discountReason || discountReasonDetails) && (
+                                            <span style={{ fontSize: '11px', color: '#2ecc71', fontWeight: 600, display: 'block', marginTop: '2px' }}>
+                                                🏷️ {discountReasonDetails || discountReason || 'خصم شوبيفاي'}
+                                            </span>
+                                        )}
                                     </div>
                                     <div>
                                         <span style={{ color: 'var(--text-secondary)' }}>ضريبة القيمة المضافة (14%):</span>
@@ -2592,6 +2597,21 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     {/* STEP 4: REVIEW & CONFIRM */}
                     {step === 4 && (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                            {/* Dynamic Discount / Offer Banner */}
+                            {(orderDiscountAmount > 0 || discountReason || discountReasonDetails) && (
+                                <div style={{ background: 'rgba(46, 204, 113, 0.08)', border: '1px solid rgba(46, 204, 113, 0.3)', borderRadius: '8px', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#2ecc71', fontWeight: 'bold', fontSize: '13px' }}>
+                                        <i className="fa-solid fa-tags"></i>
+                                        <span>خصم / عرض مطبق: {discountReasonDetails || discountReason || 'خصم شوبيفاي'}</span>
+                                    </div>
+                                    {orderDiscountAmount > 0 && (
+                                        <span style={{ background: '#2ecc71', color: '#000', padding: '2px 10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '12px' }}>
+                                            خصم {currency} {orderDiscountAmount.toLocaleString('en-US', {maximumFractionDigits: 2})}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
+
                             <div className="grid-responsive-1_2-1" style={{ gap: '16px' }}>
                                 
                                 {/* Customer Review */}

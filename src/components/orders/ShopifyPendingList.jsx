@@ -583,8 +583,32 @@ ${itemsList}
         const rawDistricts = citySelected ? citySelected.districts || [] : [];
         const filteredDistricts = filterAndSortBostaDistricts(rawDistricts, cleanDistrictQuery);
 
+        const offerTitle = (() => {
+            let raw = ord.discount_reason_details || ord.discount_reason || '';
+            raw = String(raw).replace(/^عرض:\s*/, '').trim();
+            if (raw && raw !== 'خصم شوبيفاي' && raw !== 'خصم طلب') return raw;
+            const hasGift = (ord.items || []).some(it => (parseFloat(it.price) || 0) * (parseInt(it.quantity) || 1) === (parseFloat(ord.discount_value) || 0));
+            if (hasGift) return 'عرض قطعة مجانية 🎁';
+            if (parseFloat(ord.discount_value) > 0) return 'عرض / خصم خاص';
+            return 'عرض شوبيفاي';
+        })();
+
         return (
             <>
+                                                        {/* Dynamic Discount / Offer Banner */}
+                                                        {(ord.discount_value > 0 || ord.discount_reason_details || ord.discount_reason) && (
+                                                            <div style={{ background: 'rgba(46, 204, 113, 0.08)', border: '1px solid rgba(46, 204, 113, 0.3)', borderRadius: '8px', padding: '10px 14px', marginBottom: '16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#2ecc71', fontWeight: 'bold', fontSize: '13px' }}>
+                                                                    <i className="fa-solid fa-tags"></i>
+                                                                    <span>خصم / عرض مطبق: {offerTitle}</span>
+                                                                </div>
+                                                                {ord.discount_value > 0 && (
+                                                                    <span style={{ background: '#2ecc71', color: '#000', padding: '2px 10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '12px' }}>
+                                                                        خصم {currency} {parseFloat(ord.discount_value).toLocaleString('en-US', {maximumFractionDigits: 2})}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        )}
 
                                                         
                                                         {/* Step 1 & 2 layout: Address mapping & Details cards */}
@@ -886,14 +910,48 @@ ${itemsList}
                                                                         </tr>
                                                                     </thead>
                                                                     <tbody>
-                                                                        {(ord.items || []).map((item, idx) => (
-                                                                            <tr key={idx} style={{ borderBottom: '1px solid var(--glass-bg)' }}>
-                                                                                <td style={{ padding: '8px 4px' }}>{getProductNameBySku(item.variantSku)}</td>
-                                                                                <td style={{ textAlign: 'center', padding: '8px 4px' }}>{item.quantity}</td>
-                                                                                <td style={{ textAlign: 'center', padding: '8px 4px' }}>{currency} {item.price.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
-                                                                                <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold' }}>{currency} {(item.quantity * item.price).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
-                                                                            </tr>
-                                                                        ))}
+                                                                        {(ord.items || []).map((item, idx) => {
+                                                                            const totalDiscount = parseFloat(ord.discount_value) || 0;
+                                                                            const listPrice = parseFloat(item.price) || 0;
+                                                                            const qty = parseInt(item.quantity) || 1;
+                                                                            const listSubtotal = listPrice * qty;
+                                                                            const isGift = totalDiscount > 0 && listSubtotal === totalDiscount;
+
+                                                                            return (
+                                                                                <tr key={idx} style={{ borderBottom: '1px solid var(--glass-bg)' }}>
+                                                                                    <td style={{ padding: '8px 4px' }}>
+                                                                                        <div style={{ fontWeight: '500' }}>{getProductNameBySku(item.variantSku)}</div>
+                                                                                        {isGift ? (
+                                                                                            <div style={{ fontSize: '10px', color: '#2ecc71', marginTop: '3px', display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'rgba(46, 204, 113, 0.15)', padding: '2px 8px', borderRadius: '4px', border: '1px solid rgba(46, 204, 113, 0.3)', fontWeight: 'bold' }}>
+                                                                                                🎁 قطعة مجانية بالعرض (0 {currency})
+                                                                                            </div>
+                                                                                        ) : (totalDiscount > 0 && (
+                                                                                            <div style={{ fontSize: '9.5px', color: '#2ecc71', marginTop: '2px', display: 'inline-flex', alignItems: 'center', gap: '3px', background: 'rgba(46, 204, 113, 0.08)', padding: '1px 6px', borderRadius: '4px', border: '1px solid rgba(46, 204, 113, 0.2)' }}>
+                                                                                                🏷️ {offerTitle}
+                                                                                            </div>
+                                                                                        ))}
+                                                                                    </td>
+                                                                                    <td style={{ textAlign: 'center', padding: '8px 4px' }}>{qty}</td>
+                                                                                    <td style={{ textAlign: 'center', padding: '8px 4px' }}>
+                                                                                        {isGift ? (
+                                                                                            <div>
+                                                                                                <span style={{ textDecoration: 'line-through', color: 'var(--text-muted)', fontSize: '10px', display: 'block' }}>{currency} {listPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                                <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>0 {currency}</span>
+                                                                                            </div>
+                                                                                        ) : (
+                                                                                            `${currency} ${listPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}`
+                                                                                        )}
+                                                                                    </td>
+                                                                                    <td style={{ textAlign: 'left', padding: '8px 4px', fontWeight: 'bold' }}>
+                                                                                        {isGift ? (
+                                                                                            <span style={{ color: '#2ecc71', fontWeight: 'bold' }}>0 {currency}</span>
+                                                                                        ) : (
+                                                                                            `${currency} ${listSubtotal.toLocaleString('en-US', {maximumFractionDigits: 2})}`
+                                                                                        )}
+                                                                                    </td>
+                                                                                </tr>
+                                                                            );
+                                                                        })}
                                                                     </tbody>
                                                                 </table>
                                                             </div>
@@ -941,14 +999,42 @@ ${itemsList}
                                                                 {/* Pricing Card */}
                                                                 <div className="glass-card" style={{ padding: '14px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)' }}>
                                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '11.5px' }}>
-                                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                            <span>إجمالي المنتجات:</span>
-                                                                            <span>{currency} {((parseFloat(ord.totalValue || ord.total_value) || 0) - (ord.shipping_fee || 0)).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
-                                                                        </div>
-                                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                                                            <span>مصاريف الشحن شوبيفاي:</span>
-                                                                            <span>+{currency} {(ord.shipping_fee || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
-                                                                        </div>
+                                                                        {(() => {
+                                                                            const itemsArr = ord.items || [];
+                                                                            const listProductsTotal = itemsArr.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity) || 1)), 0);
+                                                                            const discountVal = parseFloat(ord.discount_value) || 0;
+                                                                            const netProductsTotal = Math.max(0, listProductsTotal - discountVal);
+
+                                                                            return (
+                                                                                <>
+                                                                                    {discountVal > 0 ? (
+                                                                                        <>
+                                                                                            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-secondary)' }}>
+                                                                                                <span>إجمالي المنتجات (قبل الخصم):</span>
+                                                                                                <span>{currency} {listProductsTotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                            </div>
+                                                                                            <div style={{ display: 'flex', justifyContent: 'space-between', color: '#ef4444', fontWeight: 600 }}>
+                                                                                                <span>الخصم المطبق ({offerTitle}):</span>
+                                                                                                <span>-{currency} {discountVal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                            </div>
+                                                                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold' }}>
+                                                                                                <span>صافي المنتجات:</span>
+                                                                                                <span>{currency} {netProductsTotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                            </div>
+                                                                                        </>
+                                                                                    ) : (
+                                                                                        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                            <span>إجمالي المنتجات:</span>
+                                                                                            <span>{currency} {listProductsTotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                        </div>
+                                                                                    )}
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                        <span>مصاريف الشحن شوبيفاي:</span>
+                                                                                        <span>+{currency} {(ord.shipping_fee || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                    </div>
+                                                                                </>
+                                                                            );
+                                                                        })()}
                                                                         {/* Financial Summary & Deposit Confirmation Card */}
                                                                         {(() => {
                                                                             const depVal = customDeposits[ord.id] !== undefined ? (parseFloat(customDeposits[ord.id]) || 0) : (ord.deposit || 0);

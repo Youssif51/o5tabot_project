@@ -720,13 +720,33 @@ Deno.serve(async (req) => {
     const discountValue = parseFloat(payload.total_discounts) || 0;
     const discountType = discountValue > 0 ? "Fixed" : null;
 
+    // Dynamically extract discount reason & details from Shopify discount_applications or discount_codes
+    const discountApplications = payload.discount_applications || [];
+    let extractedDiscountReason = null;
+    let extractedDiscountDetails = null;
+
+    if (discountApplications.length > 0) {
+      const primaryApp = discountApplications[0];
+      const appTitle = primaryApp.title || primaryApp.code || "";
+      extractedDiscountReason = appTitle ? appTitle : "عرض شوبيفاي";
+      extractedDiscountDetails = appTitle ? `عرض: ${appTitle}` : "عرض خاص بالمتجر";
+    } else if (couponCode) {
+      extractedDiscountReason = "كود خصم";
+      extractedDiscountDetails = `كود: ${couponCode}`;
+    } else if (discountValue > 0) {
+      extractedDiscountReason = "خصم طلب";
+      extractedDiscountDetails = `خصم مالي بقيمة ${discountValue} ج.م`;
+    }
+
     const addressJson = JSON.stringify({
       detailAddress: detailAddress,
       phone: phone,
       vatEnabled: false,
       orderDiscountPercent: 0,
       customerCode: `CUS-${phone.substring(7) || "SHPF"}`,
-      appliedCoupon: couponCode
+      appliedCoupon: couponCode,
+      discountReason: extractedDiscountReason,
+      discountReasonDetails: extractedDiscountDetails
     });
 
     const isPaid = payload.financial_status === "paid";
@@ -753,6 +773,8 @@ Deno.serve(async (req) => {
         discount_type: discountType,
         discount_value: discountValue,
         applied_coupon_code: couponCode,
+        discount_reason: extractedDiscountReason,
+        discount_reason_details: extractedDiscountDetails,
         address: addressJson,
         governorate: governorate,
         deposit: deposit,
