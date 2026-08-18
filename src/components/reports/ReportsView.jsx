@@ -1241,6 +1241,39 @@ export default function ReportsView() {
                         letter-spacing: 2px;
                         border-radius: 4px;
                     }
+                
+                    @media (max-width: 768px) {
+                        .discount-desktop-table {
+                            display: none !important;
+                        }
+                        .discount-mobile-cards {
+                            display: flex !important;
+                            flex-direction: column;
+                            gap: 10px;
+                        }
+                    }
+                    @media (min-width: 769px) {
+                        .discount-desktop-table {
+                            display: block !important;
+                        }
+                        .discount-mobile-cards {
+                            display: none !important;
+                        }
+                    }
+                    .discount-card-item {
+                        padding: 12px 14px;
+                        background: rgba(255, 255, 255, 0.02);
+                        border: 1px solid rgba(255, 255, 255, 0.06);
+                        border-radius: 10px;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 10px;
+                        transition: var(--transition);
+                    }
+                    .discount-card-item:hover {
+                        border-color: rgba(212, 175, 55, 0.25);
+                        background: rgba(255, 255, 255, 0.03);
+                    }
                 `}</style>
 
                 {/* Sub-tables: Coupons, Reasons & Admin metrics */}
@@ -1335,7 +1368,8 @@ export default function ReportsView() {
                                 <i className="fa-solid fa-list-check" style={{ color: 'var(--gold-primary)' }}></i> سجل تفاصيل الطلبات المخصومة ({sortedDiscountedOrders.length} طلب مخصوم)
                             </h4>
 
-                            <div style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(0,0,0,0.1)' }}>
+                            {/* 1. Desktop & Tablet Landscape View */}
+                            <div className="discount-desktop-table" style={{ overflowX: 'auto', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', background: 'rgba(0,0,0,0.1)' }}>
                                 <table className="discount-main-table">
                                     <thead>
                                         <tr>
@@ -1452,6 +1486,118 @@ export default function ReportsView() {
                                         )}
                                     </tbody>
                                 </table>
+                            </div>
+
+                            {/* 2. Mobile & Tablet Portrait View (Responsive Touch Cards) */}
+                            <div className="discount-mobile-cards">
+                                {paginatedDiscountOrders.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
+                                        لا توجد طلبات مخصومة مسجلة في هذه الفترة
+                                    </div>
+                                ) : (
+                                    paginatedDiscountOrders.map((ord, idx) => {
+                                        const hasCoupon = !!ord.couponCode;
+                                        const hasManual = ord.manualDiscount > 0 || (ord.reason && ord.reason !== 'كوبون تخفيض' && ord.reason !== 'بدون سبب محدد');
+                                        const hasProduct = ord.productDiscount > 0 && !hasManual && !hasCoupon;
+                                        
+                                        const discountTypeBadge = (() => {
+                                            const badges = [];
+                                            if (hasCoupon) {
+                                                badges.push(
+                                                    <div key="cp" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                                        <span className="badge-coupon-pill">
+                                                            <i className="fa-solid fa-ticket" style={{ fontSize: '9px' }}></i> كوبون
+                                                        </span>
+                                                        {ord.couponCode && (
+                                                            <span className="badge-code-text">
+                                                                {ord.couponCode}
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                );
+                                            }
+                                            if (hasManual) {
+                                                 const cleanReason = (ord.reason || '').replace(/\s*\((.*?)\)\s*/g, ' - $1');
+                                                 const parts = cleanReason.split(' - ');
+                                                 const main = parts[0] || 'خصم يدوي';
+                                                 const sub = parts.slice(1).join(' - ');
+
+                                                 badges.push(
+                                                     <div key="mn" style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                                                         <span className="badge-manual-pill">
+                                                             <i className="fa-solid fa-user-pen" style={{ fontSize: '9px' }}></i> يدوي
+                                                         </span>
+                                                         {main && main !== 'بدون سبب محدد' && (
+                                                             <span className="badge-reason-text">
+                                                                 {main}
+                                                             </span>
+                                                         )}
+                                                         {sub && (
+                                                             <span className="badge-details-text">
+                                                                 {sub}
+                                                             </span>
+                                                         )}
+                                                     </div>
+                                                 );
+                                             }
+                                            if (hasProduct) {
+                                                badges.push(
+                                                    <span key="pd" className="badge-product-pill">
+                                                        <i className="fa-solid fa-box-open" style={{ fontSize: '9px' }}></i> عروض منتجات
+                                                    </span>
+                                                );
+                                            }
+                                            return <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', alignItems: 'center' }}>{badges}</div>;
+                                        })();
+
+                                        return (
+                                            <div key={`mob-disc-${idx}`} className="discount-card-item">
+                                                {/* Header: Order ID + Customer Name */}
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                        <span style={{ fontWeight: '700', color: 'var(--gold-primary)', fontFamily: 'monospace', fontSize: '13px' }}>
+                                                            {ord.id}
+                                                        </span>
+                                                        <span style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.04)', padding: '2px 6px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                            <i className="fa-regular fa-user" style={{ opacity: 0.5, fontSize: '10px' }}></i> {ord.admin}
+                                                        </span>
+                                                    </div>
+                                                    <div style={{ fontWeight: '600', color: 'var(--text-primary)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                        <i className="fa-solid fa-user" style={{ fontSize: '11px', color: 'var(--text-muted)' }}></i>
+                                                        <span>{ord.client}</span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Discount Badges */}
+                                                <div>
+                                                    {discountTypeBadge}
+                                                </div>
+
+                                                {/* Financial Strip */}
+                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.04)', fontSize: '11.5px' }}>
+                                                    <div style={{ textAlign: 'center', background: 'rgba(255,255,255,0.02)', padding: '6px 4px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.04)' }}>
+                                                        <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>قبل الخصم</div>
+                                                        <div className="tabular-amount" style={{ color: 'var(--text-secondary)', fontWeight: '600', marginTop: '2px' }}>
+                                                            {currency} {ord.originalTotal.toLocaleString('en-US', {maximumFractionDigits: 0})}
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ textAlign: 'center', background: 'rgba(239, 68, 68, 0.08)', padding: '6px 4px', borderRadius: '6px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                                                        <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>الخصم</div>
+                                                        <div className="tabular-amount" style={{ color: '#ef4444', fontWeight: '700', marginTop: '2px' }}>
+                                                            -{currency} {ord.totalDiscount.toLocaleString('en-US', {maximumFractionDigits: 0})}
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ textAlign: 'center', background: 'rgba(46, 204, 113, 0.08)', padding: '6px 4px', borderRadius: '6px', border: '1px solid rgba(46, 204, 113, 0.2)' }}>
+                                                        <div style={{ color: 'var(--text-muted)', fontSize: '10px' }}>الصافي</div>
+                                                        <div className="tabular-amount" style={{ color: '#2ecc71', fontWeight: '800', marginTop: '2px' }}>
+                                                            {currency} {ord.finalTotal.toLocaleString('en-US', {maximumFractionDigits: 0})}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })
+                                )}
                             </div>
 
                             {/* Discount Pagination Controls */}

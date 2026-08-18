@@ -34,6 +34,39 @@ export default function InventoryList({
         }
     };
     
+    const getPrimaryProductImage = (prod) => {
+        if (!prod) return null;
+        if (prod.images && Array.isArray(prod.images) && prod.images.length > 0 && typeof prod.images[0] === 'string') {
+            return prod.images[0];
+        }
+        if (prod.image) {
+            if (typeof prod.image === 'string') {
+                if (prod.image.startsWith('http') || prod.image.startsWith('data:')) {
+                    return prod.image;
+                }
+                try {
+                    const parsed = JSON.parse(prod.image);
+                    if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'string') {
+                        return parsed[0];
+                    }
+                    if (parsed && typeof parsed === 'object') {
+                        if (Array.isArray(parsed.images) && parsed.images.length > 0) {
+                            return parsed.images[0];
+                        }
+                        if (typeof parsed.image === 'string') {
+                            return parsed.image;
+                        }
+                    }
+                } catch (e) {}
+            } else if (typeof prod.image === 'object') {
+                if (Array.isArray(prod.image.images) && prod.image.images.length > 0) {
+                    return prod.image.images[0];
+                }
+            }
+        }
+        return null;
+    };
+    
     // Initial Stock & Price Setup modal control
     const [isInitialStockOpen, setIsInitialStockOpen] = useState(false);
 
@@ -453,23 +486,68 @@ export default function InventoryList({
                                         return (
                                             <tr key={prod.id}>
                                                 <td>
-                                                    <div 
-                                                        style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--gold-primary)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                                                        onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
-                                                    >
-                                                        {deduplicateProductName(prod.name)}<i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(deduplicateProductName(prod.name)); showToast('تم نسخ اسم المنتج', 'success'); }} title="نسخ اسم المنتج"></i>
-                                                    </div>
-                                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                                        {/* Product Primary Thumbnail */}
                                                         {(() => {
-                                                            if (!prod.shopifyCollectionIds || prod.shopifyCollectionIds.length === 0) {
-                                                                return prod.category || 'بدون مجموعة';
-                                                            }
-                                                            const names = prod.shopifyCollectionIds.map(id => {
-                                                                const col = (state.collections || []).find(c => String(c.id) === String(id));
-                                                                return col ? col.title : null;
-                                                            }).filter(Boolean);
-                                                            return names.length > 0 ? names.join(', ') : (prod.category || 'بدون مجموعة');
+                                                            const primaryImg = getPrimaryProductImage(prod);
+                                                            return (
+                                                                <div 
+                                                                    onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
+                                                                    style={{ 
+                                                                        width: '38px', 
+                                                                        height: '38px', 
+                                                                        borderRadius: '8px', 
+                                                                        background: 'rgba(255,255,255,0.03)', 
+                                                                        border: '1px solid rgba(255,255,255,0.08)', 
+                                                                        display: 'flex', 
+                                                                        alignItems: 'center', 
+                                                                        justifyContent: 'center', 
+                                                                        flexShrink: 0,
+                                                                        overflow: 'hidden',
+                                                                        cursor: 'pointer'
+                                                                    }}
+                                                                    title="عرض كتالوج وتفاصيل المنتج"
+                                                                >
+                                                                    {primaryImg ? (
+                                                                        <img 
+                                                                            src={primaryImg} 
+                                                                            alt={prod.name} 
+                                                                            loading="lazy"
+                                                                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                                                            onError={(e) => {
+                                                                                e.currentTarget.style.display = 'none';
+                                                                                if (e.currentTarget.parentElement) {
+                                                                                    e.currentTarget.parentElement.innerHTML = '<i class="fa-solid fa-box-open" style="font-size: 14px; opacity: 0.35; color: var(--gold-primary);"></i>';
+                                                                                }
+                                                                            }}
+                                                                        />
+                                                                    ) : (
+                                                                        <i className="fa-solid fa-box-open" style={{ fontSize: '14px', opacity: 0.35, color: 'var(--gold-primary)' }}></i>
+                                                                    )}
+                                                                </div>
+                                                            );
                                                         })()}
+
+                                                        <div style={{ minWidth: 0 }}>
+                                                            <div 
+                                                                style={{ fontWeight: 600, cursor: 'pointer', color: 'var(--gold-primary)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                                                                onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
+                                                            >
+                                                                {deduplicateProductName(prod.name)}<i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(deduplicateProductName(prod.name)); showToast('تم نسخ اسم المنتج', 'success'); }} title="نسخ اسم المنتج"></i>
+                                                            </div>
+                                                            <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                                                {(() => {
+                                                                    if (!prod.shopifyCollectionIds || prod.shopifyCollectionIds.length === 0) {
+                                                                        return prod.category || 'بدون مجموعة';
+                                                                    }
+                                                                    const names = prod.shopifyCollectionIds.map(id => {
+                                                                        const col = (state.collections || []).find(c => String(c.id) === String(id));
+                                                                        return col ? col.title : null;
+                                                                    }).filter(Boolean);
+                                                                    return names.length > 0 ? names.join(', ') : (prod.category || 'بدون مجموعة');
+                                                                })()}
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </td>
                                                  <td style={{ fontWeight: 600 }}>{currency} {buyingPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
@@ -600,28 +678,70 @@ export default function InventoryList({
                                         }}
                                     >
                                         {/* Header: Name & Collection */}
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px' }}>
-                                            <div>
-                                                <strong 
-                                                    style={{ color: 'var(--gold-primary)', fontSize: '14px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                                                    onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
-                                                >
-                                                    {deduplicateProductName(prod.name)}<i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(deduplicateProductName(prod.name)); showToast('تم نسخ اسم المنتج', 'success'); }} title="نسخ اسم المنتج"></i>
-                                                </strong>
-                                                <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                                    {(() => {
-                                                        if (!prod.shopifyCollectionIds || prod.shopifyCollectionIds.length === 0) {
-                                                            return prod.category || 'بدون مجموعة';
-                                                        }
-                                                        const names = prod.shopifyCollectionIds.map(id => {
-                                                            const col = (state.collections || []).find(c => String(c.id) === String(id));
-                                                            return col ? col.title : null;
-                                                        }).filter(Boolean);
-                                                        return names.length > 0 ? names.join(', ') : (prod.category || 'بدون مجموعة');
-                                                    })()}
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--glass-border)', paddingBottom: '8px', gap: '10px' }}>
+                                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1 }}>
+                                                {/* Mobile Thumbnail */}
+                                                {(() => {
+                                                    const primaryImg = getPrimaryProductImage(prod);
+                                                    return (
+                                                        <div 
+                                                            onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
+                                                            style={{ 
+                                                                width: '36px', 
+                                                                height: '36px', 
+                                                                borderRadius: '8px', 
+                                                                background: 'rgba(255,255,255,0.03)', 
+                                                                border: '1px solid rgba(255,255,255,0.08)', 
+                                                                display: 'flex', 
+                                                                alignItems: 'center', 
+                                                                justifyContent: 'center', 
+                                                                flexShrink: 0,
+                                                                overflow: 'hidden',
+                                                                cursor: 'pointer'
+                                                            }}
+                                                        >
+                                                            {primaryImg ? (
+                                                                <img 
+                                                                    src={primaryImg} 
+                                                                    alt={prod.name} 
+                                                                    loading="lazy"
+                                                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                                                    onError={(e) => {
+                                                                        e.currentTarget.style.display = 'none';
+                                                                        if (e.currentTarget.parentElement) {
+                                                                            e.currentTarget.parentElement.innerHTML = '<i class="fa-solid fa-box-open" style="font-size: 13px; opacity: 0.35; color: var(--gold-primary);"></i>';
+                                                                        }
+                                                                    }}
+                                                                />
+                                                            ) : (
+                                                                <i className="fa-solid fa-box-open" style={{ fontSize: '13px', opacity: 0.35, color: 'var(--gold-primary)' }}></i>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
+
+                                                <div style={{ minWidth: 0, flex: 1 }}>
+                                                    <strong 
+                                                        style={{ color: 'var(--gold-primary)', fontSize: '14px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                                                        onClick={() => { setInspectId(prod.id); setViewMode('inspect'); }}
+                                                    >
+                                                        {deduplicateProductName(prod.name)}<i className="fa-regular fa-copy" style={{ cursor: 'pointer', opacity: 0.6, fontSize: '11px', color: 'var(--text-secondary)' }} onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(deduplicateProductName(prod.name)); showToast('تم نسخ اسم المنتج', 'success'); }} title="نسخ اسم المنتج"></i>
+                                                    </strong>
+                                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                                        {(() => {
+                                                            if (!prod.shopifyCollectionIds || prod.shopifyCollectionIds.length === 0) {
+                                                                return prod.category || 'بدون مجموعة';
+                                                            }
+                                                            const names = prod.shopifyCollectionIds.map(id => {
+                                                                const col = (state.collections || []).find(c => String(c.id) === String(id));
+                                                                return col ? col.title : null;
+                                                            }).filter(Boolean);
+                                                            return names.length > 0 ? names.join(', ') : (prod.category || 'بدون مجموعة');
+                                                        })()}
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <span className={`badge ${badgeClass}`} style={{ fontSize: '10px', padding: '3px 6px' }}>{statusText}</span>
+                                            <span className={`badge ${badgeClass}`} style={{ fontSize: '10px', padding: '3px 6px', flexShrink: 0 }}>{statusText}</span>
                                         </div>
 
                                         {/* Body info: Price, Qty, Runway */}

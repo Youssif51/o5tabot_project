@@ -1014,8 +1014,30 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                 }
 
                 const finalReceiverId = depositVal > 0 ? (depositReceiverId || state.currentUser?.id || (state.users && state.users[0] ? state.users[0].id : null)) : null;
-                // If admin assigns deposit to THEMSELVES, it is automatically 'confirmed' immediately!
-                const finalDepositStatus = depositVal > 0 ? (finalReceiverId === state.currentUser?.id ? 'confirmed' : (depositStatus || 'pending')) : 'confirmed';
+                
+                // Financial Security Guard: Preserve 'settled' or 'unconfirmed' statuses if editing an existing order and deposit/receiver was not changed
+                let finalDepositStatus = 'confirmed';
+                if (depositVal > 0) {
+                    if (editOrderId && originalOrder) {
+                        const origDepVal = parseFloat(originalOrder.deposit) || 0;
+                        const origReceiverId = originalOrder.depositReceiverId || originalOrder.deposit_receiver_id;
+                        const isDepositUnchanged = (depositVal === origDepVal && finalReceiverId === origReceiverId);
+
+                        if (isDepositUnchanged && (originalOrder.depositStatus === 'settled' || originalOrder.deposit_status === 'settled')) {
+                            finalDepositStatus = 'settled';
+                        } else if (isDepositUnchanged && (originalOrder.depositStatus === 'unconfirmed' || originalOrder.deposit_status === 'unconfirmed')) {
+                            finalDepositStatus = 'unconfirmed';
+                        } else if (isDepositUnchanged && (originalOrder.depositStatus === 'confirmed' || originalOrder.deposit_status === 'confirmed')) {
+                            finalDepositStatus = 'confirmed';
+                        } else {
+                            finalDepositStatus = (finalReceiverId === state.currentUser?.id) ? 'confirmed' : 'pending';
+                        }
+                    } else {
+                        finalDepositStatus = (finalReceiverId === state.currentUser?.id) ? 'confirmed' : (depositStatus || 'pending');
+                    }
+                } else {
+                    finalDepositStatus = (editOrderId && originalOrder && (originalOrder.depositStatus === 'settled' || originalOrder.deposit_status === 'settled')) ? 'settled' : 'confirmed';
+                }
 
                 const newOrderObj = {
                     id: orderId,

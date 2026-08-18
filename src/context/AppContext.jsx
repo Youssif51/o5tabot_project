@@ -1170,40 +1170,57 @@ export const AppProvider = ({ children }) => {
         };
     }, [supabase, language]);
 
-    // 20-Minute Idle Absence Auto-Sync Guard
-    const lastUserActivityRef = useRef(Date.now());
-
-    useEffect(() => {
-        const handleUserActivity = () => {
-            lastUserActivityRef.current = Date.now();
-        };
-
-        window.addEventListener('mousemove', handleUserActivity);
-        window.addEventListener('keydown', handleUserActivity);
-        window.addEventListener('click', handleUserActivity);
-        window.addEventListener('scroll', handleUserActivity);
-
-        return () => {
-            window.removeEventListener('mousemove', handleUserActivity);
-            window.removeEventListener('keydown', handleUserActivity);
-            window.removeEventListener('click', handleUserActivity);
-            window.removeEventListener('scroll', handleUserActivity);
-        };
-    }, []);
-
-    // Section Transition Overlay & Targeted Revalidation State
+    // Section Transition Overlay & Targeted Revalidation State with Safety Timeout Guard
     const [isSectionRefreshing, setIsSectionRefreshing] = useState(false);
     const [sectionRefreshMessage, setSectionRefreshMessage] = useState('جاري جلب أحدث البيانات الحية...');
+    const refreshTimeoutRef = useRef(null);
 
     const triggerSectionRefresh = useCallback((customMsg = 'جاري جلب أحدث البيانات الحية...') => {
         setSectionRefreshMessage(customMsg);
         setIsSectionRefreshing(true);
+
+        if (refreshTimeoutRef.current) {
+            clearTimeout(refreshTimeoutRef.current);
+        }
+
+        // Hard Safety Timeout: Guarantee the overlay is dismissed within 4 seconds max even if queries hang or network drops!
+        const TIMEOUT_LIMIT_MS = 4000;
+        let isCompleted = false;
+
+        const timeoutPromise = new Promise((_, reject) => {
+            refreshTimeoutRef.current = setTimeout(() => {
+                if (!isCompleted) {
+                    reject(new Error('TIMEOUT_LIMIT_EXCEEDED'));
+                }
+            }, TIMEOUT_LIMIT_MS);
+        });
+
         setTimeout(async () => {
             try {
-                await loadSupabaseData();
+                // Race between loadSupabaseData and the 4-second timeout
+                await Promise.race([
+                    loadSupabaseData(),
+                    timeoutPromise
+                ]);
+                isCompleted = true;
             } catch (err) {
-                console.warn("Section refresh error:", err);
+                console.warn("Section refresh status:", err?.message || err);
+                if (err?.message === 'TIMEOUT_LIMIT_EXCEEDED' || !navigator.onLine) {
+                    setToast({
+                        visible: true,
+                        message: "تعذر جلب أحدث البيانات من السيرفر - يرجى التحقق من اتصال الإنترنت",
+                        type: "warning"
+                    });
+                    setTimeout(() => {
+                        setToast(prev => ({ ...prev, visible: false }));
+                    }, 4000);
+                }
             } finally {
+                isCompleted = true;
+                if (refreshTimeoutRef.current) {
+                    clearTimeout(refreshTimeoutRef.current);
+                    refreshTimeoutRef.current = null;
+                }
                 setTimeout(() => {
                     setIsSectionRefreshing(false);
                 }, 200);
@@ -1211,29 +1228,50 @@ export const AppProvider = ({ children }) => {
         }, 50);
     }, [loadSupabaseData]);
 
+    // Smart Tab Wake-Up & Absence Auto-Sync Guard (Works when returning to tab after seconds, minutes, or hours)
+    const lastHiddenTimeRef = useRef(Date.now());
+    const lastSyncTimeRef = useRef(Date.now());
+
     useEffect(() => {
         if (!supabase) return;
 
-        const handleVisibilityOrFocus = async () => {
-            if (document.visibilityState !== 'visible') return;
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'hidden') {
+                lastHiddenTimeRef.current = Date.now();
+            } else if (document.visibilityState === 'visible') {
+                const now = Date.now();
+                const hiddenDurationMs = now - lastHiddenTimeRef.current;
+                const timeSinceLastSyncMs = now - lastSyncTimeRef.current;
 
-            const now = Date.now();
-            const idleMs = now - lastUserActivityRef.current;
-
-            // Trigger fresh revalidation on tab wake-up / return after closing or 20 minutes
-            if (idleMs >= 1200000) {
-                lastUserActivityRef.current = now;
-                console.log(`Absence Sync: User returned after ${Math.round(idleMs / 60000)} minutes of idle absence. Refreshing fresh DB data...`);
-                triggerSectionRefresh('جاري تحديث البيانات طازجة بعد العودة...');
+                // If user was away from the tab for more than 20 seconds and last sync was > 10 seconds ago:
+                if (hiddenDurationMs >= 20000 && timeSinceLastSyncMs >= 10000) {
+                    lastSyncTimeRef.current = now;
+                    console.log(`Tab Wake-Up: Refreshing fresh DB data after ${Math.round(hiddenDurationMs / 1000)}s away...`);
+                    triggerSectionRefresh('جاري جلب أحدث البيانات الحية بعد العودة...');
+                }
             }
         };
 
-        window.addEventListener('focus', handleVisibilityOrFocus);
-        document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+        const handleWindowFocus = () => {
+            if (document.visibilityState === 'visible') {
+                const now = Date.now();
+                const hiddenDurationMs = now - lastHiddenTimeRef.current;
+                const timeSinceLastSyncMs = now - lastSyncTimeRef.current;
+
+                if (hiddenDurationMs >= 20000 && timeSinceLastSyncMs >= 10000) {
+                    lastSyncTimeRef.current = now;
+                    console.log(`Window Focus: Refreshing fresh DB data after ${Math.round(hiddenDurationMs / 1000)}s...`);
+                    triggerSectionRefresh('جاري جلب أحدث البيانات الحية بعد العودة...');
+                }
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleWindowFocus);
 
         return () => {
-            window.removeEventListener('focus', handleVisibilityOrFocus);
-            document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleWindowFocus);
         };
     }, [supabase, triggerSectionRefresh]);
 
@@ -4995,8 +5033,15 @@ export const AppProvider = ({ children }) => {
 
         const targetOrder = (state.orders || []).find(o => o.id === orderId);
 
-        // Effective deposit status: prefer explicitly passed depositStatus parameter (e.g. 'confirmed' when clicking 'نعم استلمت')
-        const effectiveDepositStatus = depositStatus || targetOrder?.depositStatus || 'confirmed';
+        const finalReceiverId = (depositAmount > 0) 
+            ? (depositReceiverId || targetOrder?.depositReceiverId || state.currentUser?.id || null) 
+            : null;
+        const finalCreatorName = state.currentUser?.name || targetOrder?.createdBy || 'الآدمن';
+
+        // Effective deposit status: If the order was already settled, preserve 'settled' status so Bosta waybill generation never undoes custody settlements!
+        const effectiveDepositStatus = (targetOrder?.depositStatus === 'settled' || targetOrder?.deposit_status === 'settled')
+            ? 'settled'
+            : (depositStatus || targetOrder?.depositStatus || 'confirmed');
 
         if (targetOrder && (parseFloat(depositAmount || targetOrder.deposit) || 0) > 0 && (effectiveDepositStatus === 'unconfirmed' || (effectiveDepositStatus === 'pending' && targetOrder.depositStatus === 'pending' && depositStatus !== 'confirmed'))) {
             showToast(language === 'ar' ? "لا يمكن إصدار بوليصة بوسطة لطلب عربونه معلق أو مرفوض. يرجى تأكيد استلام العربون أولاً." : "Cannot generate Bosta waybill for order with pending or unconfirmed deposit.", "error");
@@ -5005,11 +5050,6 @@ export const AppProvider = ({ children }) => {
 
         const wasAlreadyReviewed = targetOrder ? (targetOrder.is_reviewed || targetOrder.isReviewed) : false;
         const isShopifyOrder = targetOrder ? (targetOrder.source === 'shopify') : false;
-
-        const finalReceiverId = (depositAmount > 0) 
-            ? (depositReceiverId || targetOrder?.depositReceiverId || state.currentUser?.id || null) 
-            : null;
-        const finalCreatorName = state.currentUser?.name || targetOrder?.createdBy || 'الآدمن';
 
         try {
             showToast(language === 'ar' ? "جاري إنشاء الشحنة وتوليد البوليصة في بوسطة..." : "Creating shipment and air waybill in Bosta...", "info");
@@ -5089,7 +5129,7 @@ export const AppProvider = ({ children }) => {
             const updatePayload = {
                 deposit: depositAmount,
                 deposit_receiver_id: finalReceiverId,
-                deposit_status: depositStatus,
+                deposit_status: effectiveDepositStatus,
                 status: 'Pending',
                 address: finalAddressStr
             };

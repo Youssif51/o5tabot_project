@@ -1723,7 +1723,15 @@ ${followUpReason}
                                                 </span>
                                             )}
                                         </div>
-                                        <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{ord.date}</span>
+                                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'left', gap: '2px' }}>
+                                            <span style={{ fontSize: '11px', color: 'var(--text-secondary)' }}>{ord.date}</span>
+                                            {(ord.createdAt || ord.created_at) && (
+                                                <span style={{ fontSize: '10px', color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                                    <i className="fa-regular fa-clock" style={{ fontSize: '9px', opacity: 0.7 }}></i>
+                                                    {formatOrderTime(ord.createdAt || ord.created_at)}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
 
                                     {/* Customer name and phone */}
