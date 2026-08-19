@@ -41,7 +41,7 @@ const getFirstAllowedRoute = (user) => {
     const perms = user.permissions || [];
     if (perms.includes('view_dashboard')) return "/dashboard";
     if (perms.includes('manage_orders')) return "/orders";
-    if (perms.includes('manage_inventory')) return "/inventory";
+    if (perms.includes('view_inventory') || perms.includes('manage_inventory')) return "/inventory";
     if (perms.includes('manage_suppliers')) return "/suppliers";
     if (perms.includes('manage_customers')) return "/customers";
     return "/store";

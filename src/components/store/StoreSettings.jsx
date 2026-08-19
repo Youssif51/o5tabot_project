@@ -66,6 +66,7 @@ export default function StoreSettings() {
 
     const PERMISSIONS_MAP = {
         'view_dashboard': 'التقارير والإحصائيات',
+        'view_inventory': 'استعراض المخزون',
         'manage_inventory': 'إدارة المخزون',
         'manage_orders': 'إدارة المبيعات',
         'manage_suppliers': 'إدارة الموردين',

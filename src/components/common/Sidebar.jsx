@@ -7,12 +7,16 @@ export default function Sidebar() {
     
     if (!state.currentUser) return null;
 
-    const checkPermission = (perm) => {
+    const checkPermission = (item) => {
         if (state.currentUser.role === 'SuperAdmin') return true;
-        if (Array.isArray(perm)) {
-            return perm.every(p => (state.currentUser.permissions || []).includes(p));
+        const userPerms = state.currentUser.permissions || [];
+        if (item.permAny && Array.isArray(item.permAny)) {
+            return item.permAny.some(p => userPerms.includes(p));
         }
-        return (state.currentUser.permissions || []).includes(perm);
+        if (Array.isArray(item.perm)) {
+            return item.perm.every(p => userPerms.includes(p));
+        }
+        return userPerms.includes(item.perm);
     };
 
     const isOrderReviewed = (o) => {
@@ -56,7 +60,7 @@ export default function Sidebar() {
 
     const navItems = [
         { id: 'dashboard', name: t('dashboard'), icon: 'Home.png', perm: 'view_dashboard' },
-        { id: 'inventory', name: t('inventory'), icon: 'Inventory.png', perm: 'manage_inventory' },
+        { id: 'inventory', name: t('inventory'), icon: 'Inventory.png', permAny: ['view_inventory', 'manage_inventory'] },
         { id: 'reports', name: t('reports'), icon: 'Report.png', perm: ['view_reports', 'view_dashboard'] },
         { id: 'suppliers', name: t('suppliers'), icon: 'Suppliers.png', perm: 'manage_suppliers' },
         { id: 'customers', name: t('customersList') || 'العملاء', icon: 'Support.png', perm: 'manage_customers' },
@@ -64,7 +68,7 @@ export default function Sidebar() {
         { id: 'marketing', name: 'التسويق والمؤثرين', icon: 'promo-code.png', perm: 'view_dashboard' },
         { id: 'shopifyPending', name: 'طلبات شوبيفاي', icon: 'Cart.png', perm: 'manage_orders', isShopify: true },
         { id: 'depositConfirm', name: 'تأكيد العرابين', icon: 'Wallet.svg', perm: 'manage_orders', isDeposit: true }
-    ].filter(item => checkPermission(item.perm));
+    ].filter(item => checkPermission(item));
 
     return (
         <aside className="sidebar">

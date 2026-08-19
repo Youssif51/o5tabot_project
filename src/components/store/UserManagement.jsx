@@ -3,7 +3,8 @@ import { AppContext } from '../../context/AppContext';
 
 const PERMISSIONS_LIST = [
     { id: 'view_dashboard', label: 'رؤية الإحصائيات والأرباح' },
-    { id: 'manage_inventory', label: 'إدارة المنتجات والمخزون' },
+    { id: 'view_inventory', label: 'استعراض المخزون فقط (بدون تكلفة أو تعديل)' },
+    { id: 'manage_inventory', label: 'إدارة وتعديل المخزون والأسعار' },
     { id: 'manage_orders', label: 'إدارة المبيعات والطلبات' },
     { id: 'manage_suppliers', label: 'إدارة الموردين والمشتريات' },
     { id: 'manage_customers', label: 'إدارة العملاء والولاء' },

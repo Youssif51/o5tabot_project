@@ -6,6 +6,12 @@ import RestockModal from './RestockModal';
 
 export default function ProductInfo({ productId, onBack, onEditProduct }) {
     const { state, recordStockAdjustment, showToast, language, t } = useContext(AppContext);
+    
+    const userRole = state.currentUser?.role;
+    const userPerms = state.currentUser?.permissions || [];
+    const isSuperAdmin = userRole === 'SuperAdmin';
+    const canManageInventory = isSuperAdmin || userPerms.includes('manage_inventory');
+
     const [activeTab, setActiveTab] = useState('Overview');
     const [ledgerPage, setLedgerPage] = useState(1);
     const [ledgerSearch, setLedgerSearch] = useState('');
@@ -149,9 +155,11 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                 </div>
 
                 <div className="inspect-header-actions" style={{ display: 'flex', gap: '10px' }}>
-                    <button className="btn btn-secondary" onClick={() => onEditProduct(product.id)} style={{ flex: 1, justifyContent: 'center' }}>
-                        <i className="fa-solid fa-pencil" style={{ marginRight: '6px' }}></i> {t('edit')}
-                    </button>
+                    {canManageInventory && (
+                        <button className="btn btn-secondary" onClick={() => onEditProduct(product.id)} style={{ flex: 1, justifyContent: 'center' }}>
+                            <i className="fa-solid fa-pencil" style={{ marginRight: '6px' }}></i> {t('edit')}
+                        </button>
+                    )}
                     <button className="btn btn-secondary" onClick={handleDownloadReport} style={{ flex: 1, justifyContent: 'center' }}>
                         {t('downloadAll')}
                     </button>
@@ -160,7 +168,7 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
 
             {/* Tab controls */}
             <div className="custom-horizontal-slider" style={{ display: 'flex', borderBottom: '1px solid var(--glass-border)', gap: '24px', marginBottom: '24px', overflowX: 'auto', whiteSpace: 'nowrap', paddingBottom: '4px' }}>
-                {['Overview', 'Purchases', 'Adjustments', 'History'].map(tab => (
+                {(canManageInventory ? ['Overview', 'Purchases', 'Adjustments', 'History'] : ['Overview', 'History']).map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
@@ -242,12 +250,16 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                     <thead>
                                         <tr>
                                             <th>{t('optionName')}</th>
-                                            <th>{t('buyingPrice')}</th>
-                                            <th>متوسط التكلفة (WAC)</th>
+                                            {canManageInventory && (
+                                                <>
+                                                    <th>{t('buyingPrice')}</th>
+                                                    <th>متوسط التكلفة (WAC)</th>
+                                                </>
+                                            )}
                                             <th>{t('price')}</th>
-                                            <th>{t('margin')}</th>
+                                            {canManageInventory && <th>{t('margin')}</th>}
                                             <th>{t('stock')}</th>
-                                            <th>إجراءات</th>
+                                            {canManageInventory && <th>إجراءات</th>}
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -258,20 +270,26 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                             return (
                                                 <tr key={v.sku}>
                                                     <td style={{ fontWeight: 600 }}>{cleanVariantName(product.name, v.name) || 'اساسي'}</td>
-                                                    <td>{currency} {v.wholesalePrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
-                                                    <td style={{ fontWeight: 600, color: 'var(--color-warning)' }}>{currency} {costVal.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                    {canManageInventory && (
+                                                        <>
+                                                            <td>{currency} {v.wholesalePrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                            <td style={{ fontWeight: 600, color: 'var(--color-warning)' }}>{currency} {costVal.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                        </>
+                                                    )}
                                                     <td style={{ color: 'var(--gold-primary)', fontWeight: 600 }}>{currency} {v.retailPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
-                                                    <td><span className="badge badge-success">{profitMargin}%</span></td>
+                                                    {canManageInventory && <td><span className="badge badge-success">{profitMargin}%</span></td>}
                                                     <td>{vQty} {t('packets')}</td>
-                                                    <td>
-                                                        <button 
-                                                            className="btn btn-primary" 
-                                                            style={{ padding: '4px 10px', fontSize: '11px', minWidth: '80px', display: 'flex', gap: '4px', alignItems: 'center' }} 
-                                                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRestockVariantObj(v); }}
-                                                        >
-                                                            <i className="fa-solid fa-plus"></i> اضافة مخزون
-                                                        </button>
-                                                    </td>
+                                                    {canManageInventory && (
+                                                        <td>
+                                                            <button 
+                                                                className="btn btn-primary" 
+                                                                style={{ padding: '4px 10px', fontSize: '11px', minWidth: '80px', display: 'flex', gap: '4px', alignItems: 'center' }} 
+                                                                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRestockVariantObj(v); }}
+                                                            >
+                                                                <i className="fa-solid fa-plus"></i> اضافة مخزون
+                                                            </button>
+                                                        </td>
+                                                    )}
                                                 </tr>
                                             );
                                         })}
@@ -288,31 +306,40 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                         <div key={v.sku} className="sa-mobile-card" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--glass-border)', borderRadius: '8px', padding: '14px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                 <strong style={{ color: '#fff', fontSize: '13px' }}>{cleanVariantName(product.name, v.name) || 'اساسي'}</strong>
-                                                <span className="badge badge-success" style={{ fontSize: '10.5px' }}>{profitMargin}% هامش</span>
+                                                {canManageInventory && <span className="badge badge-success" style={{ fontSize: '10.5px' }}>{profitMargin}% هامش</span>}
                                             </div>
-                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', fontSize: '11px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.01)', padding: '8px', borderRadius: '4px' }}>
-                                                <div>
-                                                    <span style={{ display: 'block', fontSize: '9px', textTransform: 'uppercase', marginBottom: '2px' }}>شراء</span>
-                                                    <strong style={{ color: '#fff' }}>{currency} {v.wholesalePrice}</strong>
+                                            {canManageInventory ? (
+                                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', fontSize: '11px', color: 'var(--text-secondary)', background: 'rgba(255,255,255,0.01)', padding: '8px', borderRadius: '4px' }}>
+                                                    <div>
+                                                        <span style={{ display: 'block', fontSize: '9px', textTransform: 'uppercase', marginBottom: '2px' }}>شراء</span>
+                                                        <strong style={{ color: '#fff' }}>{currency} {v.wholesalePrice}</strong>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ display: 'block', fontSize: '9px', textTransform: 'uppercase', marginBottom: '2px' }}>متوسط التكلفة</span>
+                                                        <strong style={{ color: 'var(--color-warning)' }}>{currency} {costVal}</strong>
+                                                    </div>
+                                                    <div>
+                                                        <span style={{ display: 'block', fontSize: '9px', textTransform: 'uppercase', marginBottom: '2px' }}>بيع</span>
+                                                        <strong style={{ color: 'var(--gold-primary)' }}>{currency} {v.retailPrice}</strong>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <span style={{ display: 'block', fontSize: '9px', textTransform: 'uppercase', marginBottom: '2px' }}>متوسط التكلفة</span>
-                                                    <strong style={{ color: 'var(--color-warning)' }}>{currency} {costVal}</strong>
+                                            ) : (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px', background: 'rgba(255,255,255,0.01)', padding: '8px', borderRadius: '4px' }}>
+                                                    <span style={{ color: 'var(--text-muted)' }}>سعر البيع:</span>
+                                                    <strong style={{ color: 'var(--gold-primary)', fontSize: '13px' }}>{currency} {v.retailPrice}</strong>
                                                 </div>
-                                                <div>
-                                                    <span style={{ display: 'block', fontSize: '9px', textTransform: 'uppercase', marginBottom: '2px' }}>بيع</span>
-                                                    <strong style={{ color: 'var(--gold-primary)' }}>{currency} {v.retailPrice}</strong>
-                                                </div>
-                                            </div>
+                                            )}
                                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11.5px' }}>
                                                 <span>المخزون الحالي: <strong style={{ color: '#fff' }}>{v.stock?.Sulur || 0} قطع</strong></span>
-                                                <button 
-                                                    className="btn btn-primary" 
-                                                    style={{ padding: '6px 12px', fontSize: '11px', gap: '4px', display: 'flex', alignItems: 'center' }} 
-                                                    onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRestockVariantObj(v); }}
-                                                >
-                                                    <i className="fa-solid fa-plus"></i> إضافة مخزون
-                                                </button>
+                                                {canManageInventory && (
+                                                    <button 
+                                                        className="btn btn-primary" 
+                                                        style={{ padding: '6px 12px', fontSize: '11px', gap: '4px', display: 'flex', alignItems: 'center' }} 
+                                                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setRestockVariantObj(v); }}
+                                                    >
+                                                        <i className="fa-solid fa-plus"></i> إضافة مخزون
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     );
@@ -321,21 +348,23 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                         </div>
 
                         {/* Supplier Details Card */}
-                        <div className="glass-card" style={{ padding: '24px' }}>
-                            <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '18px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
-                                {t('supplierDetails')}
-                            </h3>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr' }}>
-                                    <span style={{ color: 'var(--text-secondary)' }}>{t('supplierName')}</span>
-                                    <span style={{ color: '#fff', fontWeight: 500 }}>{supplierName}</span>
-                                </div>
-                                <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr' }}>
-                                    <span style={{ color: 'var(--text-secondary)' }}>{t('phone')}</span>
-                                    <span style={{ color: '#fff' }}>{supplierPhone}</span>
+                        {canManageInventory && (
+                            <div className="glass-card" style={{ padding: '24px' }}>
+                                <h3 style={{ fontSize: '15px', color: '#fff', marginBottom: '18px', borderBottom: '1px solid var(--glass-border)', paddingBottom: '10px' }}>
+                                    {t('supplierDetails')}
+                                </h3>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px' }}>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr' }}>
+                                        <span style={{ color: 'var(--text-secondary)' }}>{t('supplierName')}</span>
+                                        <span style={{ color: '#fff', fontWeight: 500 }}>{supplierName}</span>
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 3fr' }}>
+                                        <span style={{ color: 'var(--text-secondary)' }}>{t('phone')}</span>
+                                        <span style={{ color: '#fff' }}>{supplierPhone}</span>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
+                        )}
 
 
 
@@ -440,26 +469,30 @@ export default function ProductInfo({ productId, onBack, onEditProduct }) {
                                           <span style={{ color: 'var(--text-secondary)' }}>معدل الاستهلاك (Burn Rate)</span>
                                           <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{burnRate} / يوم</span>
                                       </div> 
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
-                                 <span style={{ color: 'var(--text-secondary)' }}>{t('buyingPrice')}</span>
-                                 <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency} {mainWholesalePrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
-                             </div>
-                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
-                                 <span style={{ color: 'var(--text-secondary)' }}>متوسط التكلفة (WAC)</span>
-                                 <span style={{ fontWeight: 600, color: 'var(--color-warning)' }}>{currency} {mainAverageCost.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
-                             </div>
-                             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
-                                <span style={{ color: 'var(--text-secondary)' }}>{t('markup')}</span>
-                                <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>
-                                    {mainRetailPrice > 0 ? ((mainRetailPrice - mainAverageCost) / mainAverageCost * 100).toLocaleString('en-US', {maximumFractionDigits: 0}) : 0}%
-                                </span>
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
-                                <span style={{ color: 'var(--text-secondary)' }}>{t('profitMargin')}</span>
-                                <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>
-                                    {mainRetailPrice > 0 ? ((mainRetailPrice - mainAverageCost) / mainRetailPrice * 100).toFixed(1) : 0}%
-                                </span>
-                            </div>
+                            {canManageInventory && (
+                                <>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                                         <span style={{ color: 'var(--text-secondary)' }}>{t('buyingPrice')}</span>
+                                         <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency} {(Number(mainWholesalePrice) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                     </div>
+                                     <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                                         <span style={{ color: 'var(--text-secondary)' }}>متوسط التكلفة (WAC)</span>
+                                         <span style={{ fontWeight: 600, color: 'var(--color-warning)' }}>{currency} {(Number(mainAverageCost) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                     </div>
+                                     <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                                        <span style={{ color: 'var(--text-secondary)' }}>{t('markup')}</span>
+                                        <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>
+                                            {mainRetailPrice > 0 && mainAverageCost > 0 ? (((mainRetailPrice - mainAverageCost) / mainAverageCost * 100) || 0).toLocaleString('en-US', {maximumFractionDigits: 0}) : 0}%
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.05)', paddingBottom: '8px' }}>
+                                        <span style={{ color: 'var(--text-secondary)' }}>{t('profitMargin')}</span>
+                                        <span style={{ fontWeight: 600, color: 'var(--color-success)' }}>
+                                            {mainRetailPrice > 0 ? (((mainRetailPrice - mainAverageCost) / mainRetailPrice * 100) || 0).toFixed(1) : 0}%
+                                        </span>
+                                    </div>
+                                </>
+                            )}
                             <div style={{ display: 'flex', justifyContent: 'space-between', paddingBottom: '8px' }}>
                                 <span style={{ color: 'var(--text-secondary)' }}>{t('thresholdValue')}</span>
                                 <span style={{ fontWeight: 600, color: 'var(--color-danger)' }}>{thresholdValue}</span>

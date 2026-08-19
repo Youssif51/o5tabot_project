@@ -14,6 +14,11 @@ export default function InventoryList({
 }) {
     const { state, showToast, t, deleteProduct, showConfirm, refreshProductsAndLedger } = useContext(AppContext);
 
+    const userRole = state.currentUser?.role;
+    const userPerms = state.currentUser?.permissions || [];
+    const isSuperAdmin = userRole === 'SuperAdmin';
+    const canManageInventory = isSuperAdmin || userPerms.includes('manage_inventory');
+
     React.useEffect(() => {
         if (refreshProductsAndLedger) {
             refreshProductsAndLedger();
@@ -200,16 +205,24 @@ export default function InventoryList({
     });
 
     const handleExportCSV = () => {
-        const headers = ["اسم المنتج", "القسم", "رمز SKU", "الباركود", "سعر التكلفة", "سعر البيع", "المخزون المتوفر"];
-        const rows = filteredList.map(item => [
-            `"${item.productName}"`,
-            `"${item.category || ''}"`,
-            `"${item.sku}"`,
-            `"${item.barcode || ''}"`,
-            item.wholesalePrice || 0,
-            item.retailPrice || 0,
-            item.stock?.Sulur || 0
-        ]);
+        const headers = canManageInventory 
+            ? ["اسم المنتج", "القسم", "رمز SKU", "الباركود", "سعر التكلفة", "سعر البيع", "المخزون المتوفر"]
+            : ["اسم المنتج", "القسم", "رمز SKU", "الباركود", "سعر البيع", "المخزون المتوفر"];
+            
+        const rows = filteredList.map(item => {
+            const base = [
+                `"${item.productName}"`,
+                `"${item.category || ''}"`,
+                `"${item.sku}"`,
+                `"${item.barcode || ''}"`
+            ];
+            if (canManageInventory) {
+                base.push(item.wholesalePrice || 0);
+            }
+            base.push(item.retailPrice || 0);
+            base.push(item.stock?.Sulur || 0);
+            return base;
+        });
 
         const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -269,9 +282,15 @@ export default function InventoryList({
                 }}>
                     <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '8px' }}>{t('totalProducts')}</span>
                     <div style={{ fontSize: '1.5rem', fontWeight: '800', color: 'var(--color-info)', letterSpacing: '-0.5px' }}>{totalProductsCount}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
-                        قيمة الإيراد: <strong>{currency} {totalInvValue.toLocaleString('en-US', {maximumFractionDigits: 0})}</strong>
-                    </div>
+                    {canManageInventory ? (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                            قيمة الإيراد: <strong>{currency} {totalInvValue.toLocaleString('en-US', {maximumFractionDigits: 0})}</strong>
+                        </div>
+                    ) : (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                            المنتجات النشطة في المتجر
+                        </div>
+                    )}
                 </div>
 
                 {/* Top Selling */}
@@ -284,9 +303,15 @@ export default function InventoryList({
                 }}>
                     <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: '600', display: 'block', marginBottom: '8px' }}>{t('topSelling')}</span>
                     <div style={{ fontSize: '1.5rem', fontWeight: '800', color: '#a084dc', letterSpacing: '-0.5px' }}>{topSellingCount}</div>
-                    <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
-                        إجمالي التكلفة: <strong>{currency} {topSellingCost.toLocaleString('en-US', {maximumFractionDigits: 0})}</strong>
-                    </div>
+                    {canManageInventory ? (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                            إجمالي التكلفة: <strong>{currency} {topSellingCost.toLocaleString('en-US', {maximumFractionDigits: 0})}</strong>
+                        </div>
+                    ) : (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '8px' }}>
+                            المنتجات الأكثر طلباً ومبيعاً
+                        </div>
+                    )}
                 </div>
 
                 {/* Low Stocks */}
@@ -335,12 +360,16 @@ export default function InventoryList({
                         <h3>{t('products')}</h3>
                         
                         <div style={{ display: 'flex', gap: '10px' }}>
-                            <button className="btn btn-primary" onClick={onOpenAddProduct}>
-                                {t('addProduct')}
-                            </button>
-                            <button className="btn btn-secondary" onClick={() => setIsInitialStockOpen(true)}>
-                                ضبط الرصيد الافتتاحي والأسعار
-                            </button>
+                            {canManageInventory && (
+                                <>
+                                    <button className="btn btn-primary" onClick={onOpenAddProduct}>
+                                        {t('addProduct')}
+                                    </button>
+                                    <button className="btn btn-secondary" onClick={() => setIsInitialStockOpen(true)}>
+                                        ضبط الرصيد الافتتاحي والأسعار
+                                    </button>
+                                </>
+                            )}
                             <button className="btn btn-secondary" onClick={() => setShowFilters(!showFilters)}>
                                 <i className="fa-solid fa-sliders"></i> {t('filters')}
                             </button>
@@ -407,7 +436,7 @@ export default function InventoryList({
                             <thead>
                                 <tr>
                                     <th>{t('products')}</th>
-                                    <th>{t('buyingPrice')}</th>
+                                    <th>{canManageInventory ? t('buyingPrice') : 'سعر البيع'}</th>
                                     <th>{t('quantity')}</th>
                                     <th>{t('thresholdValue')}</th>
                                     <th>{t('createdDate')}</th>
@@ -429,12 +458,17 @@ export default function InventoryList({
                                         // Average Wholesale / Buying price
                                         let totalQty = 0;
                                         let totalWholesale = 0;
-                                        prod.variants.forEach(vr => {
-                                            const qty = (vr.stock.Sulur || 0);
+                                        let totalRetail = 0;
+                                        (prod.variants || []).forEach(vr => {
+                                            const qty = (vr?.stock?.Sulur || 0);
                                             totalQty += qty;
-                                            totalWholesale += qty * vr.wholesalePrice;
+                                            totalWholesale += qty * (vr?.wholesalePrice || 0);
+                                            totalRetail += qty * (vr?.retailPrice || 0);
                                         });
-                                        const buyingPrice = totalQty > 0 ? (totalWholesale / totalQty) : (prod.variants[0]?.wholesalePrice || 0);
+                                        const buyingPrice = totalQty > 0 ? (totalWholesale / totalQty) : (prod.variants?.[0]?.wholesalePrice || 0);
+                                        const sellingPrice = totalQty > 0 ? (totalRetail / totalQty) : (prod.variants?.[0]?.retailPrice || 0);
+                                        const safeBuyingPrice = Number(buyingPrice) || 0;
+                                        const safeSellingPrice = Number(sellingPrice) || 0;
 
                                         // Threshold / Reorder limit average
                                         const threshold = prod.variants[0]?.reorderLimit || 1;
@@ -550,7 +584,7 @@ export default function InventoryList({
                                                         </div>
                                                     </div>
                                                 </td>
-                                                 <td style={{ fontWeight: 600 }}>{currency} {buyingPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
+                                                 <td style={{ fontWeight: 600 }}>{currency} {(canManageInventory ? safeBuyingPrice : safeSellingPrice).toLocaleString('en-US', {maximumFractionDigits: 2})}</td>
                                                  <td>{totalQty} {t('packets')}</td>
                                                  <td>{threshold} {t('packets')}</td>
                                                  <td>{prod.createdDate || "2026-06-30"}</td>
@@ -576,25 +610,29 @@ export default function InventoryList({
                                                         >
                                                             <i className="fa-solid fa-eye"></i>
                                                         </button>
-                                                        <button 
-                                                            className="action-btn-circle" 
-                                                            title="Edit Catalog"
-                                                            onClick={() => onOpenEditProduct(prod.id)}
-                                                        >
-                                                            <i className="fa-solid fa-pencil"></i>
-                                                        </button>
-                                                        <button 
-                                                            className="action-btn-circle" 
-                                                            title="Delete Product"
-                                                            style={{ color: 'var(--color-danger)' }}
-                                                            onClick={() => {
-                                                                showConfirm('هل أنت متأكد من مسح هذا المنتج من المتجر ومن شوبيفاي؟', () => {
-                                                                    deleteProduct(prod.id);
-                                                                });
-                                                            }}
-                                                        >
-                                                            <i className="fa-solid fa-trash"></i>
-                                                        </button>
+                                                        {canManageInventory && (
+                                                            <>
+                                                                <button 
+                                                                    className="action-btn-circle" 
+                                                                    title="Edit Catalog"
+                                                                    onClick={() => onOpenEditProduct(prod.id)}
+                                                                >
+                                                                    <i className="fa-solid fa-pencil"></i>
+                                                                </button>
+                                                                <button 
+                                                                    className="action-btn-circle" 
+                                                                    title="Delete Product"
+                                                                    style={{ color: 'var(--color-danger)' }}
+                                                                    onClick={() => {
+                                                                        showConfirm('هل أنت متأكد من مسح هذا المنتج من المتجر ومن شوبيفاي؟', () => {
+                                                                            deleteProduct(prod.id);
+                                                                        });
+                                                                    }}
+                                                                >
+                                                                    <i className="fa-solid fa-trash"></i>
+                                                                </button>
+                                                            </>
+                                                        )}
                                                     </div>
                                                 </td>
                                             </tr>
@@ -613,18 +651,23 @@ export default function InventoryList({
                             </div>
                         ) : (
                             paginatedList.map(prod => {
-                                // Average Wholesale / Buying price
+                                // Average Wholesale / Buying price & Retail / Selling price
                                 let totalQty = 0;
                                 let totalWholesale = 0;
-                                prod.variants.forEach(vr => {
-                                    const qty = (vr.stock.Sulur || 0);
+                                let totalRetail = 0;
+                                (prod.variants || []).forEach(vr => {
+                                    const qty = (vr?.stock?.Sulur || 0);
                                     totalQty += qty;
-                                    totalWholesale += qty * vr.wholesalePrice;
+                                    totalWholesale += qty * (vr?.wholesalePrice || 0);
+                                    totalRetail += qty * (vr?.retailPrice || 0);
                                 });
-                                const buyingPrice = totalQty > 0 ? (totalWholesale / totalQty) : (prod.variants[0]?.wholesalePrice || 0);
+                                const buyingPrice = totalQty > 0 ? (totalWholesale / totalQty) : (prod.variants?.[0]?.wholesalePrice || 0);
+                                const sellingPrice = totalQty > 0 ? (totalRetail / totalQty) : (prod.variants?.[0]?.retailPrice || 0);
+                                const safeBuyingPrice = Number(buyingPrice) || 0;
+                                const safeSellingPrice = Number(sellingPrice) || 0;
 
                                 // Threshold / Reorder limit average
-                                const threshold = prod.variants[0]?.reorderLimit || 1;
+                                const threshold = prod.variants?.[0]?.reorderLimit || 1;
 
                                 // Calculate Stock Runway
                                 const dailyBurnRate = (prod.totalConsumed || 0) / 30;
@@ -747,8 +790,8 @@ export default function InventoryList({
                                         {/* Body info: Price, Qty, Runway */}
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
                                             <div>
-                                                <span style={{ color: 'var(--text-muted)' }}>سعر الشراء: </span>
-                                                <strong style={{ color: '#fff' }}>{currency} {buyingPrice.toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
+                                                <span style={{ color: 'var(--text-muted)' }}>{canManageInventory ? 'سعر الشراء: ' : 'سعر البيع: '}</span>
+                                                <strong style={{ color: '#fff' }}>{currency} {(canManageInventory ? safeBuyingPrice : safeSellingPrice).toLocaleString('en-US', {maximumFractionDigits: 2})}</strong>
                                             </div>
                                             <div>
                                                 <span style={{ color: 'var(--text-muted)' }}>المخزون الحالي: </span>
@@ -789,26 +832,30 @@ export default function InventoryList({
                                                 >
                                                      <i className="fa-solid fa-eye"></i>
                                                 </button>
-                                                <button 
-                                                    className="action-btn-circle" 
-                                                    title="Edit Catalog"
-                                                    onClick={() => onOpenEditProduct(prod.id)}
-                                                    style={{ width: '30px', height: '30px', fontSize: '11px' }}
-                                                >
-                                                    <i className="fa-solid fa-pencil"></i>
-                                                </button>
-                                                <button 
-                                                    className="action-btn-circle" 
-                                                    title="Delete Product"
-                                                    style={{ color: 'var(--color-danger)', width: '30px', height: '30px', fontSize: '11px' }}
-                                                    onClick={() => {
-                                                        showConfirm('هل أنت متأكد من مسح هذا المنتج من المتجر ومن شوبيفاي؟', () => {
-                                                            deleteProduct(prod.id);
-                                                        });
-                                                    }}
-                                                >
-                                                    <i className="fa-solid fa-trash"></i>
-                                                </button>
+                                                {canManageInventory && (
+                                                    <>
+                                                        <button 
+                                                            className="action-btn-circle" 
+                                                            title="Edit Catalog"
+                                                            onClick={() => onOpenEditProduct(prod.id)}
+                                                            style={{ width: '30px', height: '30px', fontSize: '11px' }}
+                                                        >
+                                                            <i className="fa-solid fa-pencil"></i>
+                                                        </button>
+                                                        <button 
+                                                            className="action-btn-circle" 
+                                                            title="Delete Product"
+                                                            style={{ color: 'var(--color-danger)', width: '30px', height: '30px', fontSize: '11px' }}
+                                                            onClick={() => {
+                                                                showConfirm('هل أنت متأكد من مسح هذا المنتج من المتجر ومن شوبيفاي؟', () => {
+                                                                    deleteProduct(prod.id);
+                                                                });
+                                                            }}
+                                                        >
+                                                            <i className="fa-solid fa-trash"></i>
+                                                        </button>
+                                                    </>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
