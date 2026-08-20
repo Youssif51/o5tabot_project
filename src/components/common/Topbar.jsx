@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { formatProductDisplayName } from '../../utils/productUtils';
 
 export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar }) {
-    const { state, currentView, setCurrentView, language, setLanguage, theme, setTheme, t, authLogout } = useContext(AppContext);
+    const { state, currentView, setCurrentView, language, setLanguage, theme, setTheme, t, authLogout, smartSyncLatest, isSyncing } = useContext(AppContext);
     const navigate = useNavigate();
     const [isOpen, setIsOpen] = useState(false);
     const [showProfileDropdown, setShowProfileDropdown] = useState(false);
@@ -199,6 +199,40 @@ export default function Topbar({ globalSearch, setGlobalSearch, toggleSidebar })
             </div>
             
             <div className="top-bar-actions" style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                {/* Smart Live Sync Button */}
+                <button 
+                    className="top-bar-icon-btn" 
+                    onClick={() => smartSyncLatest && smartSyncLatest(true)}
+                    disabled={isSyncing}
+                    style={{ 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        cursor: isSyncing ? 'default' : 'pointer',
+                        position: 'relative'
+                    }}
+                    title={isSyncing ? 'جاري المزامنة الذكية...' : 'تحديث لحظي ذكي (مزامنة أحدث العمليات)'}
+                >
+                    <i 
+                        className={`fa-solid fa-rotate ${isSyncing ? 'fa-spin' : ''}`} 
+                        style={{ 
+                            color: isSyncing ? '#10b981' : (theme === 'dark' ? '#94a3b8' : '#64748b'), 
+                            fontSize: '15px',
+                            transition: 'color 0.2s'
+                        }}
+                    ></i>
+                    <span style={{
+                        position: 'absolute',
+                        top: '4px',
+                        right: '4px',
+                        width: '6px',
+                        height: '6px',
+                        borderRadius: '50%',
+                        background: isSyncing ? '#38bdf8' : '#10b981',
+                        boxShadow: isSyncing ? '0 0 6px #38bdf8' : '0 0 6px #10b981'
+                    }}></span>
+                </button>
+
                 {/* Theme Switch Button */}
                 <button 
                     className="top-bar-icon-btn" 

@@ -98,16 +98,7 @@ export default function OrdersList({ globalSearch, setGlobalSearch, onOpenAddOrd
         }
     }, [globalSearch, searchOrdersDatabase]);
 
-    // Auto-fetch missing items for orders safely
-    const fetchedMissingOrderIdsRef = React.useRef(new Set());
-    React.useEffect(() => {
-        (state.orders || []).forEach(ord => {
-            if ((!ord.items || ord.items.length === 0) && ord.id && !fetchedMissingOrderIdsRef.current.has(ord.id) && (parseFloat(ord.totalValue) > 0)) {
-                fetchedMissingOrderIdsRef.current.add(ord.id);
-                fetchMissingOrderItems(ord.id);
-            }
-        });
-    }, [state.orders, fetchMissingOrderItems]);
+
     
     // Filters & Search
     const [deliveryStatusFilter, setDeliveryStatusFilter] = useState('all');

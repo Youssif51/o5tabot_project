@@ -26,14 +26,7 @@ export default function ShopifyPendingList() {
     const [timeFilter, setTimeFilter] = useState({ type: 'preset', preset: 'all' });
     const [cancelModalData, setCancelModalData] = useState(null);
     
-    // Auto-fetch missing items for pending orders
-    useEffect(() => {
-        (state.orders || []).forEach(ord => {
-            if (ord.items === undefined && ord.id) {
-                fetchMissingOrderItems(ord.id);
-            }
-        });
-    }, [state.orders]);
+
 
     // Inject horizontal scrollbar/slider styles
     useEffect(() => {

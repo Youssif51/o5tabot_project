@@ -35,7 +35,7 @@ export default class ErrorBoundary extends React.Component {
             localStorage.removeItem('octabot_state');
             sessionStorage.clear();
         } catch (e) {}
-        window.location.reload();
+        window.location.href = window.location.pathname + (window.location.search ? '' : '?t=' + Date.now());
     };
 
     render() {
@@ -56,7 +56,7 @@ export default class ErrorBoundary extends React.Component {
                     textAlign: 'center'
                 }}>
                     <div style={{
-                        maxWidth: '440px',
+                        maxWidth: '460px',
                         width: '100%',
                         background: 'rgba(22, 27, 34, 0.95)',
                         border: '1px solid rgba(240, 185, 11, 0.25)',
@@ -90,6 +90,26 @@ export default class ErrorBoundary extends React.Component {
                         <p style={{ margin: 0, fontSize: '13.5px', color: '#8b949e', lineHeight: 1.6 }}>
                             تم رصد تحديث في ملفات الموقع أو البيانات المحفوظة. يرجى الضغط أدناه لتحديث الصفحة ومزامنة أحدث نسخة فوراً.
                         </p>
+
+                        {this.state.error?.message && (
+                            <div style={{
+                                width: '100%',
+                                padding: '8px 12px',
+                                background: 'rgba(239, 68, 68, 0.1)',
+                                border: '1px solid rgba(239, 68, 68, 0.25)',
+                                borderRadius: '8px',
+                                fontSize: '11px',
+                                color: '#fca5a5',
+                                textAlign: 'left',
+                                direction: 'ltr',
+                                wordBreak: 'break-word',
+                                fontFamily: 'monospace',
+                                maxHeight: '80px',
+                                overflowY: 'auto'
+                            }}>
+                                {this.state.error.message}
+                            </div>
+                        )}
 
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', marginTop: '8px' }}>
                             <button

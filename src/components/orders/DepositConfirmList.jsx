@@ -101,18 +101,7 @@ export default function DepositConfirmList() {
     const [timeFilter, setTimeFilter] = useState({ type: 'preset', preset: 'all' });
     const [reassignAdminMap, setReassignAdminMap] = useState({});
 
-    // Defensive auto-fetch for deposit orders that have missing items
-    const fetchedMissingDepositOrderIdsRef = React.useRef(new Set());
-    React.useEffect(() => {
-        (allOrdersForDeposits || []).forEach(ord => {
-            if ((!ord.items || ord.items.length === 0) && ord.id && !fetchedMissingDepositOrderIdsRef.current.has(ord.id) && (parseFloat(ord.totalValue) > 0 || parseFloat(ord.deposit) > 0)) {
-                fetchedMissingDepositOrderIdsRef.current.add(ord.id);
-                if (fetchMissingOrderItems) {
-                    fetchMissingOrderItems(ord.id);
-                }
-            }
-        });
-    }, [allOrdersForDeposits, fetchMissingOrderItems]);
+
 
     const unconfirmedDepositsList = (allOrdersForDeposits || []).filter(o => 
         o.depositStatus === 'unconfirmed' && 

@@ -170,6 +170,15 @@ export const AppProvider = ({ children }) => {
         stateRef.current = state;
     }, [state]);
 
+    const [toast, setToast] = useState({ visible: false, message: "", type: "success" });
+
+    const showToast = useCallback((message, type = "success") => {
+        setToast({ visible: true, message, type });
+        setTimeout(() => {
+            setToast(prev => ({ ...prev, visible: false }));
+        }, 3000);
+    }, []);
+
     // Fetch WMS ERP records from Supabase on load
     const loadSupabaseData = useCallback(async () => {
             if (!supabase) return;
@@ -724,7 +733,228 @@ export const AppProvider = ({ children }) => {
         loadSupabaseData();
     }, [loadSupabaseData]);
 
-     // Auto-refresh on visibility/focus was removed to prevent excessive PostgREST egress network traffic in production.
+    // Smart Micro-Sync / Delta-Sync with safe overlap window
+    const lastSyncTimeRef = useRef(new Date(Date.now() - 5 * 60 * 1000).toISOString());
+    const [isSyncing, setIsSyncing] = useState(false);
+    const isSyncInProgressRef = useRef(false);
+
+    const smartSyncLatest = useCallback(async (isManual = false) => {
+        if (!supabase || isSyncInProgressRef.current) return;
+        isSyncInProgressRef.current = true;
+        setIsSyncing(true);
+
+        try {
+            window.dispatchEvent(new CustomEvent('app:top-loading'));
+
+            // Safe 5-minute overlap window to eliminate any client/server clock skew
+            const lastSyncDate = new Date(lastSyncTimeRef.current || (Date.now() - 5 * 60 * 1000));
+            const safeWindowDate = new Date(lastSyncDate.getTime() - 5 * 60 * 1000);
+            const safeWindowIso = safeWindowDate.toISOString();
+
+            let freshOrdersData = null;
+            try {
+                const { data, error } = await supabase
+                    .from('orders')
+                    .select('*')
+                    .or(`created_at.gte.${safeWindowIso},updated_at.gte.${safeWindowIso}`)
+                    .order('created_at', { ascending: false });
+
+                if (!error && data) {
+                    freshOrdersData = data;
+                } else {
+                    const { data: fbData } = await supabase
+                        .from('orders')
+                        .select('*')
+                        .gte('created_at', safeWindowIso)
+                        .order('created_at', { ascending: false });
+                    if (fbData) freshOrdersData = fbData;
+                }
+            } catch (fetchErr) {
+                console.warn("SmartSync order fetch fallback:", fetchErr);
+            }
+
+            if (freshOrdersData && freshOrdersData.length > 0) {
+                const updatedIds = freshOrdersData.map(o => o.id);
+                let freshItems = [];
+                try {
+                    const { data: itData } = await supabase
+                        .from('order_items')
+                        .select('*')
+                        .in('order_id', updatedIds);
+                    if (itData) freshItems = itData;
+                } catch (e) {
+                    console.error("SmartSync items error:", e);
+                }
+
+                const itemsByOrderId = {};
+                freshItems.forEach(oi => {
+                    if (!itemsByOrderId[oi.order_id]) itemsByOrderId[oi.order_id] = [];
+                    itemsByOrderId[oi.order_id].push({
+                        variantSku: oi.variant_sku,
+                        quantity: parseInt(oi.quantity) || 0,
+                        price: parseFloat(oi.price) || 0,
+                        costAtTimeOfSale: parseFloat(oi.cost_at_time_of_sale) || parseFloat(oi.wholesale_price) || 0,
+                        productName: oi.product_name || null,
+                        variantName: oi.variant_name || null
+                    });
+                });
+
+                const mappedFreshOrders = freshOrdersData.map(o => {
+                    let isReviewed = false;
+                    let isDeleted = false;
+                    if (o.address) {
+                        if (typeof o.address === 'object') {
+                            isReviewed = !!(o.address.isReviewed || o.address.is_reviewed);
+                            isDeleted = !!(o.address.isDeleted || o.address.is_deleted);
+                        } else if (typeof o.address === 'string' && o.address.trim().startsWith('{')) {
+                            try {
+                                const parsed = JSON.parse(o.address);
+                                isReviewed = !!(parsed.isReviewed || parsed.is_reviewed);
+                                isDeleted = !!(parsed.isDeleted || parsed.is_deleted);
+                            } catch(e) {}
+                        }
+                    }
+                    return {
+                        id: o.id,
+                        client: o.client,
+                        date: o.date,
+                        createdAt: o.created_at || null,
+                        warehouse: o.warehouse,
+                        status: o.status,
+                        totalValue: parseFloat(o.total_value) || 0,
+                        address: o.address || '',
+                        governorate: o.governorate || '',
+                        deposit: parseFloat(o.deposit) || 0,
+                        depositReceiverId: o.deposit_receiver_id || null,
+                        depositStatus: o.deposit_status || 'confirmed',
+                        depositRefundStatus: o.deposit_refund_status || null,
+                        depositRefundScreenshot: o.deposit_refund_screenshot || o.deposit_refund_proof_url || null,
+                        depositRefundAmount: o.deposit_refund_amount !== undefined && o.deposit_refund_amount !== null ? parseFloat(o.deposit_refund_amount) : null,
+                        depositRefundType: o.deposit_refund_type || null,
+                        shipping_fee: parseFloat(o.shipping_fee) || 0,
+                        createdBy: o.created_by,
+                        updatedBy: o.updated_by || null,
+                        shopifyOrderId: o.shopify_order_id || null,
+                        source: o.source || 'manual',
+                        paymentMethod: o.payment_method || null,
+                        customer_id: o.customer_id || null,
+                        discount_type: o.discount_type || null,
+                        discount_value: parseFloat(o.discount_value) || 0,
+                        applied_coupon_code: o.applied_coupon_code || null,
+                        discount_reason: o.discount_reason || null,
+                        discount_reason_details: o.discount_reason_details || null,
+                        is_reviewed: isReviewed,
+                        isReviewed: isReviewed,
+                        isDeleted: isDeleted,
+                        is_deleted: isDeleted,
+                        items: itemsByOrderId[o.id] !== undefined ? itemsByOrderId[o.id] : []
+                    };
+                });
+
+                setState(prev => {
+                    let newOrders = [...(prev.orders || [])];
+                    let newDeletedWithDep = [...(prev.deletedOrdersWithDeposits || [])];
+
+                    mappedFreshOrders.forEach(fresh => {
+                        if (fresh.isDeleted) {
+                            newOrders = newOrders.filter(o => o.id !== fresh.id);
+                            if (fresh.deposit > 0) {
+                                const dIdx = newDeletedWithDep.findIndex(o => o.id === fresh.id);
+                                if (dIdx >= 0) {
+                                    newDeletedWithDep[dIdx] = { ...newDeletedWithDep[dIdx], ...fresh };
+                                } else {
+                                    newDeletedWithDep.unshift(fresh);
+                                }
+                            }
+                        } else {
+                            const existingIdx = newOrders.findIndex(o => o.id === fresh.id);
+                            if (existingIdx >= 0) {
+                                const existing = newOrders[existingIdx];
+                                newOrders[existingIdx] = {
+                                    ...existing,
+                                    ...fresh,
+                                    items: (fresh.items && fresh.items.length > 0) ? fresh.items : (existing.items || [])
+                                };
+                            } else {
+                                newOrders.unshift(fresh);
+                            }
+                        }
+                    });
+
+                    return {
+                        ...prev,
+                        orders: newOrders,
+                        deletedOrdersWithDeposits: newDeletedWithDep
+                    };
+                });
+            }
+
+            // Sync updated variant stocks if any
+            try {
+                const { data: freshVariants, error: varErr } = await supabase
+                    .from('product_variants')
+                    .select('sku, stock_sulur, updated_at')
+                    .or(`updated_at.gte.${safeWindowIso}`)
+                    .limit(100);
+
+                if (!varErr && freshVariants && freshVariants.length > 0) {
+                    setState(prev => ({
+                        ...prev,
+                        products: (prev.products || []).map(p => ({
+                            ...p,
+                            variants: (p.variants || []).map(v => {
+                                const fv = freshVariants.find(fv => fv.sku === v.sku);
+                                if (fv) {
+                                    return {
+                                        ...v,
+                                        stock: {
+                                            ...v.stock,
+                                            Sulur: fv.stock_sulur !== undefined ? fv.stock_sulur : (v.stock?.Sulur || 0)
+                                        }
+                                    };
+                                }
+                                return v;
+                            })
+                        }))
+                    }));
+                }
+            } catch (vErr) {
+                // Non-critical stock check
+            }
+
+            lastSyncTimeRef.current = new Date().toISOString();
+            if (isManual) {
+                showToast("تم تحديث أحدث البيانات بنجاح", "success");
+            }
+        } catch (err) {
+            console.error("SmartSync error:", err);
+        } finally {
+            isSyncInProgressRef.current = false;
+            setTimeout(() => setIsSyncing(false), 400);
+        }
+    }, [showToast]);
+
+    // Throttled auto-sync on tab focus / visibility change (at most once every 30 seconds)
+    const lastFocusSyncRef = useRef(0);
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible') {
+                const now = Date.now();
+                if (now - lastFocusSyncRef.current > 30000) { // 30s throttle
+                    lastFocusSyncRef.current = now;
+                    smartSyncLatest(false);
+                }
+            }
+        };
+
+        window.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleVisibilityChange);
+
+        return () => {
+            window.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleVisibilityChange);
+        };
+    }, [smartSyncLatest]);
 
 
     const navigate = useNavigate();
@@ -736,7 +966,6 @@ export const AppProvider = ({ children }) => {
     const setCurrentView = (view) => {
         navigate(`/${view}`);
     };
-    const [toast, setToast] = useState({ visible: false, message: "", type: "success" });
     const [shopifyNotification, setShopifyNotification] = useState({
         visible: false,
         orderId: "",
@@ -1251,52 +1480,7 @@ export const AppProvider = ({ children }) => {
         }, 50);
     }, [loadSupabaseData]);
 
-    // Smart Tab Wake-Up & Absence Auto-Sync Guard (Works when returning to tab after seconds, minutes, or hours)
-    const lastHiddenTimeRef = useRef(Date.now());
-    const lastSyncTimeRef = useRef(Date.now());
 
-    useEffect(() => {
-        if (!supabase) return;
-
-        const handleVisibilityChange = () => {
-            if (document.visibilityState === 'hidden') {
-                lastHiddenTimeRef.current = Date.now();
-            } else if (document.visibilityState === 'visible') {
-                const now = Date.now();
-                const hiddenDurationMs = now - lastHiddenTimeRef.current;
-                const timeSinceLastSyncMs = now - lastSyncTimeRef.current;
-
-                // If user was away from the tab for more than 20 seconds and last sync was > 10 seconds ago:
-                if (hiddenDurationMs >= 20000 && timeSinceLastSyncMs >= 10000) {
-                    lastSyncTimeRef.current = now;
-                    console.log(`Tab Wake-Up: Refreshing fresh DB data after ${Math.round(hiddenDurationMs / 1000)}s away...`);
-                    triggerSectionRefresh('جاري جلب أحدث البيانات الحية بعد العودة...');
-                }
-            }
-        };
-
-        const handleWindowFocus = () => {
-            if (document.visibilityState === 'visible') {
-                const now = Date.now();
-                const hiddenDurationMs = now - lastHiddenTimeRef.current;
-                const timeSinceLastSyncMs = now - lastSyncTimeRef.current;
-
-                if (hiddenDurationMs >= 20000 && timeSinceLastSyncMs >= 10000) {
-                    lastSyncTimeRef.current = now;
-                    console.log(`Window Focus: Refreshing fresh DB data after ${Math.round(hiddenDurationMs / 1000)}s...`);
-                    triggerSectionRefresh('جاري جلب أحدث البيانات الحية بعد العودة...');
-                }
-            }
-        };
-
-        document.addEventListener('visibilitychange', handleVisibilityChange);
-        window.addEventListener('focus', handleWindowFocus);
-
-        return () => {
-            document.removeEventListener('visibilitychange', handleVisibilityChange);
-            window.removeEventListener('focus', handleWindowFocus);
-        };
-    }, [supabase, triggerSectionRefresh]);
 
     const t = (key) => {
         const tr = translations[language] && translations[language][key];
@@ -1310,13 +1494,6 @@ export const AppProvider = ({ children }) => {
             console.warn("Unable to persist full state to localStorage (quota or disabled):", e);
         }
     }, [state]);
-
-    const showToast = (message, type = "success") => {
-        setToast({ visible: true, message, type });
-        setTimeout(() => {
-            setToast(prev => ({ ...prev, visible: false }));
-        }, 3000);
-    };
 
     const logActivity = (type, description) => {
         const time = new Date().toISOString().replace('T', ' ').substring(0, 16);
@@ -3218,11 +3395,9 @@ export const AppProvider = ({ children }) => {
                         const orderTotalVal = parseFloat(orderData.total_value) || 0;
                         updateCustomerStats(orderData.customer_id, -orderTotalVal, -1);
                     }
-                    await loadSupabaseData();
                 }
             } catch (e) {
                 console.error("Supabase Error:", e);
-                await loadSupabaseData();
             }
         }
     };
@@ -3447,7 +3622,6 @@ export const AppProvider = ({ children }) => {
                         // Finally delete order from DB (cascade deletes order_items)
                         await supabase.from('orders').delete().eq('id', orderId);
                     }
-                    await loadSupabaseData();
                 } catch (e) {
                     console.error("Supabase Error during order deletion:", e);
                 }
@@ -3893,7 +4067,6 @@ export const AppProvider = ({ children }) => {
                     if (orderError) {
                         console.error("Supabase Error updating order:", orderError);
                         showToast(`فشل تعديل الطلب في قاعدة البيانات: ${orderError.message}`, "error");
-                        await loadSupabaseData();
                         return;
                     }
 
@@ -3915,7 +4088,6 @@ export const AppProvider = ({ children }) => {
                     if (deleteItemsError) {
                         console.error("Supabase Error deleting old order items:", deleteItemsError);
                         showToast(`فشل تحديث أصناف الطلب: ${deleteItemsError.message}`, "error");
-                        await loadSupabaseData();
                         return;
                     }
 
@@ -3938,7 +4110,6 @@ export const AppProvider = ({ children }) => {
                         if (insertItemsError) {
                             console.error("Supabase Error inserting new order items:", insertItemsError);
                             showToast(`فشل إدخال الأصناف الجديدة للطلب: ${insertItemsError.message}`, "error");
-                            await loadSupabaseData();
                             return;
                         }
                     }
@@ -4066,10 +4237,8 @@ export const AppProvider = ({ children }) => {
                     } catch (ledgerErr) {
                         console.error("Failed to insert delta stock ledger entries inside editOrder:", ledgerErr);
                     }
-                    await loadSupabaseData();
                 } catch (e) {
-                    console.error("Supabase Error:", e);
-                    await loadSupabaseData();
+                    console.error("Supabase Error in editOrder:", e);
                 }
             })();
         }
@@ -5210,7 +5379,6 @@ export const AppProvider = ({ children }) => {
                     : `Order approved! Waybill #${data.trackingNumber} created successfully!`, 
                 "success"
             );
-            await loadSupabaseData();
             return true;
             
         } catch (err) {
@@ -6348,7 +6516,9 @@ export const AppProvider = ({ children }) => {
             setLanguage,
             theme,
             setTheme,
-            refreshData: loadSupabaseData,
+            smartSyncLatest,
+            isSyncing,
+            refreshData: smartSyncLatest,
             t,
             showConfirm,
             showAlert
