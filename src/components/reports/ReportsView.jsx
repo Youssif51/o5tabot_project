@@ -5,9 +5,10 @@ import { AppContext } from '../../context/AppContext';
 import Modal from '../common/Modal';
 import SmartDateFilter from '../common/SmartDateFilter';
 import { isDateMatchingFilter } from '../../utils/smartDateMatcher';
+import { parseAddressData } from '../orders/OrdersList';
 
 export default function ReportsView() {
-    const { state, isDeductedStatus, t } = useContext(AppContext);
+    const { state, isDeductedStatus, t, fetchMissingOrderItems, showToast } = useContext(AppContext);
     const currency = state.storeSettings.currency || 'EGP';
 
     // Time filter state
@@ -17,6 +18,55 @@ export default function ReportsView() {
     const [isCatModalOpen, setIsCatModalOpen] = useState(false);
     const [isProdModalOpen, setIsProdModalOpen] = useState(false);
     const [discountPage, setDiscountPage] = useState(1);
+    const [expandedDiscountOrderIds, setExpandedDiscountOrderIds] = useState({});
+
+    // Toggle discounted order drawer & fetch items on demand if missing
+    const toggleDiscountOrder = (orderId) => {
+        const isWillExpand = !expandedDiscountOrderIds[orderId];
+        setExpandedDiscountOrderIds(prev => ({
+            ...prev,
+            [orderId]: isWillExpand
+        }));
+        if (isWillExpand && fetchMissingOrderItems) {
+            const target = (state.orders || []).find(o => o.id === orderId);
+            if (!target || !target.items || target.items.length === 0) {
+                fetchMissingOrderItems(orderId);
+            }
+        }
+    };
+
+    const getProductNameBySku = (sku, fallbackProductName = null, fallbackVariantName = null) => {
+        let name = fallbackProductName 
+            ? (fallbackVariantName ? formatProductDisplayName(fallbackProductName, fallbackVariantName) : fallbackProductName)
+            : sku;
+        (state.products || []).forEach(p => {
+            const v = (p?.variants || []).find(vr => vr.sku === sku);
+            if (v) name = formatProductDisplayName(p.name, v.name);
+        });
+        return name;
+    };
+
+    const getCustomerCode = (name) => {
+        if (!name) return 'CUS-0000';
+        let hash = 0;
+        for (let i = 0; i < name.length; i++) {
+            hash = name.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        const code = Math.abs(hash % 10000).toString().padStart(4, '0');
+        return `CUS-${code}`;
+    };
+
+    const getWhatsAppLink = (phoneStr) => {
+        if (!phoneStr) return '';
+        const strVal = String(phoneStr || '');
+        let clean = strVal.replace(/\D/g, '');
+        if (clean.startsWith('01') && clean.length === 11) {
+            clean = '2' + clean;
+        } else if (clean.startsWith('1') && clean.length === 10) {
+            clean = '20' + clean;
+        }
+        return `https://wa.me/${clean}`;
+    };
 
     // Calculate 7-day timeline ending on the filter's target date
     const get7DaysForFilter = () => {
@@ -1373,7 +1423,7 @@ export default function ReportsView() {
                                 <table className="discount-main-table">
                                     <thead>
                                         <tr>
-                                            <th style={{ textAlign: 'right', width: '90px' }}>
+                                            <th style={{ textAlign: 'right', width: '110px' }}>
                                                 <i className="fa-solid fa-hashtag" style={{ marginLeft: '4px', opacity: 0.5 }}></i> رقم الأوردر
                                             </th>
                                             <th style={{ textAlign: 'right' }}>
@@ -1394,17 +1444,26 @@ export default function ReportsView() {
                                             <th style={{ textAlign: 'center', width: '130px' }}>
                                                 <i className="fa-solid fa-user-shield" style={{ marginLeft: '4px', opacity: 0.5 }}></i> الأدمن المسؤول
                                             </th>
+                                            <th style={{ textAlign: 'center', width: '45px' }}>
+                                                <i className="fa-solid fa-circle-info" style={{ opacity: 0.5 }}></i>
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         {paginatedDiscountOrders.length === 0 ? (
                                             <tr>
-                                                <td colSpan="7" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
+                                                <td colSpan="8" style={{ textAlign: 'center', padding: '32px', color: 'var(--text-muted)' }}>
                                                     لا توجد طلبات مخصومة مسجلة في هذه الفترة
                                                 </td>
                                             </tr>
                                         ) : (
                                             paginatedDiscountOrders.map((ord, idx) => {
+                                                const rawOrder = (state.orders || []).find(o => o.id === ord.id) || (state.deletedOrdersWithDeposits || []).find(o => o.id === ord.id) || ord;
+                                                const isExpanded = !!expandedDiscountOrderIds[ord.id];
+                                                const { phone, detailAddress } = parseAddressData(rawOrder.address);
+                                                const orderItems = rawOrder.items || [];
+                                                const discountReasonText = rawOrder.discount_reason_details || rawOrder.discount_reason || ord.reason || 'خصم طلب';
+                                                
                                                 const hasCoupon = !!ord.couponCode;
                                                 const hasManual = ord.manualDiscount > 0 || (ord.reason && ord.reason !== 'كوبون تخفيض' && ord.reason !== 'بدون سبب محدد');
                                                 const hasProduct = ord.productDiscount > 0 && !hasManual && !hasCoupon;
@@ -1461,26 +1520,196 @@ export default function ReportsView() {
                                                 })();
 
                                                 return (
-                                                    <tr key={idx}>
-                                                        <td style={{ fontWeight: '700', color: 'var(--gold-primary)', fontFamily: 'monospace' }}>{ord.id}</td>
-                                                        <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{ord.client}</td>
-                                                        <td style={{ textAlign: 'left' }} className="tabular-amount">
-                                                            {currency} {ord.originalTotal.toLocaleString('en-US', {maximumFractionDigits: 0})}
-                                                        </td>
-                                                        <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#ef4444' }} className="tabular-amount">
-                                                            -{currency} {ord.totalDiscount.toLocaleString('en-US', {maximumFractionDigits: 0})}
-                                                        </td>
-                                                        <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#2ecc71' }} className="tabular-amount">
-                                                            {currency} {ord.finalTotal.toLocaleString('en-US', {maximumFractionDigits: 0})}
-                                                        </td>
-                                                        <td style={{ textAlign: 'right' }}>{discountTypeBadge}</td>
-                                                        <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
-                                                            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                                                                <i className="fa-regular fa-user" style={{ opacity: 0.4, fontSize: '10px' }}></i>
-                                                                {ord.admin}
-                                                            </div>
-                                                        </td>
-                                                    </tr>
+                                                    <React.Fragment key={idx}>
+                                                        <tr 
+                                                            onClick={() => toggleDiscountOrder(ord.id)}
+                                                            style={{ 
+                                                                cursor: 'pointer',
+                                                                background: isExpanded ? 'rgba(212, 175, 55, 0.04)' : 'transparent',
+                                                                transition: 'background 0.2s ease',
+                                                                borderBottom: isExpanded ? 'none' : '1px solid rgba(255,255,255,0.05)'
+                                                            }}
+                                                            className="table-row-hover"
+                                                            title="اضغط لعرض تفاصيل الطلب والمنتجات"
+                                                        >
+                                                            <td style={{ fontWeight: '700', color: 'var(--gold-primary)', fontFamily: 'monospace', whiteSpace: 'nowrap' }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                    <i className={`fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} style={{ fontSize: '10px', color: 'var(--gold-primary)', opacity: 0.8 }}></i>
+                                                                    <span>{ord.id}</span>
+                                                                </div>
+                                                            </td>
+                                                            <td style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{ord.client}</td>
+                                                            <td style={{ textAlign: 'left' }} className="tabular-amount">
+                                                                {currency} {ord.originalTotal.toLocaleString('en-US', {maximumFractionDigits: 0})}
+                                                            </td>
+                                                            <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#ef4444' }} className="tabular-amount">
+                                                                -{currency} {ord.totalDiscount.toLocaleString('en-US', {maximumFractionDigits: 0})}
+                                                            </td>
+                                                            <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#2ecc71' }} className="tabular-amount">
+                                                                {currency} {ord.finalTotal.toLocaleString('en-US', {maximumFractionDigits: 0})}
+                                                            </td>
+                                                            <td style={{ textAlign: 'right' }}>{discountTypeBadge}</td>
+                                                            <td style={{ textAlign: 'center', color: 'var(--text-secondary)' }}>
+                                                                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                                                                    <i className="fa-regular fa-user" style={{ opacity: 0.4, fontSize: '10px' }}></i>
+                                                                    {ord.admin}
+                                                                </div>
+                                                            </td>
+                                                            <td style={{ textAlign: 'center' }} onClick={(e) => e.stopPropagation()}>
+                                                                <button 
+                                                                    type="button"
+                                                                    onClick={() => toggleDiscountOrder(ord.id)}
+                                                                    style={{
+                                                                        background: isExpanded ? 'rgba(212,175,55,0.15)' : 'rgba(255,255,255,0.05)',
+                                                                        border: '1px solid ' + (isExpanded ? 'rgba(212,175,55,0.3)' : 'rgba(255,255,255,0.1)'),
+                                                                        color: isExpanded ? 'var(--gold-primary)' : 'var(--text-secondary)',
+                                                                        width: '28px',
+                                                                        height: '28px',
+                                                                        borderRadius: '50%',
+                                                                        cursor: 'pointer',
+                                                                        display: 'inline-flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'center',
+                                                                        fontSize: '11px',
+                                                                        transition: 'all 0.2s ease'
+                                                                    }}
+                                                                    title={isExpanded ? 'إخفاء التفاصيل' : 'عرض التفاصيل'}
+                                                                >
+                                                                    <i className={`fa-solid ${isExpanded ? 'fa-eye-slash' : 'fa-eye'}`}></i>
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                        {isExpanded && (
+                                                            <tr style={{ background: 'rgba(212, 175, 55, 0.02)' }}>
+                                                                <td colSpan="8" style={{ padding: '16px 20px', borderBottom: '1px solid var(--glass-border)' }}>
+                                                                    {/* Discount Banner */}
+                                                                    <div style={{
+                                                                        marginBottom: '14px',
+                                                                        padding: '10px 16px',
+                                                                        background: 'rgba(46, 204, 113, 0.08)',
+                                                                        border: '1px solid rgba(46, 204, 113, 0.3)',
+                                                                        borderRadius: '8px',
+                                                                        display: 'flex',
+                                                                        alignItems: 'center',
+                                                                        justifyContent: 'space-between'
+                                                                    }}>
+                                                                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#2ecc71', fontWeight: 'bold', fontSize: '13px' }}>
+                                                                            <i className="fa-solid fa-tags"></i>
+                                                                            <span>الخصم المطبق: {discountReasonText}</span>
+                                                                        </div>
+                                                                        <span style={{ background: '#2ecc71', color: '#000', padding: '2px 10px', borderRadius: '12px', fontWeight: 'bold', fontSize: '12px' }}>
+                                                                            خصم {currency} {ord.totalDiscount.toLocaleString('en-US', {maximumFractionDigits: 2})}
+                                                                        </span>
+                                                                    </div>
+
+                                                                    <div className="grid-responsive-1-1_3-1" style={{ gap: '18px' }}>
+                                                                        {/* 1. Customer & Shipping details */}
+                                                                        <div className="glass-card" style={{ padding: '14px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '10px' }}>
+                                                                            <h4 style={{ fontSize: '13px', color: 'var(--gold-primary)', marginBottom: '10px', fontWeight: 600 }}>
+                                                                                <i className="fa-solid fa-user-tag" style={{ marginLeft: '6px' }}></i> تفاصيل العميل والطلب
+                                                                            </h4>
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', fontSize: '12px' }}>
+                                                                                <div><strong>كود العميل:</strong> {getCustomerCode(rawOrder.client || ord.client)}</div>
+                                                                                <div><strong>اسم العميل:</strong> {rawOrder.client || ord.client}</div>
+                                                                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                                    <strong>رقم الهاتف:</strong> {phone || 'غير مسجل'}
+                                                                                    {phone && (
+                                                                                        <a 
+                                                                                            href={getWhatsAppLink(phone)} 
+                                                                                            target="_blank" 
+                                                                                            rel="noopener noreferrer"
+                                                                                            onClick={(e) => e.stopPropagation()}
+                                                                                            style={{ color: '#25D366', display: 'inline-flex', alignItems: 'center', textDecoration: 'none' }}
+                                                                                            title="مراسلة عبر واتساب"
+                                                                                        >
+                                                                                            <i className="fa-brands fa-whatsapp" style={{ fontSize: '14px', fontWeight: 'bold' }}></i>
+                                                                                        </a>
+                                                                                    )}
+                                                                                </div>
+                                                                                <div><strong>المحافظة:</strong> {rawOrder.governorate || 'غير مسجل'}</div>
+                                                                                <div style={{ wordBreak: 'break-word' }}><strong>العنوان:</strong> {detailAddress || 'غير مسجل'}</div>
+                                                                                <div><strong>المسؤول / الآدمن:</strong> <span style={{ color: 'var(--gold-primary)' }}>{ord.admin}</span></div>
+                                                                                {rawOrder.status && (
+                                                                                    <div><strong>حالة الطلب:</strong> <span style={{ color: 'var(--text-secondary)' }}>{rawOrder.status}</span></div>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* 2. Ordered Products Table */}
+                                                                        <div className="glass-card" style={{ padding: '14px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '10px' }}>
+                                                                            <h4 style={{ fontSize: '13px', color: 'var(--gold-primary)', marginBottom: '10px', fontWeight: 600 }}>
+                                                                                <i className="fa-solid fa-box-open" style={{ marginLeft: '6px' }}></i> المنتجات المطلوبة ({orderItems.length} أصناف)
+                                                                            </h4>
+                                                                            <div style={{ overflowX: 'auto' }}>
+                                                                                <table style={{ width: '100%', fontSize: '11px', borderCollapse: 'collapse', tableLayout: 'fixed', minWidth: '380px' }}>
+                                                                                    <thead>
+                                                                                        <tr style={{ borderBottom: '1px solid var(--glass-border)', color: 'var(--text-secondary)' }}>
+                                                                                            <th style={{ textAlign: 'right', padding: '6px 4px', width: '50%' }}>اسم الصنف / SKU</th>
+                                                                                            <th style={{ textAlign: 'center', padding: '6px 4px', width: '15%' }}>الكمية</th>
+                                                                                            <th style={{ textAlign: 'center', padding: '6px 4px', width: '17%' }}>السعر</th>
+                                                                                            <th style={{ textAlign: 'left', padding: '6px 4px', width: '18%' }}>الإجمالي</th>
+                                                                                        </tr>
+                                                                                    </thead>
+                                                                                    <tbody>
+                                                                                        {orderItems.length === 0 ? (
+                                                                                            <tr><td colSpan="4" style={{ textAlign: 'center', padding: '12px', color: 'var(--text-muted)' }}>جاري جلب تفاصيل الأصناف...</td></tr>
+                                                                                        ) : (
+                                                                                            orderItems.map((item, iIdx) => {
+                                                                                                const itemPrice = parseFloat(item.price) || 0;
+                                                                                                const itemQty = parseInt(item.quantity) || 1;
+                                                                                                const itemSubtotal = itemPrice * itemQty;
+                                                                                                return (
+                                                                                                    <tr key={iIdx} style={{ borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                                                                                        <td style={{ padding: '6px 4px', wordBreak: 'break-word' }}>
+                                                                                                            <div style={{ fontWeight: '500' }}>{getProductNameBySku(item.variantSku, item.productName, item.variantName)}</div>
+                                                                                                        </td>
+                                                                                                        <td style={{ textAlign: 'center', padding: '6px 4px' }}>{itemQty}</td>
+                                                                                                        <td style={{ textAlign: 'center', padding: '6px 4px', whiteSpace: 'nowrap' }}>{currency} {itemPrice.toLocaleString()}</td>
+                                                                                                        <td style={{ textAlign: 'left', padding: '6px 4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{currency} {itemSubtotal.toLocaleString()}</td>
+                                                                                                    </tr>
+                                                                                                );
+                                                                                            })
+                                                                                        )}
+                                                                                    </tbody>
+                                                                                </table>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* 3. Cost Breakdown */}
+                                                                        <div className="glass-card" style={{ padding: '14px', background: 'var(--glass-bg)', border: '1px solid var(--glass-border)', borderRadius: '10px' }}>
+                                                                            <h4 style={{ fontSize: '13px', color: 'var(--gold-primary)', marginBottom: '10px', fontWeight: 600 }}>
+                                                                                <i className="fa-solid fa-file-invoice-dollar" style={{ marginLeft: '6px' }}></i> تفصيل التكلفة
+                                                                            </h4>
+                                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', fontSize: '12px' }}>
+                                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                    <span>إجمالي المنتجات:</span>
+                                                                                    <span>{currency} {ord.originalTotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                </div>
+                                                                                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                                                                                    <span>مصاريف الشحن:</span>
+                                                                                    <span>+{currency} {(parseFloat(rawOrder.shipping_fee) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                </div>
+                                                                                <div style={{ display: 'flex', justifyContent: 'space-between', color: '#ef4444', fontWeight: 600 }}>
+                                                                                    <span>الخصم المطبق ({discountReasonText}):</span>
+                                                                                    <span>-{currency} {ord.totalDiscount.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                </div>
+                                                                                {(parseFloat(rawOrder.deposit) || 0) > 0 && (
+                                                                                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#2ecc71' }}>
+                                                                                        <span>العربون المدفوع:</span>
+                                                                                        <span>-{currency} {(parseFloat(rawOrder.deposit) || 0).toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                    </div>
+                                                                                )}
+                                                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', borderTop: '1px solid var(--glass-border)', paddingTop: '6px', color: 'var(--gold-primary)', fontSize: '13px' }}>
+                                                                                    <span>المبلغ الصافي:</span>
+                                                                                    <span>{currency} {ord.finalTotal.toLocaleString('en-US', {maximumFractionDigits: 2})}</span>
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </React.Fragment>
                                                 );
                                             })
                                         )}
@@ -1496,6 +1725,12 @@ export default function ReportsView() {
                                     </div>
                                 ) : (
                                     paginatedDiscountOrders.map((ord, idx) => {
+                                        const rawOrder = (state.orders || []).find(o => o.id === ord.id) || (state.deletedOrdersWithDeposits || []).find(o => o.id === ord.id) || ord;
+                                        const isExpanded = !!expandedDiscountOrderIds[ord.id];
+                                        const { phone, detailAddress } = parseAddressData(rawOrder.address);
+                                        const orderItems = rawOrder.items || [];
+                                        const discountReasonText = rawOrder.discount_reason_details || rawOrder.discount_reason || ord.reason || 'خصم طلب';
+                                        
                                         const hasCoupon = !!ord.couponCode;
                                         const hasManual = ord.manualDiscount > 0 || (ord.reason && ord.reason !== 'كوبون تخفيض' && ord.reason !== 'بدون سبب محدد');
                                         const hasProduct = ord.productDiscount > 0 && !hasManual && !hasCoupon;
@@ -1551,11 +1786,21 @@ export default function ReportsView() {
                                         })();
 
                                         return (
-                                            <div key={`mob-disc-${idx}`} className="discount-card-item">
+                                            <div 
+                                                key={`mob-disc-${idx}`} 
+                                                className="discount-card-item"
+                                                onClick={() => toggleDiscountOrder(ord.id)}
+                                                style={{ 
+                                                    cursor: 'pointer',
+                                                    border: isExpanded ? '1px solid rgba(212, 175, 55, 0.4)' : undefined,
+                                                    background: isExpanded ? 'rgba(212, 175, 55, 0.03)' : undefined
+                                                }}
+                                            >
                                                 {/* Header: Order ID + Customer Name */}
                                                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                                                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                                        <span style={{ fontWeight: '700', color: 'var(--gold-primary)', fontFamily: 'monospace', fontSize: '13px' }}>
+                                                        <span style={{ fontWeight: '700', color: 'var(--gold-primary)', fontFamily: 'monospace', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                                            <i className={`fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} style={{ fontSize: '9px' }}></i>
                                                             {ord.id}
                                                         </span>
                                                         <span style={{ fontSize: '11px', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.04)', padding: '2px 6px', borderRadius: '4px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -1594,6 +1839,46 @@ export default function ReportsView() {
                                                         </div>
                                                     </div>
                                                 </div>
+
+                                                {/* Mobile Expandable Drawer Accordion */}
+                                                {isExpanded && (
+                                                    <div style={{ marginTop: '12px', borderTop: '1px dashed rgba(212,175,55,0.3)', paddingTop: '12px', display: 'flex', flexDirection: 'column', gap: '12px' }} onClick={(e) => e.stopPropagation()}>
+                                                        {/* Discount Reason Tag */}
+                                                        <div style={{ padding: '6px 10px', background: 'rgba(46, 204, 113, 0.1)', border: '1px solid rgba(46, 204, 113, 0.3)', borderRadius: '6px', fontSize: '11px', color: '#2ecc71', fontWeight: 600 }}>
+                                                            🏷️ الخصم: {discountReasonText} (-{currency} {ord.totalDiscount.toLocaleString()})
+                                                        </div>
+
+                                                        {/* Customer Info */}
+                                                        <div style={{ fontSize: '12px', display: 'flex', flexDirection: 'column', gap: '4px', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px' }}>
+                                                            <div style={{ fontWeight: 600, color: 'var(--gold-primary)', marginBottom: '2px' }}>بيانات العميل:</div>
+                                                            <div><strong>كود:</strong> {getCustomerCode(rawOrder.client || ord.client)}</div>
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                                                <strong>الهاتف:</strong> {phone || 'غير مسجل'}
+                                                                {phone && (
+                                                                    <a href={getWhatsAppLink(phone)} target="_blank" rel="noopener noreferrer" style={{ color: '#25D366' }}>
+                                                                        <i className="fa-brands fa-whatsapp"></i>
+                                                                    </a>
+                                                                )}
+                                                            </div>
+                                                            <div><strong>العنوان:</strong> {detailAddress || rawOrder.governorate || 'غير مسجل'}</div>
+                                                        </div>
+
+                                                        {/* Products list */}
+                                                        <div style={{ fontSize: '12px', background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '8px' }}>
+                                                            <div style={{ fontWeight: 600, color: 'var(--gold-primary)', marginBottom: '6px' }}>المنتجات المطلوبة ({orderItems.length}):</div>
+                                                            {orderItems.length === 0 ? (
+                                                                <div style={{ color: 'var(--text-muted)', fontSize: '11px' }}>جاري جلب تفاصيل الأصناف...</div>
+                                                            ) : (
+                                                                orderItems.map((it, itIdx) => (
+                                                                    <div key={itIdx} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '11.5px', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                                                                        <span>{getProductNameBySku(it.variantSku, it.productName, it.variantName)} (x{it.quantity || 1})</span>
+                                                                        <span style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{currency} {((parseFloat(it.price) || 0) * (parseInt(it.quantity) || 1)).toLocaleString()}</span>
+                                                                    </div>
+                                                                ))
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })

@@ -159,12 +159,12 @@ export default function App() {
 
     // Gather all active barcodes for scanner dropdown
     const availableBarcodes = [];
-    state.products.forEach(p => {
-        p.variants.forEach(v => {
-            if (v.barcode) {
+    (state.products || []).forEach(p => {
+        (p?.variants || []).forEach(v => {
+            if (v && v.barcode) {
                 availableBarcodes.push({
                     barcode: v.barcode,
-                    label: `${p.name} - ${v.name} (Barcode: ${v.barcode})`
+                    label: `${p.name || ''} - ${v.name || ''} (Barcode: ${v.barcode})`
                 });
             }
         });

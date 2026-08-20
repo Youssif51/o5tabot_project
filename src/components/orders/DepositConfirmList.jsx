@@ -87,7 +87,7 @@ const getRemainingToCollect = (ord) => {
 };
 
 export default function DepositConfirmList() {
-    const { state, updateDepositStatus, resolveUnconfirmedDeposit, settleAdminsCustody, confirmDepositRefund, confirmDepositAndRefund, showToast, showConfirm } = useContext(AppContext);
+    const { state, updateDepositStatus, resolveUnconfirmedDeposit, settleAdminsCustody, confirmDepositRefund, confirmDepositAndRefund, showToast, showConfirm, fetchMissingOrderItems } = useContext(AppContext);
     const allOrdersForDeposits = [
         ...(state.orders || []),
         ...(state.deletedOrdersWithDeposits || [])
@@ -99,6 +99,19 @@ export default function DepositConfirmList() {
     const [amountError, setAmountError] = useState('');
     const [timeFilter, setTimeFilter] = useState({ type: 'preset', preset: 'all' });
     const [reassignAdminMap, setReassignAdminMap] = useState({});
+
+    // Defensive auto-fetch for deposit orders that have missing items
+    const fetchedMissingDepositOrderIdsRef = React.useRef(new Set());
+    React.useEffect(() => {
+        (allOrdersForDeposits || []).forEach(ord => {
+            if ((!ord.items || ord.items.length === 0) && ord.id && !fetchedMissingDepositOrderIdsRef.current.has(ord.id) && (parseFloat(ord.totalValue) > 0 || parseFloat(ord.deposit) > 0)) {
+                fetchedMissingDepositOrderIdsRef.current.add(ord.id);
+                if (fetchMissingOrderItems) {
+                    fetchMissingOrderItems(ord.id);
+                }
+            }
+        });
+    }, [allOrdersForDeposits, fetchMissingOrderItems]);
 
     const unconfirmedDepositsList = (allOrdersForDeposits || []).filter(o => 
         o.depositStatus === 'unconfirmed' && 
@@ -295,8 +308,10 @@ export default function DepositConfirmList() {
             [orderId]: !prev[orderId]
         }));
     };
-    const getProductNameBySku = (sku) => {
-        let name = sku;
+    const getProductNameBySku = (sku, fallbackProductName = null, fallbackVariantName = null) => {
+        let name = fallbackProductName 
+            ? (fallbackVariantName ? formatProductDisplayName(fallbackProductName, fallbackVariantName) : fallbackProductName)
+            : sku;
         state.products.forEach(p => {
             const v = p.variants.find(vr => vr.sku === sku);
             if (v) name = formatProductDisplayName(p.name, v.name);
@@ -1832,7 +1847,7 @@ export default function DepositConfirmList() {
                                                         <td style={{ padding: '12px 8px' }}>
                                                             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '12px' }}>
                                                                 {(ord.items || []).map((item, idx) => (
-                                                                    <span key={idx}>- {getProductNameBySku(item.variantSku)} (الكمية: {item.quantity})</span>
+                                                                    <span key={idx}>- {getProductNameBySku(item.variantSku, item.productName, item.variantName)} (الكمية: {item.quantity})</span>
                                                                 ))}
                                                             </div>
                                                         </td>
@@ -1950,7 +1965,7 @@ export default function DepositConfirmList() {
                                                     <div style={{ fontWeight: 600, marginBottom: '4px', color: 'var(--text-secondary)' }}>المنتجات المطلوبة:</div>
                                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', paddingRight: '8px' }}>
                                                         {(ord.items || []).map((item, idx) => (
-                                                            <span key={idx} style={{ color: 'var(--text-primary)' }}>- {getProductNameBySku(item.variantSku)} (الكمية: {item.quantity})</span>
+                                                            <span key={idx} style={{ color: 'var(--text-primary)' }}>- {getProductNameBySku(item.variantSku, item.productName, item.variantName)} (الكمية: {item.quantity})</span>
                                                         ))}
                                                     </div>
                                                 </div>

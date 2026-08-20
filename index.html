@@ -7,6 +7,19 @@
     <title>Octabot | Premium Inventory Suite</title>
     <!-- FontAwesome 6 Free icons outline & solid sets -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
+    <script>
+      window.addEventListener('error', function(e) {
+        var msg = (e && e.message) ? e.message : '';
+        if (msg.indexOf('dynamically imported module') !== -1 || msg.indexOf('Loading chunk') !== -1 || msg.indexOf('Importing a module script failed') !== -1) {
+          var lastReload = sessionStorage.getItem('last_chunk_reload');
+          var now = Date.now();
+          if (!lastReload || (now - parseInt(lastReload, 10)) > 10000) {
+            sessionStorage.setItem('last_chunk_reload', String(now));
+            window.location.reload();
+          }
+        }
+      }, true);
+    </script>
   </head>
   <body>
     <div id="root"></div>

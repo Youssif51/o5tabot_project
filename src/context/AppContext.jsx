@@ -134,16 +134,27 @@ export const AppProvider = ({ children }) => {
             const saved = localStorage.getItem("octabot_state");
             if (saved) {
                 const parsed = JSON.parse(saved);
-                if (parsed &&
-                    Array.isArray(parsed.products) &&
-                    Array.isArray(parsed.suppliers) &&
-                    Array.isArray(parsed.orders) &&
-                    Array.isArray(parsed.wastes) &&
-                    Array.isArray(parsed.purchaseOrders) &&
-                    Array.isArray(parsed.stockLedger) &&
-                    parsed.storeSettings) {
+                if (parsed && typeof parsed === 'object') {
+                    const safeProducts = (Array.isArray(parsed.products) ? parsed.products : []).map(p => ({
+                        ...p,
+                        variants: Array.isArray(p?.variants) ? p.variants : []
+                    }));
                     return {
+                        ...initialState,
                         ...parsed,
+                        products: safeProducts,
+                        suppliers: Array.isArray(parsed.suppliers) ? parsed.suppliers : [],
+                        orders: Array.isArray(parsed.orders) ? parsed.orders : [],
+                        deletedOrdersWithDeposits: Array.isArray(parsed.deletedOrdersWithDeposits) ? parsed.deletedOrdersWithDeposits : [],
+                        purchaseOrders: Array.isArray(parsed.purchaseOrders) ? parsed.purchaseOrders : [],
+                        wastes: Array.isArray(parsed.wastes) ? parsed.wastes : [],
+                        stockLedger: Array.isArray(parsed.stockLedger) ? parsed.stockLedger : [],
+                        customers: Array.isArray(parsed.customers) ? parsed.customers : [],
+                        coupons: Array.isArray(parsed.coupons) ? parsed.coupons : [],
+                        users: Array.isArray(parsed.users) ? parsed.users : [],
+                        activities: Array.isArray(parsed.activities) ? parsed.activities : [],
+                        collections: Array.isArray(parsed.collections) ? parsed.collections : [],
+                        storeSettings: parsed.storeSettings || initialState.storeSettings,
                         shippingFees: DEFAULT_SHIPPING_FEES
                     };
                 }
@@ -221,7 +232,7 @@ export const AppProvider = ({ children }) => {
                     return;
                 }
 
-                // Fetch items only for loaded orders and purchase orders
+                // Fetch items only for loaded orders and purchase orders in chunks of 100 to bypass Supabase 1000-row limits
                 const orderIds = (orders || []).map(o => o.id);
                 const poIds = (purchaseOrders || []).map(po => po.id);
 
@@ -229,21 +240,33 @@ export const AppProvider = ({ children }) => {
                 let purchaseItems = [];
 
                 const itemFetchPromises = [];
+                const chunkSize = 100;
+
                 if (orderIds.length > 0) {
-                    itemFetchPromises.push(
-                        supabase.from('order_items').select('*').in('order_id', orderIds).then(({ data, error }) => {
-                            if (error) console.error("Error loading order items:", error);
-                            if (data) orderItems = data;
-                        })
-                    );
+                    for (let i = 0; i < orderIds.length; i += chunkSize) {
+                        const chunk = orderIds.slice(i, i + chunkSize);
+                        itemFetchPromises.push(
+                            supabase.from('order_items').select('*').in('order_id', chunk).then(({ data, error }) => {
+                                if (error) console.error("Error loading order items chunk:", error);
+                                if (data && data.length > 0) {
+                                    orderItems.push(...data);
+                                }
+                            })
+                        );
+                    }
                 }
                 if (poIds.length > 0) {
-                    itemFetchPromises.push(
-                        supabase.from('purchase_items').select('*').in('po_id', poIds).then(({ data, error }) => {
-                            if (error) console.error("Error loading purchase items:", error);
-                            if (data) purchaseItems = data;
-                        })
-                    );
+                    for (let i = 0; i < poIds.length; i += chunkSize) {
+                        const chunk = poIds.slice(i, i + chunkSize);
+                        itemFetchPromises.push(
+                            supabase.from('purchase_items').select('*').in('po_id', chunk).then(({ data, error }) => {
+                                if (error) console.error("Error loading purchase items chunk:", error);
+                                if (data && data.length > 0) {
+                                    purchaseItems.push(...data);
+                                }
+                            })
+                        );
+                    }
                 }
 
                 if (itemFetchPromises.length > 0) {
@@ -1281,7 +1304,11 @@ export const AppProvider = ({ children }) => {
     };
 
     useEffect(() => {
-        localStorage.setItem("octabot_state", JSON.stringify(state));
+        try {
+            localStorage.setItem("octabot_state", JSON.stringify(state));
+        } catch (e) {
+            console.warn("Unable to persist full state to localStorage (quota or disabled):", e);
+        }
     }, [state]);
 
     const showToast = (message, type = "success") => {
