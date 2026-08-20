@@ -4,6 +4,7 @@ import { AppContext } from '../../context/AppContext';
 import { formatProductDisplayName } from '../../utils/productUtils';
 import SmartDateFilter from '../common/SmartDateFilter';
 import { isDateMatchingFilter } from '../../utils/smartDateMatcher';
+import { generateWhatsAppLink } from '../../utils/whatsappUtils';
 
 // Helper to parse address JSON structure safely (handles Object or String)
 const parseAddressData = (addressData) => {
@@ -332,15 +333,8 @@ export default function DepositConfirmList() {
         return `CUS-${code}`;
     };
 
-    const getWhatsAppLink = (phoneStr) => {
-        if (!phoneStr) return '';
-        let clean = phoneStr.replace(/\D/g, '');
-        if (clean.startsWith('01') && clean.length === 11) {
-            clean = '2' + clean;
-        } else if (clean.startsWith('1') && clean.length === 10) {
-            clean = '20' + clean;
-        }
-        return `https://wa.me/${clean}`;
+    const getWhatsAppLink = (phoneStr, ord = null) => {
+        return generateWhatsAppLink(phoneStr, ord, getProductNameBySku);
     };
 
     const currency = state.storeSettings?.currency || 'EGP';

@@ -6,6 +6,7 @@ import Modal from '../common/Modal';
 import SmartDateFilter from '../common/SmartDateFilter';
 import { isDateMatchingFilter } from '../../utils/smartDateMatcher';
 import { parseAddressData } from '../orders/OrdersList';
+import { generateWhatsAppLink } from '../../utils/whatsappUtils';
 
 export default function ReportsView() {
     const { state, isDeductedStatus, t, fetchMissingOrderItems, showToast } = useContext(AppContext);
@@ -56,16 +57,8 @@ export default function ReportsView() {
         return `CUS-${code}`;
     };
 
-    const getWhatsAppLink = (phoneStr) => {
-        if (!phoneStr) return '';
-        const strVal = String(phoneStr || '');
-        let clean = strVal.replace(/\D/g, '');
-        if (clean.startsWith('01') && clean.length === 11) {
-            clean = '2' + clean;
-        } else if (clean.startsWith('1') && clean.length === 10) {
-            clean = '20' + clean;
-        }
-        return `https://wa.me/${clean}`;
+    const getWhatsAppLink = (phoneStr, ord = null) => {
+        return generateWhatsAppLink(phoneStr, ord, getProductNameBySku);
     };
 
     // Calculate 7-day timeline ending on the filter's target date
@@ -1615,7 +1608,7 @@ export default function ReportsView() {
                                                                                     <strong>رقم الهاتف:</strong> {phone || 'غير مسجل'}
                                                                                     {phone && (
                                                                                         <a 
-                                                                                            href={getWhatsAppLink(phone)} 
+                                                                                            href={getWhatsAppLink(phone, rawOrder)} 
                                                                                             target="_blank" 
                                                                                             rel="noopener noreferrer"
                                                                                             onClick={(e) => e.stopPropagation()}
@@ -1855,7 +1848,7 @@ export default function ReportsView() {
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                                                 <strong>الهاتف:</strong> {phone || 'غير مسجل'}
                                                                 {phone && (
-                                                                    <a href={getWhatsAppLink(phone)} target="_blank" rel="noopener noreferrer" style={{ color: '#25D366' }}>
+                                                                    <a href={getWhatsAppLink(phone, rawOrder)} target="_blank" rel="noopener noreferrer" style={{ color: '#25D366' }}>
                                                                         <i className="fa-brands fa-whatsapp"></i>
                                                                     </a>
                                                                 )}
