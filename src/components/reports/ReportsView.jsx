@@ -87,17 +87,32 @@ export default function ReportsView() {
     };
     const last7Days = get7DaysForFilter();
 
-    // Calculate order profit with pro-rata discount consideration
+    // Calculate order profit with combined discount consideration (both item-level price differences & order-level discounts)
     const getOrderProfitDetails = (ord) => {
         let grossValue = 0;
         let cogs = 0;
+        let itemDiscountsTotal = 0;
 
         (ord.items || []).forEach(item => {
             const rawPrice = parseFloat(item.price) || 0;
             const qty = parseInt(item.quantity) || 1;
-            grossValue += rawPrice * qty;
-
             const itemSku = item.variantSku || item.variant_sku || item.sku;
+
+            // Find catalog original price if higher than sale price
+            let catalogPrice = rawPrice;
+            (state.products || []).forEach(p => {
+                const vr = (p.variants || []).find(v => v.sku === itemSku);
+                if (vr) {
+                    const retailPrice = parseFloat(vr.retailPrice || vr.retail_price) || 0;
+                    if (retailPrice > catalogPrice) {
+                        catalogPrice = retailPrice;
+                    }
+                }
+            });
+
+            grossValue += catalogPrice * qty;
+            itemDiscountsTotal += Math.max(0, catalogPrice - rawPrice) * qty;
+
             let itemCost = parseFloat(item.costAtTimeOfSale || item.cost_at_time_of_sale) || 0;
             if (!itemCost) {
                 (state.products || []).forEach(p => {
@@ -115,7 +130,7 @@ export default function ReportsView() {
         const hasTotalValue = ordTotal !== null;
         const netRevenue = hasTotalValue ? ordTotal : Math.max(0, grossValue - (parseFloat(ord.discount_value) || 0));
         const originalTotal = grossValue + (parseFloat(ord.shipping_fee) || 0);
-        const discount = hasTotalValue ? Math.max(0, originalTotal - ordTotal) : (parseFloat(ord.discount_value) || 0);
+        const discount = hasTotalValue ? Math.max(0, originalTotal - ordTotal) : ((parseFloat(ord.discount_value) || 0) + itemDiscountsTotal);
         const netProfit = netRevenue - cogs;
 
         return { grossValue, discount, cogs, netRevenue, netProfit };

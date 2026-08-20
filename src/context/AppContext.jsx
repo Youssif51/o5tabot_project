@@ -91,6 +91,14 @@ export const getShippingFeeForGov = (govName, currentFeesMap) => {
         userAvatars: {},
         influencers: [],
         currentUser: null,
+        shopifyProductTypes: (function() {
+            try {
+                const saved = localStorage.getItem('octabot_shopify_product_types');
+                return saved ? JSON.parse(saved) : [];
+            } catch (e) {
+                return [];
+            }
+        })(),
         shippingFees: (function() {
             try {
                 const saved = localStorage.getItem('octabot_shipping_fees_v2');
@@ -6286,6 +6294,63 @@ export const AppProvider = ({ children }) => {
         }
     };
 
+    const syncShopifyProductTypes = async () => {
+        if (!supabase) return false;
+        try {
+            let productTypes = [];
+            
+            // 1. Try dedicated fetch_product_types
+            try {
+                const { data, error } = await supabase.functions.invoke('swift-processor', {
+                    body: { action: 'fetch_product_types' }
+                });
+                if (!error && data?.success && Array.isArray(data.productTypes) && data.productTypes.length > 0) {
+                    productTypes = data.productTypes;
+                }
+            } catch (e) {}
+
+            // 2. Fallback to fetch_all_products (already deployed and live on Supabase)
+            if (productTypes.length === 0) {
+                const { data: allData, error: allErr } = await supabase.functions.invoke('swift-processor', {
+                    body: { action: 'fetch_all_products' }
+                });
+                if (!allErr && allData?.success && Array.isArray(allData.products)) {
+                    const rawTypes = allData.products
+                        .map(p => p.product_type)
+                        .filter(t => t && typeof t === 'string' && t.trim().length > 0);
+                    productTypes = Array.from(new Set(rawTypes));
+                }
+            }
+
+            // Clean & filter digital keywords
+            const filteredTypes = productTypes.filter(t => {
+                const low = t.toLowerCase();
+                return !['digital', 'tiktok', 'pubg', 'coins', 'uc', 'top-up'].includes(low);
+            });
+
+            if (filteredTypes.length > 0) {
+                try {
+                    localStorage.setItem('octabot_shopify_product_types', JSON.stringify(filteredTypes));
+                } catch (e) {}
+
+                setState(prev => ({
+                    ...prev,
+                    shopifyProductTypes: filteredTypes
+                }));
+
+                showToast("تم تحديث أنواع المنتجات من شوبيفاي بنجاح", "success");
+                return filteredTypes;
+            } else {
+                showToast("لم يتم العثور على أنواع جديدة في شوبيفاي", "info");
+                return [];
+            }
+        } catch (err) {
+            console.error("Product Types sync error:", err);
+            showToast("حدث خطأ أثناء مزامنة أنواع المنتجات: " + err.message, "error");
+            return false;
+        }
+    };
+
     const syncVariantStockToShopify = async (variantSku, fallbackShopifyId = null) => {
         if (!supabase || !variantSku) return;
         try {
@@ -6471,6 +6536,7 @@ export const AppProvider = ({ children }) => {
             addProduct,
             editProduct,
             syncShopifyCollections,
+            syncShopifyProductTypes,
             syncProductsFromShopify,
             deleteProduct,
             deleteMultipleProducts,

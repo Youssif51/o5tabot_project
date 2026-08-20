@@ -6,18 +6,20 @@ import RichTextEditor from '../common/RichTextEditor';
 import { cleanVariantName } from '../../utils/productUtils';
 
 export default function AddProductModal({ isOpen, onClose, editProductId }) {
-    const { state, addProduct, editProduct, syncShopifyCollections, t, showAlert } = useContext(AppContext);
+    const { state, addProduct, editProduct, syncShopifyCollections, syncShopifyProductTypes, t, showAlert } = useContext(AppContext);
 
     // Form states
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [shopifyCollectionIds, setShopifyCollectionIds] = useState([]);
     const [showCollectionDropdown, setShowCollectionDropdown] = useState(false);
     const [syncingCollections, setSyncingCollections] = useState(false);
+    const [syncingProductTypes, setSyncingProductTypes] = useState(false);
 
     // Dynamic categories calculation
     const existingCategories = [...new Set((state.products || []).map(p => p.category))].filter(Boolean);
     const defaultCategories = ['Electronics', 'Mobile Accessories', 'Accessories'];
-    const allCategories = [...new Set([...defaultCategories, ...existingCategories])];
+    const syncedShopifyTypes = Array.isArray(state.shopifyProductTypes) ? state.shopifyProductTypes : [];
+    const allCategories = [...new Set([...defaultCategories, ...existingCategories, ...syncedShopifyTypes])];
 
     // Form states
     const [name, setName] = useState('');
@@ -302,6 +304,12 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
         setSyncingCollections(true);
         await syncShopifyCollections();
         setSyncingCollections(false);
+    };
+
+    const handleSyncProductTypes = async () => {
+        setSyncingProductTypes(true);
+        await syncShopifyProductTypes();
+        setSyncingProductTypes(false);
     };
 
     const handlePlaceholderClick = () => {
@@ -607,7 +615,19 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
                         />
                     </div>
                     <div className="form-group">
-                        <label className="form-label">{t('categories')}</label>
+                        <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span>نوع المنتج (Type)</span>
+                            <button 
+                                type="button" 
+                                className="btn btn-secondary" 
+                                onClick={handleSyncProductTypes}
+                                disabled={syncingProductTypes}
+                                style={{ padding: '2px 8px', fontSize: '11px', height: '24px', display: 'flex', alignItems: 'center', gap: '4px', border: 'none', background: 'rgba(255,255,255,0.05)' }}
+                            >
+                                <i className={`fa-solid fa-arrows-rotate ${syncingProductTypes ? 'fa-spin' : ''}`}></i>
+                                {syncingProductTypes ? 'جاري التحديث...' : 'تحديث الأنواع 🔄'}
+                            </button>
+                        </label>
                         <select 
                             className="form-select" 
                             value={showNewCategoryInput ? 'NEW_CATEGORY' : category}

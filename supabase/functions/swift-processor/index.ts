@@ -472,6 +472,65 @@ Deno.serve(async (req) => {
       }
     }
 
+    if (action === 'fetch_product_types') {
+      try {
+        let productTypes: string[] = [];
+
+        // 1. Try GraphQL for direct productTypes query
+        try {
+          const gqlQuery = {
+            query: `{
+              shop {
+                productTypes(first: 250) {
+                  edges {
+                    node
+                  }
+                }
+              }
+            }`
+          };
+          const gqlRes = await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/graphql.json`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Shopify-Access-Token": accessToken
+            },
+            body: JSON.stringify(gqlQuery)
+          });
+          if (gqlRes.ok) {
+            const gqlData = await gqlRes.json();
+            const edges = gqlData?.data?.shop?.productTypes?.edges || [];
+            productTypes = edges.map((e: any) => e.node).filter((t: any) => t && typeof t === 'string' && t.trim().length > 0);
+          }
+        } catch (gErr) {
+          console.warn("GraphQL productTypes error:", gErr);
+        }
+
+        // 2. Fallback to REST products query if GraphQL was empty or failed
+        if (productTypes.length === 0) {
+          const restRes = await fetch(`https://${STORE_NAME}.myshopify.com/admin/api/${API_VERSION}/products.json?fields=product_type&limit=250`, {
+            method: "GET",
+            headers: { "X-Shopify-Access-Token": accessToken }
+          });
+          if (restRes.ok) {
+            const restData = await restRes.json();
+            const types = (restData.products || []).map((p: any) => p.product_type).filter((t: any) => t && typeof t === 'string' && t.trim().length > 0);
+            productTypes = Array.from(new Set(types));
+          }
+        }
+
+        return new Response(JSON.stringify({ success: true, productTypes: Array.from(new Set(productTypes)) }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      } catch (err: any) {
+        return new Response(JSON.stringify({ error: "فشل جلب أنواع المنتجات من شوبيفاي", details: err.message }), {
+          status: 400,
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+    }
+
     // معالجة تحديث المخزون فقط (Update Stock Only)
     if (action === 'update_stock') {
       const { shopify_variant_id, stock, price } = body;
