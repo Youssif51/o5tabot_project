@@ -547,10 +547,6 @@ export default function ReportsView() {
                         {currency} {netRealizedProfit.toLocaleString('en-US', { maximumFractionDigits: 0 })}
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--glass-border)', fontSize: '0.75rem' }}>
-                        <span style={{ color: 'var(--text-muted)' }}>التوزيع</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>عروض وخصومات مدمجة</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--glass-border)', fontSize: '0.75rem' }}>
                         <span style={{ color: 'var(--text-muted)' }}>هامش الربح</span>
                         <span className={`badge ${parseFloat(profitMarginPercent) >= 20 ? 'badge-success' : 'badge-warning'}`}>
                             {profitMarginPercent}%
@@ -594,7 +590,7 @@ export default function ReportsView() {
                     </div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid var(--glass-border)', fontSize: '0.75rem' }}>
                         <span style={{ color: 'var(--text-muted)' }}>التوزيع</span>
-                        <span style={{ color: 'var(--text-secondary)' }}>موزعة نسبياً</span>
+                        <span style={{ color: 'var(--text-secondary)' }}>عروض، كوبونات وخصومات يدوية</span>
                     </div>
                 </div>
 
