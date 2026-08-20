@@ -6322,10 +6322,10 @@ export const AppProvider = ({ children }) => {
                 }
             }
 
-            // Clean & filter digital keywords
+            // Clean & filter digital keywords, uncategorized, and legacy placeholders
             const filteredTypes = productTypes.filter(t => {
-                const low = t.toLowerCase();
-                return !['digital', 'tiktok', 'pubg', 'coins', 'uc', 'top-up'].includes(low);
+                const low = t.toLowerCase().trim();
+                return !['digital', 'tiktok', 'pubg', 'coins', 'uc', 'top-up', 'uncategorized', 'mobile accessories'].includes(low);
             });
 
             if (filteredTypes.length > 0) {

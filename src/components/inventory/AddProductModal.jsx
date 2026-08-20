@@ -15,12 +15,6 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
     const [syncingCollections, setSyncingCollections] = useState(false);
     const [syncingProductTypes, setSyncingProductTypes] = useState(false);
 
-    // Dynamic categories calculation
-    const existingCategories = [...new Set((state.products || []).map(p => p.category))].filter(Boolean);
-    const defaultCategories = ['Electronics', 'Mobile Accessories', 'Accessories'];
-    const syncedShopifyTypes = Array.isArray(state.shopifyProductTypes) ? state.shopifyProductTypes : [];
-    const allCategories = [...new Set([...defaultCategories, ...existingCategories, ...syncedShopifyTypes])];
-
     // Form states
     const [name, setName] = useState('');
     const [productId, setProductId] = useState('');
@@ -32,6 +26,14 @@ export default function AddProductModal({ isOpen, onClose, editProductId }) {
     const [tags, setTags] = useState('');
     const [description, setDescription] = useState('');
     const [status, setStatus] = useState('active');
+
+    // Dynamic categories calculation: Strict single source of truth from synced Shopify Product Types
+    const syncedShopifyTypes = Array.isArray(state.shopifyProductTypes) && state.shopifyProductTypes.length > 0 
+        ? state.shopifyProductTypes 
+        : [...new Set((state.products || []).map(p => p.category))].filter(c => c && c.toLowerCase() !== 'uncategorized' && c.toLowerCase() !== 'mobile accessories');
+    
+    // Include current category of active product (if any) so editing doesn't lose current value
+    const allCategories = [...new Set([...syncedShopifyTypes, (category || '')])].filter(c => c && c.toLowerCase() !== 'uncategorized' && c.toLowerCase() !== 'mobile accessories');
 
     const handleAddImageLink = () => {
         if (imageUrlInput.trim()) {
