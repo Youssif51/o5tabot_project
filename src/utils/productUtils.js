@@ -94,3 +94,11 @@ export const normalizePhone = (phone) => {
     return clean;
 };
 
+export const isDigitalProduct = (prod) => {
+    if (!prod) return false;
+    const cat = (prod.category || '').toLowerCase().trim();
+    const name = (prod.name || prod.title || prod.productName || '').toLowerCase().trim();
+    if (cat === 'digital' || cat === 'رقمي' || cat === 'بطاقات رقمية' || cat === 'شحن ألعاب') return true;
+    const digitalKeywords = ['tiktok', 'pubg', 'coins', 'uc', 'top-up', 'top up', 'bundle', 'prime plus'];
+    return digitalKeywords.some(kw => name.includes(kw) || cat.includes(kw));
+};

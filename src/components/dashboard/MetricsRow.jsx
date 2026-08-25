@@ -1,6 +1,7 @@
 import React, { useContext } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { isDateMatchingFilter } from '../../utils/smartDateMatcher';
+import { isDigitalProduct } from '../../utils/productUtils';
 
 export default function MetricsRow({ timeFilter = 'all' }) {
     const { state, isDeductedStatus, t, theme, language } = useContext(AppContext);
@@ -42,6 +43,7 @@ export default function MetricsRow({ timeFilter = 'all' }) {
     let invQty = 0;
     let lowStockCount = 0;
     (state.products || []).forEach(prod => {
+        if (isDigitalProduct(prod) || prod.category === 'Uncategorized' || prod.category === 'غير مصنف' || !prod.category) return;
         (prod.variants || []).forEach(vr => {
             let totalQty = 0;
             if (vr.stock && typeof vr.stock === 'object') {

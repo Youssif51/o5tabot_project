@@ -1,4 +1,4 @@
-import { formatProductDisplayName } from '../../utils/productUtils';
+import { formatProductDisplayName, isDigitalProduct } from '../../utils/productUtils';
 import { getBostaDistrictDisplayName, filterAndSortBostaDistricts, autoParseAddressToBostaLocation, getBostaAddressSuggestions } from '../../utils/bostaUtils';
 import React, { useContext, useState, useEffect, useMemo } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
@@ -766,6 +766,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         
         const allVariants = [];
         (state.products || []).forEach(p => {
+            if (isDigitalProduct(p) || p.category === 'Uncategorized' || p.category === 'غير مصنف' || !p.category) return;
             (p.variants || []).forEach(v => {
                 const stock = getCurrentStock(v.sku);
                 allVariants.push({
@@ -794,6 +795,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         // Map all variants in stock
         const allVariants = [];
         (state.products || []).forEach(p => {
+            if (isDigitalProduct(p) || p.category === 'Uncategorized' || p.category === 'غير مصنف' || !p.category) return;
             (p.variants || []).forEach(v => {
                 const stock = getCurrentStock(v.sku);
                 allVariants.push({

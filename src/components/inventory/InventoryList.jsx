@@ -1,7 +1,7 @@
 import React, { useContext, useState } from 'react';
 import { getLocalDateString } from '../../utils/dateUtils';
 import { AppContext } from '../../context/AppContext';
-import { deduplicateProductName } from '../../utils/productUtils';
+import { deduplicateProductName, isDigitalProduct } from '../../utils/productUtils';
 import ProductInfo from './ProductInfo';
 import InitialStockSetupModal from './InitialStockSetupModal';
 
@@ -100,10 +100,11 @@ export default function InventoryList({
     const currency = state.storeSettings.currency || '$';
     const activeSearch = globalSearch || '';
 
-    // Filter products by collection
+    // Filter products by collection (Exclude Digital and Uncategorized)
     let filteredList = [];
     state.products.forEach(prod => {
-        // Visually hide Uncategorized products from inventory view
+        // Visually hide Uncategorized and Digital products from inventory view
+        if (isDigitalProduct(prod)) return;
         if (prod.category === 'Uncategorized' || prod.category === 'غير مصنف' || !prod.category) return;
 
         if (collectionFilter !== 'all') {
@@ -158,12 +159,13 @@ export default function InventoryList({
     const endIdx = Math.min(startIdx + pageSize, totalEntries);
     const paginatedList = filteredList.slice(startIdx, endIdx);
 
-    // --- Metrics Summaries for Inventory Dashboard Block ---
+    // --- Metrics Summaries for Inventory Dashboard Block (Physical Products Only) ---
     const collectionsCount = (state.collections || []).length;
-    const totalProductsCount = (state.products || []).reduce((acc, p) => acc + (p.variants || []).length, 0);
+    const physicalProducts = (state.products || []).filter(p => !isDigitalProduct(p) && p.category && p.category !== 'Uncategorized' && p.category !== 'غير مصنف');
+    const totalProductsCount = physicalProducts.reduce((acc, p) => acc + (p.variants || []).length, 0);
     
     let totalInvValue = 0;
-    (state.products || []).forEach(p => {
+    physicalProducts.forEach(p => {
         (p.variants || []).forEach(v => {
             const qty = (v.stock?.Sulur || 0);
             totalInvValue += qty * (v.retailPrice || 0);
@@ -183,7 +185,7 @@ export default function InventoryList({
     });
     let topSellingCount = Object.keys(variantSales).length;
     let topSellingCost = 0;
-    (state.products || []).forEach(p => {
+    physicalProducts.forEach(p => {
         (p.variants || []).forEach(v => {
             const sold = variantSales[v.sku] || 0;
             topSellingCost += sold * (v.wholesalePrice || 0);
@@ -192,7 +194,7 @@ export default function InventoryList({
 
     let lowStocksCount = 0;
     let outOfStockCount = 0;
-    state.products.forEach(p => {
+    physicalProducts.forEach(p => {
         p.variants.forEach(v => {
             const qty = Number(v.stock?.Sulur || 0);
             const limit = v.reorderLimit !== undefined && v.reorderLimit !== null && v.reorderLimit !== "" ? Number(v.reorderLimit) : 5;

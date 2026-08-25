@@ -1,6 +1,6 @@
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../../context/AppContext';
-import { formatProductDisplayName } from '../../utils/productUtils';
+import { formatProductDisplayName, isDigitalProduct } from '../../utils/productUtils';
 import { isDateMatchingFilter } from '../../utils/smartDateMatcher';
 import Modal from '../common/Modal';
 
@@ -34,6 +34,7 @@ export default function TopSelling({ timeFilter = 'all' }) {
 
     let topSelling = [];
     (state.products || []).forEach(prod => {
+        if (isDigitalProduct(prod) || prod.category === 'Uncategorized' || prod.category === 'غير مصنف' || !prod.category) return;
         (prod.variants || []).forEach(vr => {
             let sold = variantSales[vr.sku] || 0;
             let rev = variantRevenue[vr.sku] || 0;

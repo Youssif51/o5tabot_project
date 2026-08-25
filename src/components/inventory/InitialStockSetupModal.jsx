@@ -2,7 +2,7 @@ import React, { useState, useContext, useEffect } from 'react';
 import { AppContext } from '../../context/AppContext';
 import { supabase } from '../../utils/supabase';
 import Modal from '../common/Modal';
-import { cleanVariantName } from '../../utils/productUtils';
+import { cleanVariantName, isDigitalProduct } from '../../utils/productUtils';
 
 export default function InitialStockSetupModal({ isOpen, onClose }) {
   const { state, setState, syncVariantStockToShopify, showToast, logActivity } = useContext(AppContext);
@@ -15,6 +15,7 @@ export default function InitialStockSetupModal({ isOpen, onClose }) {
     if (isOpen && state.products) {
       const rows = [];
       state.products.forEach(p => {
+        if (isDigitalProduct(p) || p.category === 'Uncategorized' || p.category === 'غير مصنف' || !p.category) return;
         (p.variants || []).forEach(v => {
           const currentStock = typeof v.stock === 'object' && v.stock !== null 
             ? (v.stock.Sulur ?? v.stock.sulur ?? 0) 
