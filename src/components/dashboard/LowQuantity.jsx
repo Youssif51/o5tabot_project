@@ -1,6 +1,6 @@
 import React, { useContext, useState } from 'react';
 import { AppContext } from '../../context/AppContext';
-import { formatProductDisplayName } from '../../utils/productUtils';
+import { formatProductDisplayName, isDigitalProduct } from '../../utils/productUtils';
 import Modal from '../common/Modal';
 
 export default function LowQuantity() {
@@ -12,23 +12,13 @@ export default function LowQuantity() {
     const [modalPage, setModalPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
 
-    // Helper to identify and filter out virtual/digital non-physical items (UC, PUBG vouchers, digital codes)
-    const isVirtualProduct = (prodName = '', variantName = '', sku = '', prodCategory = '', isVirtual = false) => {
-        if (isVirtual) return true;
-        if (prodCategory && /digital|virtual|cards|games|vouchers/i.test(prodCategory)) return true;
-        const text = `${prodName} ${variantName} ${sku}`.toUpperCase();
-        return /\bUC\b|PUBG|شدات|\bQR\b|DIGITAL|VIRTUAL/i.test(text);
-    };
-
     let lowStock = [];
     (state.products || []).forEach(prod => {
-        const isProdVirtual = prod.is_virtual || prod.isVirtual || (prod.category && /digital|virtual|cards|games|vouchers/i.test(prod.category));
+        if (isDigitalProduct(prod) || prod.category === 'Uncategorized' || prod.category === 'غير مصنف' || !prod.category) {
+            return;
+        }
 
         (prod.variants || []).forEach(vr => {
-            // Exclude virtual/digital items from physical restocking alerts
-            if (isVirtualProduct(prod.name, vr.name, vr.sku, prod.category, isProdVirtual)) {
-                return;
-            }
 
             let totalQty = 0;
             if (vr.stock && typeof vr.stock === 'object' && vr.stock.Sulur !== undefined) {

@@ -96,9 +96,25 @@ export const normalizePhone = (phone) => {
 
 export const isDigitalProduct = (prod) => {
     if (!prod) return false;
-    const cat = (prod.category || '').toLowerCase().trim();
+    const cat = (prod.category || prod.product_type || '').toLowerCase().trim();
     const name = (prod.name || prod.title || prod.productName || '').toLowerCase().trim();
+
+    // 1. Explicit physical category & keyword whitelist (Never digital)
+    const physicalCategories = ['accessories', 'إكسسوارات', 'coolers', 'adapters', 'earphones', 'fingers', 'triggers', 'capture cards'];
+    if (physicalCategories.includes(cat)) return false;
+
+    if (name.includes('keychain') || name.includes('ميدالي') || name.includes('جراب') || name.includes('كابل') || name.includes('سماعة') || name.includes('مروحة') || name.includes('cover') || name.includes('sleeve') || name.includes('trigger') || name.includes('cooler') || name.includes('adapter')) {
+        return false;
+    }
+
+    // 2. Explicit digital categories
     if (cat === 'digital' || cat === 'رقمي' || cat === 'بطاقات رقمية' || cat === 'شحن ألعاب') return true;
-    const digitalKeywords = ['tiktok', 'pubg', 'coins', 'uc', 'top-up', 'top up', 'bundle', 'prime plus'];
-    return digitalKeywords.some(kw => name.includes(kw) || cat.includes(kw));
+
+    // 3. Digital product keywords (Coins, TikTok, UC, Top-up, Vouchers)
+    const words = name.split(/[\s_\-\/\.\,]+/);
+    if (words.includes('uc') || name.includes('شدات') || name.includes('🪙') || name.includes('coins') || name.includes('tiktok') || name.includes('top-up') || name.includes('top up') || name.includes('prime plus')) {
+        return true;
+    }
+
+    return false;
 };

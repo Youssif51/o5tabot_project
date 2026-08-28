@@ -64,7 +64,11 @@ function normalizePhone(phoneStr: string | null | undefined): string {
 async function resolveLocalVariantSku(supabase: any, item: any, shopifyProductId: string, productName: string, trace: string[]): Promise<string> {
   const titleLower = (productName || "").toLowerCase();
   const words = titleLower.split(/[\s_\-\/\.\,]+/);
-  const isDigital = ["tiktok", "pubg", "coins", "top-up", "top up", "bundle", "prime plus"].some(kw => titleLower.includes(kw)) || words.includes("uc");
+  
+  // Physical gaming accessories & items should NEVER be considered digital
+  const isPhysicalItem = titleLower.includes("keychain") || titleLower.includes("ميدالي") || titleLower.includes("cable") || titleLower.includes("cooler") || titleLower.includes("earphone") || titleLower.includes("headset") || titleLower.includes("sleeve") || titleLower.includes("trigger") || titleLower.includes("adapter") || titleLower.includes("cover");
+  const isDigital = !isPhysicalItem && (["tiktok", "coins", "top-up", "top up", "bundle", "prime plus"].some(kw => titleLower.includes(kw)) || words.includes("uc") || titleLower.includes("شدات") || titleLower.includes("🪙"));
+  
   trace.push(`isDigital = ${isDigital}`);
   if (isDigital) {
     return "DIGITAL-ITEM";

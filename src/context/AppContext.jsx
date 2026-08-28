@@ -1,4 +1,4 @@
-import { formatProductDisplayName, normalizePhone, cleanVariantName } from '../utils/productUtils';
+import { formatProductDisplayName, normalizePhone, cleanVariantName, isDigitalProduct } from '../utils/productUtils';
 import { supabase } from '../utils/supabase';
 import { getLocalDateString } from '../utils/dateUtils';
 import React, { createContext, useState, useEffect, useRef, useCallback } from 'react';
@@ -5990,12 +5990,7 @@ export const AppProvider = ({ children }) => {
                     const shopifyProductId = String(sp.id);
                     
                     // Skip digital products (TikTok Coins, PUBG UC, etc.)
-                    const titleLower = (sp.title || '').toLowerCase();
-                    const productTypeLower = (sp.product_type || '').toLowerCase();
-                    const isDigitalProduct = ['tiktok', 'pubg', 'coins', 'uc', 'top-up', 'top up', 'bundle', 'prime plus'].some(kw => 
-                        titleLower.includes(kw) || productTypeLower.includes(kw)
-                    );
-                    if (isDigitalProduct) continue;
+                    if (isDigitalProduct({ name: sp.title, category: sp.product_type })) continue;
 
                     // Check if already linked
                     const alreadyLinkedProduct = localProducts.find(p => p.shopify_id === shopifyProductId);
@@ -6268,7 +6263,8 @@ export const AppProvider = ({ children }) => {
             for (const col of collectionsList) {
                 // Skip digital collections
                 const titleLower = (col.title || '').toLowerCase();
-                const isDigitalCol = ['tiktok', 'pubg', 'coins', 'uc', 'top-up', 'top up'].some(kw => titleLower.includes(kw));
+                const isPhysicalCol = titleLower.includes('keychain') || titleLower.includes('accessories') || titleLower.includes('cooler') || titleLower.includes('earphone');
+                const isDigitalCol = !isPhysicalCol && ['tiktok', 'coins', 'uc', 'top-up', 'top up', 'digital'].some(kw => titleLower.includes(kw));
                 if (isDigitalCol) continue;
 
                 await supabase.from('shopify_collections').upsert({
@@ -6325,7 +6321,7 @@ export const AppProvider = ({ children }) => {
             // Clean & filter digital keywords, uncategorized, and legacy placeholders
             const filteredTypes = productTypes.filter(t => {
                 const low = t.toLowerCase().trim();
-                return !['digital', 'tiktok', 'pubg', 'coins', 'uc', 'top-up', 'uncategorized', 'mobile accessories'].includes(low);
+                return !['digital', 'tiktok', 'coins', 'uc', 'top-up', 'uncategorized', 'mobile accessories'].includes(low);
             });
 
             if (filteredTypes.length > 0) {
