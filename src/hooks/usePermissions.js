@@ -18,9 +18,10 @@ export default function usePermissions() {
         canApplyCoupon: true,
         canDeleteOrder: role !== 'Staff',
         canCancelOrder: true,
-        canViewInventory: role === 'SuperAdmin' || (state.currentUser?.permissions || []).includes('view_inventory') || (state.currentUser?.permissions || []).includes('manage_inventory'),
-        canManageInventory: role === 'SuperAdmin' || (state.currentUser?.permissions || []).includes('manage_inventory'),
-        canAdjustStock: role === 'SuperAdmin' || (state.currentUser?.permissions || []).includes('manage_inventory'),
+        canViewInventory: role === 'SuperAdmin' || role === 'Admin' || (state.currentUser?.permissions || []).includes('view_inventory') || (state.currentUser?.permissions || []).includes('manage_inventory'),
+        canManageInventory: role === 'SuperAdmin' || role === 'Admin' || (state.currentUser?.permissions || []).includes('manage_inventory'),
+        canAddProduct: role === 'SuperAdmin' || role === 'Admin' || (state.currentUser?.permissions || []).includes('view_inventory') || (state.currentUser?.permissions || []).includes('manage_inventory'),
+        canAdjustStock: role === 'SuperAdmin' || role === 'Admin' || (state.currentUser?.permissions || []).includes('manage_inventory'),
         canReceivePurchase: true,
         canViewReports: role !== 'Staff',
 

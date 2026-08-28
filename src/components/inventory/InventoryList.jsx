@@ -17,7 +17,10 @@ export default function InventoryList({
     const userRole = state.currentUser?.role;
     const userPerms = state.currentUser?.permissions || [];
     const isSuperAdmin = userRole === 'SuperAdmin';
-    const canManageInventory = isSuperAdmin || userPerms.includes('manage_inventory');
+    const isAdmin = userRole === 'Admin';
+    const canManageInventory = isSuperAdmin || isAdmin || userPerms.includes('manage_inventory');
+    const canViewInventory = canManageInventory || userPerms.includes('view_inventory');
+    const canAddProduct = canViewInventory;
 
     React.useEffect(() => {
         if (refreshProductsAndLedger) {
@@ -362,15 +365,15 @@ export default function InventoryList({
                         <h3>{t('products')}</h3>
                         
                         <div style={{ display: 'flex', gap: '10px' }}>
+                            {canAddProduct && (
+                                <button className="btn btn-primary" onClick={onOpenAddProduct}>
+                                    {t('addProduct')}
+                                </button>
+                            )}
                             {canManageInventory && (
-                                <>
-                                    <button className="btn btn-primary" onClick={onOpenAddProduct}>
-                                        {t('addProduct')}
-                                    </button>
-                                    <button className="btn btn-secondary" onClick={() => setIsInitialStockOpen(true)}>
-                                        ضبط الرصيد الافتتاحي والأسعار
-                                    </button>
-                                </>
+                                <button className="btn btn-secondary" onClick={() => setIsInitialStockOpen(true)}>
+                                    ضبط الرصيد الافتتاحي والأسعار
+                                </button>
                             )}
                             <button className="btn btn-secondary" onClick={() => setShowFilters(!showFilters)}>
                                 <i className="fa-solid fa-sliders"></i> {t('filters')}
