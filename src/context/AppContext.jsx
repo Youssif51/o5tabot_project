@@ -215,12 +215,67 @@ const fetchAllCustomersList = async (supabaseClient) => {
     }
 };
 
+// Helper to fetch all orders across Supabase range chunks safely
+const fetchAllOrdersList = async (supabaseClient) => {
+    try {
+        let allOrders = [];
+        let from = 0;
+        const pageSize = 1000;
+        while (true) {
+            const { data, error } = await supabaseClient
+                .from('orders')
+                .select('*')
+                .order('date', { ascending: false })
+                .range(from, from + pageSize - 1);
+            if (error) {
+                console.error("Error fetching orders batch:", error);
+                return { data: allOrders.length > 0 ? allOrders : null, error };
+            }
+            if (!data || data.length === 0) break;
+            allOrders = allOrders.concat(data);
+            if (data.length < pageSize) break;
+            from += pageSize;
+        }
+        return { data: allOrders, error: null };
+    } catch (err) {
+        console.error("Exception in fetchAllOrdersList:", err);
+        return { data: null, error: err };
+    }
+};
+
+// Helper to fetch all order items across Supabase range chunks safely
+const fetchAllOrderItemsList = async (supabaseClient) => {
+    try {
+        let allItems = [];
+        let from = 0;
+        const pageSize = 1000;
+        while (true) {
+            const { data, error } = await supabaseClient
+                .from('order_items')
+                .select('*')
+                .range(from, from + pageSize - 1);
+            if (error) {
+                console.error("Error fetching order items batch:", error);
+                return { data: allItems.length > 0 ? allItems : null, error };
+            }
+            if (!data || data.length === 0) break;
+            allItems = allItems.concat(data);
+            if (data.length < pageSize) break;
+            from += pageSize;
+        }
+        return { data: allItems, error: null };
+    } catch (err) {
+        console.error("Exception in fetchAllOrderItemsList:", err);
+        return { data: null, error: err };
+    }
+};
+
     // Fetch WMS ERP records from Supabase on load
     const loadSupabaseData = useCallback(async () => {
             if (!supabase) return;
             if (!state.currentUser) return;
             try {
-                // Calculate ninety days ago for orders, wastes, ledger
+                // Calculate ninety days ago for wastes, ledger
                 const ninetyDaysAgo = new Date();
                 ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
                 const ninetyDaysAgoStr = ninetyDaysAgo.toISOString().split('T')[0];
@@ -235,6 +290,7 @@ const fetchAllCustomersList = async (supabaseClient) => {
                     { data: variants, error: vErr },
                     { data: suppliers, error: sErr },
                     { data: orders, error: oErr },
+                    { data: orderItemsData, error: oiErr },
                     { data: purchaseOrders, error: poErr },
                     { data: ledger, error: lErr },
                     { data: wastes, error: wErr },
@@ -246,10 +302,8 @@ const fetchAllCustomersList = async (supabaseClient) => {
                     supabase.from('products').select('*'),
                     supabase.from('product_variants').select('*'),
                     supabase.from('suppliers').select('*'),
-                    supabase.from('orders')
-                        .select('*')
-                        .or(`date.gte.${ninetyDaysAgoStr},status.not.in.(Completed,Cancelled),deposit_status.eq.pending,deposit_refund_status.eq.awaiting_return`)
-                        .order('date', { ascending: false }),
+                    fetchAllOrdersList(supabase),
+                    fetchAllOrderItemsList(supabase),
                     supabase.from('purchase_orders')
                         .select('*')
                         .gte('created_at', purchaseCutoffStr)
@@ -268,35 +322,19 @@ const fetchAllCustomersList = async (supabaseClient) => {
                     supabase.from('shopify_collections').select('*')
                 ]);
 
-                if (pErr || vErr || sErr || oErr || poErr || lErr || wErr || cErr || couErr || uErr || colErr) {
-                    console.error("Supabase load error detail:", { pErr, vErr, sErr, oErr, poErr, lErr, wErr, cErr, couErr, uErr, colErr });
+                if (pErr || vErr || sErr || oErr || oiErr || poErr || lErr || wErr || cErr || couErr || uErr || colErr) {
+                    console.error("Supabase load error detail:", { pErr, vErr, sErr, oErr, oiErr, poErr, lErr, wErr, cErr, couErr, uErr, colErr });
                     showToast("فشل تحميل البيانات من السيرفر. يرجى تحديث الصفحة أو التحقق من الاتصال بالإنترنت.", "error");
                     return;
                 }
 
-                // Fetch items only for loaded orders and purchase orders in chunks of 100 to bypass Supabase 1000-row limits
-                const orderIds = (orders || []).map(o => o.id);
                 const poIds = (purchaseOrders || []).map(po => po.id);
-
-                let orderItems = [];
+                let orderItems = orderItemsData || [];
                 let purchaseItems = [];
 
                 const itemFetchPromises = [];
                 const chunkSize = 100;
 
-                if (orderIds.length > 0) {
-                    for (let i = 0; i < orderIds.length; i += chunkSize) {
-                        const chunk = orderIds.slice(i, i + chunkSize);
-                        itemFetchPromises.push(
-                            supabase.from('order_items').select('*').in('order_id', chunk).then(({ data, error }) => {
-                                if (error) console.error("Error loading order items chunk:", error);
-                                if (data && data.length > 0) {
-                                    orderItems.push(...data);
-                                }
-                            })
-                        );
-                    }
-                }
                 if (poIds.length > 0) {
                     for (let i = 0; i < poIds.length; i += chunkSize) {
                         const chunk = poIds.slice(i, i + chunkSize);
