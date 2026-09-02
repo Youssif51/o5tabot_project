@@ -187,6 +187,34 @@ export const AppProvider = ({ children }) => {
         }, 3000);
     }, []);
 
+// Helper to fetch all customer records across Supabase range chunks safely
+const fetchAllCustomersList = async (supabaseClient) => {
+    try {
+        let allCustomers = [];
+        let from = 0;
+        const pageSize = 1000;
+        while (true) {
+            const { data, error } = await supabaseClient
+                .from('customers')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .range(from, from + pageSize - 1);
+            if (error) {
+                console.error("Error fetching customers batch:", error);
+                return { data: allCustomers.length > 0 ? allCustomers : null, error };
+            }
+            if (!data || data.length === 0) break;
+            allCustomers = allCustomers.concat(data);
+            if (data.length < pageSize) break;
+            from += pageSize;
+        }
+        return { data: allCustomers, error: null };
+    } catch (err) {
+        console.error("Exception in fetchAllCustomersList:", err);
+        return { data: null, error: err };
+    }
+};
+
     // Fetch WMS ERP records from Supabase on load
     const loadSupabaseData = useCallback(async () => {
             if (!supabase) return;
@@ -234,10 +262,7 @@ export const AppProvider = ({ children }) => {
                         .select('*')
                         .gte('date', ninetyDaysAgoStr)
                         .order('date', { ascending: false }),
-                    supabase.from('customers')
-                        .select('*')
-                        .order('created_at', { ascending: false })
-                        .limit(500),
+                    fetchAllCustomersList(supabase),
                     supabase.from('coupons').select('*'),
                     supabase.from('user_profiles').select('*'),
                     supabase.from('shopify_collections').select('*')
