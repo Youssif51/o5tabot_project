@@ -21,26 +21,6 @@ function normalizePhone(phoneStr: string | null | undefined): string {
   return cleaned;
 }
 
-// Fetch helper function with exponential backoff retry for transient failures (e.g. 5xx or 429 status codes)
-async function fetchWithRetry(url: string, options: any, retries = 3, delay = 1000): Promise<Response> {
-  for (let i = 0; i < retries; i++) {
-    try {
-      const res = await fetch(url, options);
-      if (res.status >= 500 || res.status === 429) {
-        console.warn(`Bosta API returned status ${res.status}. Retrying ${i + 1}/${retries} after ${delay * Math.pow(2, i)}ms...`);
-        await new Promise(r => setTimeout(r, delay * Math.pow(2, i)));
-        continue;
-      }
-      return res;
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
-      console.error(`Bosta API request error: ${errMsg}. Retrying ${i + 1}/${retries} after ${delay * Math.pow(2, i)}ms...`);
-      if (i === retries - 1) throw err;
-      await new Promise(r => setTimeout(r, delay * Math.pow(2, i)));
-    }
-  }
-  return fetch(url, options);
-}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -329,8 +309,8 @@ Deno.serve(async (req) => {
 
     console.log("Sending payload to Bosta API:", JSON.stringify(bostaPayload, null, 2));
 
-    // 6. Send request to Bosta with retry capability
-    const bostaRes = await fetchWithRetry('https://api.bosta.co/api/v2/deliveries?apiVersion=1', {
+    // 6. Send single direct request to Bosta (prevents duplicate deliveries)
+    const bostaRes = await fetch('https://api.bosta.co/api/v2/deliveries?apiVersion=1', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
