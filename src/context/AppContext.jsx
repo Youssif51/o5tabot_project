@@ -1467,6 +1467,19 @@ const fetchAllOrderItemsList = async (supabaseClient) => {
                 'postgres_changes',
                 { event: '*', schema: 'public', table: 'user_profiles' },
                 (payload) => {
+                    if (
+                        payload.eventType === 'UPDATE' &&
+                        payload.new?.id === stateRef.current.currentUser?.id &&
+                        payload.new?.is_active === false
+                    ) {
+                        void (async () => {
+                            await supabase.auth.signOut();
+                            setState(curr => ({ ...curr, currentUser: null }));
+                            showToast("الحساب معطّل حاليًا، برجاء مراجعة الإدارة.", "error");
+                        })();
+                        return;
+                    }
+
                     if (payload.new && payload.new.avatar && typeof payload.new.avatar === 'string' && payload.new.avatar.includes('shippingFees')) {
                         try {
                             const parsedObj = JSON.parse(payload.new.avatar);
@@ -1583,7 +1596,7 @@ const fetchAllOrderItemsList = async (supabaseClient) => {
                 if (profile && !profile.is_active) {
                     await supabase.auth.signOut();
                     setState(prev => ({ ...prev, currentUser: null }));
-                    showToast("Your account is deactivated.", "error");
+                    showToast("الحساب معطّل حاليًا، برجاء مراجعة الإدارة.", "error");
                     return;
                 }
                 const profileAvatar = profile?.avatar || null;
@@ -1612,9 +1625,35 @@ const fetchAllOrderItemsList = async (supabaseClient) => {
         if (!supabase) return false;
         const { data, error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) {
-            showToast("امشي يلا ألعب بعيد", "error");
+            showToast("اليوزر نيم أو الباسورد غلط، من فضلك راجع الأدمن.", "error");
             return false;
         }
+
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (!sessionData?.session?.user || sessionData.session.user.id !== data.user?.id) {
+            return false;
+        }
+
+        const { data: profile, error: profileError } = await supabase
+            .from('user_profiles')
+            .select('is_active')
+            .eq('id', data.user.id)
+            .single();
+
+        if (profileError || !profile) {
+            await supabase.auth.signOut();
+            setState(prev => ({ ...prev, currentUser: null }));
+            showToast("تعذّر التحقق من حالة الحساب، برجاء مراجعة الإدارة.", "error");
+            return false;
+        }
+
+        if (profile.is_active === false) {
+            await supabase.auth.signOut();
+            setState(prev => ({ ...prev, currentUser: null }));
+            showToast("الحساب معطّل حاليًا، برجاء مراجعة الإدارة.", "error");
+            return false;
+        }
+
         logActivity("auth", `User signed in.`);
         showToast(`Welcome back!`);
         setCurrentView("dashboard");
