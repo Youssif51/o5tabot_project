@@ -421,6 +421,7 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                     // Restore exact syncWithBosta setting for this order (default to false if not created with Bosta)
                     const savedSync = parsed.syncWithBosta !== undefined ? parsed.syncWithBosta : (!!parsed.bostaDeliveryId);
                     setSyncWithBosta(savedSync);
+                    setAllowToOpenPackage(parsed.allowToOpenPackage === true);
                     
                     // Fetch latest items directly from database to avoid stale local state overwrites
                     (async () => {
@@ -1072,7 +1073,8 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
                         bostaCityName: citySelected?.cityName || citySelected?.cityOtherName || '',
                         bostaDistrictId: districtSelected?.districtId || null,
                         bostaDistrictName: districtSelected?.districtName || districtSelected?.districtOtherName || '',
-                        bostaZoneId: districtSelected?.zoneId || null
+                        bostaZoneId: districtSelected?.zoneId || null,
+                        allowToOpenPackage: !!allowToOpenPackage
                     }),
                     governorate: governorate,
                     deposit: depositVal,

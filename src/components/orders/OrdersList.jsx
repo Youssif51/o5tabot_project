@@ -25,7 +25,7 @@ export const parseAddressData = (addressData) => {
     let bostaDistrictId = '';
     let bostaDistrictName = '';
     let bostaZoneId = '';
-    let allowToOpenPackage = true;
+    let allowToOpenPackage = false;
     
     if (addressData) {
         let parsed = addressData;
@@ -58,7 +58,7 @@ export const parseAddressData = (addressData) => {
             bostaDistrictId = parsed.bostaDistrictId || '';
             bostaDistrictName = parsed.bostaDistrictName || '';
             bostaZoneId = parsed.bostaZoneId || '';
-            allowToOpenPackage = parsed.allowToOpenPackage !== false;
+            allowToOpenPackage = parsed.allowToOpenPackage === true;
         }
     }
     return { 
