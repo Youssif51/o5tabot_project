@@ -211,25 +211,84 @@ export default function InventoryList({
 
     const handleExportCSV = () => {
         const headers = canManageInventory 
-            ? ["اسم المنتج", "القسم", "رمز SKU", "الباركود", "سعر التكلفة", "سعر البيع", "المخزون المتوفر"]
-            : ["اسم المنتج", "القسم", "رمز SKU", "الباركود", "سعر البيع", "المخزون المتوفر"];
+            ? ["اسم المنتج", "المتغير", "القسم", "رمز SKU", "الباركود", "سعر التكلفة", "سعر البيع", "المخزون المتوفر", "حالة المخزون"]
+            : ["اسم المنتج", "المتغير", "القسم", "رمز SKU", "الباركود", "سعر البيع", "المخزون المتوفر", "حالة المخزون"];
             
-        const rows = filteredList.map(item => {
-            const base = [
-                `"${item.productName}"`,
-                `"${item.category || ''}"`,
-                `"${item.sku}"`,
-                `"${item.barcode || ''}"`
-            ];
-            if (canManageInventory) {
-                base.push(item.wholesalePrice || 0);
-            }
-            base.push(item.retailPrice || 0);
-            base.push(item.stock?.Sulur || 0);
-            return base;
+        let totalVariantsCount = 0;
+        let totalUnitsInStock = 0;
+        let totalCostValue = 0;
+        let totalRetailValue = 0;
+        const parentProductsSet = new Set();
+
+        const rows = [];
+
+        filteredList.forEach(item => {
+            parentProductsSet.add(item.id || item.name);
+            const itemVariants = (item.activeVariants && item.activeVariants.length > 0) ? item.activeVariants : (item.variants || []);
+            
+            itemVariants.forEach(vr => {
+                totalVariantsCount++;
+                const stockQty = Number(vr.stock?.Sulur || 0);
+                const costPrice = Number(vr.wholesalePrice || vr.averageCost || 0);
+                const sellPrice = Number(vr.retailPrice || 0);
+                const limit = vr.reorderLimit !== undefined && vr.reorderLimit !== null && vr.reorderLimit !== '' ? Number(vr.reorderLimit) : 5;
+
+                totalUnitsInStock += stockQty;
+                totalCostValue += (stockQty * costPrice);
+                totalRetailValue += (stockQty * sellPrice);
+
+                let statusText = 'متوفر';
+                if (stockQty === 0) statusText = 'نفذ من المخزون';
+                else if (stockQty <= limit) statusText = 'مخزون منخفض';
+
+                const vName = (vr.name && vr.name !== 'Standard Option' && vr.name !== 'Default Title') ? vr.name : 'الافتراضي';
+                const cleanProdName = (deduplicateProductName(item.name) || item.name || '').replace(/"/g, '""');
+                const cleanVarName = vName.replace(/"/g, '""');
+                const cleanCategory = (item.category || '').replace(/"/g, '""');
+                const cleanSku = (vr.sku || '').replace(/"/g, '""');
+                const cleanBarcode = (vr.barcode || '').replace(/"/g, '""');
+
+                const row = [
+                    `"${cleanProdName}"`,
+                    `"${cleanVarName}"`,
+                    `"${cleanCategory}"`,
+                    `"${cleanSku}"`,
+                    `"${cleanBarcode}"`
+                ];
+
+                if (canManageInventory) {
+                    row.push(costPrice);
+                }
+                row.push(sellPrice);
+                row.push(stockQty);
+                row.push(`"${statusText}"`);
+
+                rows.push(row);
+            });
         });
 
-        const csvContent = "\uFEFF" + [headers.join(","), ...rows.map(e => e.join(","))].join("\n");
+        const currencySymbol = state.storeSettings?.currency || 'ج.م';
+
+        const summaryRows = [
+            [],
+            ['"--- ملخص وإجماليات المخزون ---"'],
+            ['"إجمالي عدد المنتجات الرئيسية:"', `"${parentProductsSet.size} منتج"`],
+            ['"إجمالي عدد المتغيرات (SKUs):"', `"${totalVariantsCount} صنف"`],
+            ['"إجمالي عدد القطع بالمستودع:"', `"${totalUnitsInStock.toLocaleString('en-US')} قطعة"`]
+        ];
+
+        if (canManageInventory) {
+            summaryRows.push(['"إجمالي قيمة المخزون (سعر التكلفة):"', `"${totalCostValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencySymbol}"`]);
+        }
+        summaryRows.push(['"إجمالي قيمة المخزون (سعر البيع):"', `"${totalRetailValue.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currencySymbol}"`]);
+
+        const allLines = [
+            headers.join(","),
+            ...rows.map(e => e.join(",")),
+            ...summaryRows.map(e => e.join(","))
+        ];
+
+        const csvContent = "\uFEFF" + allLines.join("\n");
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
@@ -238,7 +297,7 @@ export default function InventoryList({
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        showToast("تم تصدير تقرير المخزون المفلتر بنجاح", "success");
+        showToast("تم تصدير تقرير المخزون بنجاح", "success");
     };
 
     if (viewMode === 'inspect') {

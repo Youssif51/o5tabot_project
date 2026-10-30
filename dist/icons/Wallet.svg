@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" fill="none">
+  <!-- Outer wallet body -->
+  <rect x="6" y="18" width="52" height="38" rx="8" stroke="#000000" stroke-width="4" stroke-linejoin="round" fill="none"/>
+  <!-- Clasp tab -->
+  <path d="M46 31h8a4 4 0 0 1 4 4v6a4 4 0 0 1-4 4h-8a2 2 0 0 1-2-2V33a2 2 0 0 1 2-2z" stroke="#000000" stroke-width="4" stroke-linejoin="round" fill="none"/>
+  <!-- Clasp button -->
+  <circle cx="52" cy="38" r="3" fill="#000000"/>
+  <!-- Cash bill sticking out -->
+  <path d="M14 18V9a2 2 0 0 1 2-2h28a2 2 0 0 1 2 2v9" stroke="#000000" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M22 18V13a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v5" stroke="#000000" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+</svg>
