@@ -204,7 +204,7 @@ export default function ShopifyPendingList() {
                 if (matchedCity) {
                     initialCities[ord.id] = matchedCity;
                     if (parsed.bostaDistrictId) {
-                        const matchedDist = matchedCity.districts.find(d => d.districtId === parsed.bostaDistrictId);
+                        const matchedDist = matchedCity.districts.find(d => d.districtId === parsed.bostaDistrictId && d.dropOffAvailability !== false);
                         if (matchedDist) {
                             initialDistricts[ord.id] = matchedDist;
                         }

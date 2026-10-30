@@ -177,30 +177,30 @@ export default function RecordOrderModal({ isOpen, onClose, editOrderId }) {
         
         let district = null;
         if (city && city.districts) {
+            // STRICT: Only consider districts that are covered for delivery in Bosta (dropOffAvailability !== false)
+            const coveredDistricts = city.districts.filter(d => d.dropOffAvailability !== false);
+
             if (districtId) {
-                district = city.districts.find(d => String(d.districtId) === String(districtId));
+                district = coveredDistricts.find(d => String(d.districtId) === String(districtId)) || null;
             }
             if (!district && districtName) {
                 const trimmedDist = districtName.trim().toLowerCase();
-                district = city.districts.find(d => 
+                district = coveredDistricts.find(d => 
                     d.districtOtherName.trim().toLowerCase() === trimmedDist ||
                     d.districtName.trim().toLowerCase() === trimmedDist ||
                     d.districtOtherName.includes(districtName) ||
                     districtName.includes(d.districtOtherName)
-                );
+                ) || null;
             }
             if (!district && fullAddress) {
                 const trimmedAddr = fullAddress.trim().toLowerCase();
-                district = city.districts.find(d => 
+                district = coveredDistricts.find(d => 
                     (d.districtOtherName && trimmedAddr.includes(d.districtOtherName.trim().toLowerCase())) ||
                     (d.districtName && trimmedAddr.includes(d.districtName.trim().toLowerCase()))
-                );
+                ) || null;
             }
-            if (!district) {
-                const avail = city.districts.filter(d => d.dropOffAvailability);
-                if (avail.length === 1) {
-                    district = avail[0];
-                }
+            if (!district && coveredDistricts.length === 1) {
+                district = coveredDistricts[0];
             }
         }
         return { city, district };
